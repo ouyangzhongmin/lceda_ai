@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Server",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/server/cmd",
+      "cwd": "${workspaceFolder}/server",
+      "env": {
+        "APP_CONFIG": "${workspaceFolder}/server/configs/config.yaml",
+        "GIN_MODE": "debug"
+      },
+      "args": [],
+      "showLog": true,
+      "trace": "verbose"
+    },
+    {
+      "name": "Launch Server (Production Mode)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/server/cmd",
+      "cwd": "${workspaceFolder}/server",
+      "env": {
+        "APP_CONFIG": "${workspaceFolder}/server/configs/config.yaml",
+        "GIN_MODE": "release"
+      },
+      "args": [],
+      "showLog": false
+    },
+    {
+      "name": "Attach to Server Process",
+      "type": "go",
+      "request": "attach",
+      "mode": "local",
+      "processId": "${command:pickProcess}"
+    }
+  ]
+}

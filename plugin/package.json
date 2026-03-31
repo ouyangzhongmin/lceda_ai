@@ -1,0 +1,35 @@
+{
+  "name": "lceda-ai-assistant-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JLCEDA AI assistant plugin skeleton",
+  "scripts": {
+    "poc:plugin": "tsx src/dev/runPluginPoc.ts",
+    "poc:browser-login": "tsx src/dev/runBrowserLoginPoc.ts",
+    "poc:wechat-login": "tsx src/dev/runWechatLoginPoc.ts",
+    "poc:draft": "tsx src/dev/runDraftPoc.ts",
+    "poc:missing-host": "tsx src/dev/runMissingHostPoc.ts",
+    "poc:host-probe": "tsx src/dev/runHostProbe.ts",
+    "poc:api-host": "tsx src/dev/runApiStyleHostPoc.ts",
+    "poc:shape-host": "tsx src/dev/runShapeApiHostPoc.ts",
+    "compile": "rimraf ./dist/ ./build/dist/ && ts-node ./config/esbuild.prod.ts",
+    "build": "npm run compile && ts-node ./build/inlineIframeScript.ts && ts-node ./build/packaged.ts",
+    "build:dev": "NODE_ENV=development npm run build",
+    "build:test": "NODE_ENV=test npm run build",
+    "build:prod": "NODE_ENV=production npm run build",
+    "dev": "echo \"dev script placeholder\""
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/react": "^19.2.2",
+    "@jlceda/pro-api-types": "^0.2.21",
+    "esbuild": "^0.25.11",
+    "fs-extra": "^11.3.0",
+    "ignore": "^7.0.5",
+    "jszip": "^3.10.1",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  }
+}

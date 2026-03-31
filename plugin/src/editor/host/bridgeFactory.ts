@@ -1,0 +1,429 @@
+import type {
+  LocateTarget,
+  PluginChannel,
+  SchematicContext,
+  SchematicSelection,
+} from "../../types/schematic";
+import { mockProfessionalContext, mockStandardContext } from "../adapters/mockData";
+import {
+  isProfessionalSchematicContext,
+  isProfessionalSelection,
+  resolveProfessionalHostCapabilities,
+  type ProfessionalRawHostApi,
+} from "./professionalHostApi";
+import { getTypedDocumentContext, hasTypedToastCapability, hasTypedWindowOpenCapability, showTypedToast } from "./proHostProbe";
+import {
+  isStandardSchematicContext,
+  isStandardSelection,
+  resolveStandardHostCapabilities,
+  type StandardRawHostApi,
+} from "./standardHostApi";
+import type { HostCapabilityReport, HostEditorBridge } from "./runtime";
+
+type RawHostApi = StandardRawHostApi | ProfessionalRawHostApi;
+
+export interface HostBridgeFactoryOptions {
+  channel: PluginChannel;
+  rawApi?: RawHostApi;
+}
+
+export function createHostBridge(options: HostBridgeFactoryOptions): HostEditorBridge {
+  const { channel, rawApi } = options;
+  if (channel === "professional") {
+    return createProfessionalHostBridge(rawApi);
+  }
+
+  return createStandardHostBridge(rawApi);
+}
+
+export function createStandardHostBridge(rawApi?: RawHostApi): HostEditorBridge {
+  const capabilities = resolveStandardHostCapabilities(rawApi as StandardRawHostApi | undefined);
+  const typedWindowAvailable = hasTypedWindowOpenCapability();
+  const typedToastAvailable = hasTypedToastCapability();
+  const capabilityReport = buildCapabilityReport(
+    "standard",
+    Boolean(capabilities.getCurrentDocument || capabilities.getSelection),
+    {
+      getCurrentContext: Boolean(capabilities.getCurrentDocument),
+      getSelection: Boolean(capabilities.getSelection),
+      locate: Boolean(capabilities.locateObject),
+    },
+    {
+      previewApplyPlan: Boolean(capabilities.previewApplyPlan),
+      applyPlan: Boolean(capabilities.applyPlan),
+      rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
+      openExternal: Boolean(capabilities.openExternal || typedWindowAvailable),
+      showToastMessage: Boolean(capabilities.showToastMessage || typedToastAvailable),
+      searchLibraryDevices: false,
+      getLibraryDevice: false,
+      getLibraryDevicesByLcscIds: false,
+    }
+  );
+  return {
+    getChannel: () => "standard",
+    isAvailable: () => Boolean(capabilities.getCurrentDocument || capabilities.getSelection),
+    getCurrentContext: async () =>
+      mapRawDocumentToContext("standard", capabilities.getCurrentDocument, mockStandardContext),
+    getSelection: async () => mapRawSelection(capabilities.getSelection, mockStandardContext.selection),
+    locate: async (target) => {
+      if (capabilities.locateObject) {
+        await capabilities.locateObject(target);
+        return;
+      }
+
+      ensureKnownTarget(mockStandardContext, target, "standard");
+    },
+    previewApplyPlan: capabilities.previewApplyPlan,
+    applyPlan: capabilities.applyPlan,
+    rollbackApplyPlan: capabilities.rollbackApplyPlan,
+    openExternal: capabilities.openExternal,
+    showToastMessage: async (message, timeoutMs) => {
+      if (capabilities.showToastMessage) {
+        await capabilities.showToastMessage(message, timeoutMs);
+        return;
+      }
+      if (!showTypedToast(message, timeoutMs)) {
+        throw new Error("host toast not available");
+      }
+    },
+    searchLibraryDevices: undefined,
+    getLibraryDevice: undefined,
+    getLibraryDevicesByLcscIds: undefined,
+    getCapabilityReport: () => capabilityReport,
+  };
+}
+
+export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBridge {
+  const capabilities = resolveProfessionalHostCapabilities(rawApi as ProfessionalRawHostApi | undefined);
+  const typedWindowAvailable = hasTypedWindowOpenCapability();
+  const typedToastAvailable = hasTypedToastCapability();
+  const capabilityReport = buildCapabilityReport(
+    "professional",
+    Boolean(capabilities.getCurrentDocument || capabilities.getSelection),
+    {
+      getCurrentContext: Boolean(capabilities.getCurrentDocument),
+      getSelection: Boolean(capabilities.getSelection),
+      locate: Boolean(capabilities.locateObject),
+    },
+    {
+      previewApplyPlan: Boolean(capabilities.previewApplyPlan),
+      applyPlan: Boolean(capabilities.applyPlan),
+      rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
+      openExternal: Boolean(capabilities.openExternal || typedWindowAvailable),
+      showToastMessage: Boolean(capabilities.showToastMessage || typedToastAvailable),
+      searchLibraryDevices: Boolean(capabilities.searchLibraryDevices),
+      getLibraryDevice: Boolean(capabilities.getLibraryDevice),
+      getLibraryDevicesByLcscIds: Boolean(capabilities.getLibraryDevicesByLcscIds),
+    }
+  );
+  return {
+    getChannel: () => "professional",
+    isAvailable: () => Boolean(capabilities.getCurrentDocument || capabilities.getSelection),
+    getCurrentContext: async () =>
+      mapRawDocumentToContext("professional", capabilities.getCurrentDocument, mockProfessionalContext),
+    getSelection: async () =>
+      mapRawSelection(capabilities.getSelection, mockProfessionalContext.selection),
+    locate: async (target) => {
+      if (capabilities.locateObject) {
+        await capabilities.locateObject(target);
+        return;
+      }
+
+      ensureKnownTarget(mockProfessionalContext, target, "professional");
+    },
+    previewApplyPlan: capabilities.previewApplyPlan,
+    applyPlan: capabilities.applyPlan,
+    rollbackApplyPlan: capabilities.rollbackApplyPlan,
+    openExternal: capabilities.openExternal,
+    showToastMessage: async (message, timeoutMs) => {
+      if (capabilities.showToastMessage) {
+        await capabilities.showToastMessage(message, timeoutMs);
+        return;
+      }
+      if (!showTypedToast(message, timeoutMs)) {
+        throw new Error("host toast not available");
+      }
+    },
+    searchLibraryDevices: capabilities.searchLibraryDevices,
+    getLibraryDevice: capabilities.getLibraryDevice,
+    getLibraryDevicesByLcscIds: capabilities.getLibraryDevicesByLcscIds,
+    getCapabilityReport: () => capabilityReport,
+  };
+}
+
+async function mapRawDocumentToContext(
+  channel: PluginChannel,
+  getCurrentDocument: (() => Promise<unknown>) | undefined,
+  fallback: SchematicContext
+): Promise<SchematicContext> {
+  const typedDocumentContext = await getTypedDocumentContext(channel);
+  if (!getCurrentDocument) {
+    if (typedDocumentContext) {
+      return {
+        ...fallback,
+        project: typedDocumentContext.project,
+        selection: typedDocumentContext.selection,
+      };
+    }
+    return fallback;
+  }
+
+  const rawDocument = await getCurrentDocument();
+
+  if (channel === "standard" && isStandardSchematicContext(rawDocument)) {
+    return rawDocument;
+  }
+
+  if (channel === "professional" && isProfessionalSchematicContext(rawDocument)) {
+    return rawDocument;
+  }
+
+  const normalized = normalizeSchematicContext(rawDocument, channel);
+  if (normalized) {
+    if (typedDocumentContext) {
+      return {
+        ...normalized,
+        project: {
+          ...normalized.project,
+          projectId: typedDocumentContext.project.projectId ?? normalized.project.projectId,
+          pageId: typedDocumentContext.project.pageId ?? normalized.project.pageId,
+          channel,
+        },
+        selection: typedDocumentContext.selection.objectIds.length > 0
+          ? typedDocumentContext.selection
+          : normalized.selection,
+      };
+    }
+    return normalized;
+  }
+
+  if (typedDocumentContext) {
+    return {
+      ...fallback,
+      project: typedDocumentContext.project,
+      selection: typedDocumentContext.selection,
+    };
+  }
+
+  throw new Error(`${channel} host bridge could not map raw current document to schematic context`);
+}
+
+async function mapRawSelection(
+  getSelection: (() => Promise<unknown>) | undefined,
+  fallback: SchematicSelection
+): Promise<SchematicSelection> {
+  if (!getSelection) {
+    return fallback;
+  }
+
+  const rawSelection = await getSelection();
+  if (isStandardSelection(rawSelection) || isProfessionalSelection(rawSelection)) {
+    return rawSelection as SchematicSelection;
+  }
+
+  const normalized = normalizeSelection(rawSelection);
+  if (normalized) {
+    return normalized;
+  }
+
+  return fallback;
+}
+
+function ensureKnownTarget(
+  context: SchematicContext,
+  target: LocateTarget,
+  channel: PluginChannel
+): void {
+  const knownObjectIds = new Set([
+    ...context.components.map((item) => item.id),
+    ...context.pins.map((item) => item.id),
+    ...context.nets.map((item) => item.id),
+  ]);
+
+  if (!knownObjectIds.has(target.objectId)) {
+    throw new Error(`${channel} host bridge could not locate ${target.objectId}`);
+  }
+}
+
+function normalizeSelection(raw: unknown): SchematicSelection | undefined {
+  if (Array.isArray(raw)) {
+    const objectIds = raw.filter((item): item is string => typeof item === "string");
+    if (objectIds.length > 0) {
+      return { objectIds };
+    }
+  }
+
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const fromKnownKey = ["ids", "selectedIds", "shapeIds"]
+    .map((key) => candidate[key])
+    .find((value) => Array.isArray(value));
+  if (Array.isArray(fromKnownKey)) {
+    return {
+      objectIds: fromKnownKey.filter((item): item is string => typeof item === "string"),
+    };
+  }
+
+  return undefined;
+}
+
+function normalizeSchematicContext(raw: unknown, channel: PluginChannel): SchematicContext | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const components = pickArray(candidate, ["components", "compList", "symbols"]);
+  const nets = pickArray(candidate, ["nets", "netList"]);
+  const pins = pickArray(candidate, ["pins", "pinList"]);
+  const selection = normalizeSelection(
+    candidate.selection ?? candidate.selected ?? candidate.currentSelection ?? []
+  ) ?? { objectIds: [] };
+
+  const normalizedComponents = components
+    .map((item, index) => normalizeComponent(item, index))
+    .filter((item): item is SchematicContext["components"][number] => Boolean(item));
+  const normalizedPins = pins
+    .map((item, index) => normalizePin(item, index))
+    .filter((item): item is SchematicContext["pins"][number] => Boolean(item));
+  const normalizedNets = nets
+    .map((item, index) => normalizeNet(item, index))
+    .filter((item): item is SchematicContext["nets"][number] => Boolean(item));
+
+  if (normalizedComponents.length === 0 && normalizedPins.length === 0 && normalizedNets.length === 0) {
+    return undefined;
+  }
+
+  return {
+    project: {
+      channel,
+      projectId: readString(candidate, ["projectId", "project_id"]),
+      pageId: readString(candidate, ["pageId", "page_id", "sheetId"]),
+    },
+    components: normalizedComponents,
+    pins: normalizedPins,
+    nets: normalizedNets,
+    selection,
+  };
+}
+
+function buildCapabilityReport(
+  channel: PluginChannel,
+  available: boolean,
+  required: Record<string, boolean>,
+  optional: Record<string, boolean>
+): HostCapabilityReport {
+  return {
+    channel,
+    available,
+    missing: Object.entries(required)
+      .filter(([, value]) => !value)
+      .map(([key]) => key),
+    optionalMissing: Object.entries(optional)
+      .filter(([, value]) => !value)
+      .map(([key]) => key),
+  };
+}
+
+function normalizeComponent(item: unknown, index: number): SchematicContext["components"][number] | undefined {
+  if (typeof item !== "object" || item === null) {
+    return undefined;
+  }
+  const value = item as Record<string, unknown>;
+  const id = readString(value, ["id", "uuid", "uid", "gId", "gid"]) ?? `cmp_auto_${index}`;
+  return {
+    id,
+    ref: readString(value, ["ref", "designator", "name"]),
+    name: readString(value, ["name", "title", "symbol"]),
+    libraryId: readString(value, ["libraryId", "lib", "libId"]),
+    packageName: readString(value, ["package", "footprint", "packageName"]),
+    value: readString(value, ["value", "val"]),
+    properties: normalizeProperties(value.properties),
+  };
+}
+
+function normalizePin(item: unknown, index: number): SchematicContext["pins"][number] | undefined {
+  if (typeof item !== "object" || item === null) {
+    return undefined;
+  }
+  const value = item as Record<string, unknown>;
+  const id = readString(value, ["id", "uuid", "uid", "gId", "gid"]) ?? `pin_auto_${index}`;
+  const componentId =
+    readString(value, ["componentId", "component_id", "ownerId", "symbolId"]) ?? "cmp_unknown";
+  return {
+    id,
+    componentId,
+    pinNumber: readString(value, ["pinNumber", "num", "number"]),
+    pinName: readString(value, ["pinName", "name", "label"]),
+    electricalType: readString(value, ["electricalType", "type"]),
+  };
+}
+
+function normalizeNet(item: unknown, index: number): SchematicContext["nets"][number] | undefined {
+  if (typeof item !== "object" || item === null) {
+    return undefined;
+  }
+  const value = item as Record<string, unknown>;
+  const id = readString(value, ["id", "uuid", "uid", "gId", "gid"]) ?? `net_auto_${index}`;
+  const nodeIds = pickArray(value, ["nodeIds", "nodes", "pins", "pinIds"]).filter(
+    (node): node is string => typeof node === "string"
+  );
+  return {
+    id,
+    name: readString(value, ["name", "netName", "label"]),
+    nodeIds,
+    isPower: readBoolean(value, ["isPower", "power"]),
+  };
+}
+
+function normalizeProperties(raw: unknown): Record<string, string> {
+  if (typeof raw !== "object" || raw === null) {
+    return {};
+  }
+
+  const output: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string") {
+      output[key] = value;
+      continue;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      output[key] = String(value);
+    }
+  }
+
+  return output;
+}
+
+function pickArray(target: Record<string, unknown>, keys: string[]): unknown[] {
+  for (const key of keys) {
+    const value = target[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+  return [];
+}
+
+function readString(target: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = target[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readBoolean(target: Record<string, unknown>, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = target[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+  return undefined;
+}

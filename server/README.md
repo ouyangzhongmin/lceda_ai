@@ -1,0 +1,205 @@
+# 服务端
+
+## 作用
+- 承载 Go 服务端代码。
+
+## 当前状态
+- 已初始化目录骨架。
+- 已具备最小可运行认证 PoC 服务，可用于插件登录流程联调。
+- 后续按认证、Credits、LLM 代理、RAG、Agent 任务顺序实现。
+
+## 首批重点目录
+- `cmd/`
+- `internal/transport/http/`
+- `internal/usecase/auth/`
+- `internal/repository/`
+
+## 当前可运行命令
+- 启动服务：
+  - `APP_CONFIG=./configs/config.yaml PORT=18082 go run ./cmd`
+- 启动基础依赖（PostgreSQL + Redis）：
+  - `docker compose up -d`
+- 停止基础依赖：
+  - `docker compose down`
+- 执行数据库初始化迁移：
+  - `bash ./scripts/apply-migrations.sh`
+- 健康检查：
+  - `curl http://127.0.0.1:18082/healthz`
+- 登录 PoC 脚本：
+  - `BASE_URL=http://127.0.0.1:18082 node ../scripts/dev/run-login-poc.mjs`
+- 正式配置：
+  - `configs/config.yaml`
+- 配置示例：
+  - `configs/app.example.yaml`
+- 环境变量约定（核心）：
+  - `DB_DSN`（可选，优先于 `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD/DB_SSLMODE`）
+  - `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_SSLMODE`
+  - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`
+  - `MEMORY_QDRANT_URL`
+  - `MEMORY_QDRANT_API_KEY`
+  - `MEMORY_COLLECTION`
+  - `MEMORY_EMBEDDING_PROVIDER`
+  - `MEMORY_EMBEDDING_MODEL`
+  - `MEMORY_ENABLE_FALLBACK`（默认 `true`）
+  - `LLM_PROVIDER`
+  - `LLM_ENABLE_FALLBACK`（默认 `true`）
+  - `LLM_REQUEST_TIMEOUT_MS` / `LLM_RETRY_COUNT` / `LLM_RETRY_BACKOFF_MS`
+  - `LLM_QWEN_ENDPOINT` / `LLM_QWEN_APIKEY` / `LLM_QWEN_MODEL`
+  - `LLM_DEEPSEEK_ENDPOINT` / `LLM_DEEPSEEK_APIKEY` / `LLM_DEEPSEEK_MODEL`
+  - `LLM_KIMI_ENDPOINT` / `LLM_KIMI_APIKEY` / `LLM_KIMI_MODEL`
+  - `LLM_DOUBAO_ENDPOINT` / `LLM_DOUBAO_APIKEY` / `LLM_DOUBAO_MODEL`
+  - `WECHAT_APP_ID` / `WECHAT_APP_SECRET` / `WECHAT_REDIRECT_URI`
+  - `KNOWLEDGE_QUEUE_MODE`（`stream` / `list`）
+  - `KNOWLEDGE_QUEUE_STREAM` / `KNOWLEDGE_QUEUE_GROUP`
+  - `KNOWLEDGE_QUEUE_BLOCK_MS` / `KNOWLEDGE_QUEUE_CLAIM_IDLE_MS`
+  - `KNOWLEDGE_QUEUE_CLAIM_ENABLED` / `KNOWLEDGE_QUEUE_CLAIM_COUNT` / `KNOWLEDGE_QUEUE_CLAIM_INTERVAL_MS`
+  - `KNOWLEDGE_TASK_MAX_ATTEMPTS` / `KNOWLEDGE_TASK_RETRY_DELAY_MS`
+  - `KNOWLEDGE_TASK_RETRY_BACKOFF_MODE` / `KNOWLEDGE_TASK_RETRY_MAX_DELAY_MS`
+  - `KNOWLEDGE_TASK_LOCK_TTL_MS`
+  - `KNOWLEDGE_ACK_RETRY_COUNT` / `KNOWLEDGE_ACK_RETRY_INTERVAL_MS`
+
+## 本地基础设施
+- 编排文件：
+  - `docker-compose.yml`
+- PostgreSQL：
+  - 地址：`127.0.0.1:15432`
+  - 数据库：`lceda_ai`
+  - 用户名：`lceda`
+  - 密码：`lceda_dev_password`
+  - 连接串：`postgresql://lceda:lceda_dev_password@127.0.0.1:15432/lceda_ai?sslmode=disable`
+- Redis：
+  - 地址：`127.0.0.1:16379`
+  - 密码：`lceda_redis_dev_password`
+  - 连接串：`redis://:lceda_redis_dev_password@127.0.0.1:16379/0`
+- 说明：
+- 当前 compose 只负责本地开发依赖，不包含服务端自身容器化。
+- 当前已接入的持久化：
+  - `auth`：`PostgreSQL + Redis`
+  - `credits`：`PostgreSQL`
+  - `knowledge documents/chunks`：`PostgreSQL`
+  - `knowledge import tasks/dead letters`：`PostgreSQL`
+  - `llm/rag`：当前仍以审计写入或内存仓储为主
+- 当前回退策略：
+  - `PostgreSQL + Redis` 同时可用时，认证状态走持久化仓储
+  - 仅 `PostgreSQL` 可用时，`credits` 走持久化仓储，`auth` 回退内存仓储
+  - 任一依赖不可用时，服务仍可启动并回退到 PoC 内存实现
+  - `knowledge import task queue`：
+    - Redis 可用时使用 Redis Stream 队列（`lceda:knowledge:import_tasks:stream`）
+    - Redis 不可用时回退进程内队列
+  - `knowledge import task lock`：
+    - Redis 可用时启用分布式任务锁（`lceda:knowledge:import_task_lock:*`）
+    - Redis 不可用时使用进程内锁策略
+- 首批 PostgreSQL 表结构已落在：
+  - `migrations/001_init.sql`
+- 审计事件表迁移：
+  - `migrations/002_audit_events.sql`
+- 知识导入任务持久化迁移：
+  - `migrations/003_knowledge_import_tasks.sql`
+
+## 当前已实现接口
+- `GET /healthz`
+- `GET /api/v1/debug/ping`
+- `GET /login`
+- `POST /api/v1/auth/login-sessions`
+- `GET /api/v1/auth/login-sessions/{id}?poll_token=...`
+- `POST /api/v1/auth/email/send-code`
+- `POST /api/v1/auth/email/verify-code`
+- `POST /api/v1/auth/wechat/login-url`
+- `GET /api/v1/auth/wechat/callback`
+- `POST /api/v1/auth/wechat/bind`
+- `POST /api/v1/auth/tokens:action?action=tokens:exchange`
+- `POST /api/v1/auth/tokens:action?action=tokens:refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/users/me`
+- `GET /api/v1/credits/balance`
+- `GET /api/v1/credits/transactions`
+- `POST /api/v1/rag/search`
+- `POST /api/v1/rag/citations:build`
+- `POST /api/v1/llm/generate`
+- `GET /api/v1/llm/logs`
+- `POST /api/v1/knowledge/documents`
+- `GET /api/v1/knowledge/documents`
+- `POST /api/v1/knowledge/documents/{document_id}:reindex`
+- `POST /api/v1/knowledge/import-tasks`
+- `GET /api/v1/knowledge/import-tasks/{task_id}`
+- `POST /api/v1/knowledge/import-tasks/{task_id}:run`
+- `POST /api/v1/knowledge/import-tasks/{task_id}:enqueue`
+- `POST /api/v1/knowledge/import-tasks/{task_id}:retry`
+- `GET /api/v1/knowledge/import-tasks/stats`
+- `GET /api/v1/knowledge/import-tasks/dead-letters`
+
+## 当前限制
+- 邮箱验证码为固定 PoC 值 `123456`
+- `auth` 持久化依赖 `PostgreSQL + Redis` 同时可用；若 Redis 不可用，会退回进程内存状态
+- `knowledge import task` 在 PostgreSQL 不可用时会回退进程内存状态
+- 当前已接入：
+  - `VectorStore` 抽象 + `QdrantVectorStore`（HTTP 查询）
+  - `LLM Provider` 抽象 + OpenAI 兼容 Provider（可对接豆包/通义/DeepSeek/Kimi）
+- 当前已实现自动回退：
+  - Qdrant 查询失败时回退到内存检索
+  - 外部模型调用失败时回退到 Demo Provider
+- 当前回退策略可配置：
+  - `MEMORY_ENABLE_FALLBACK=false` 时，Qdrant 失败将直接报错
+  - `LLM_ENABLE_FALLBACK=false` 时，外部模型失败将直接报错
+- 当前仍为 PoC 级：
+  - 失败场景回退策略是“可用优先”，后续应按生产策略改成可配置
+- 微信登录为 PoC 模拟流程，尚未接入真实微信开放平台鉴权
+- 微信登录配置说明：
+  - 当 `WECHAT_APP_ID`、`WECHAT_APP_SECRET` 与 `WECHAT_REDIRECT_URI` 配置有效时，将走微信 OAuth 接口：
+    - `code -> access_token`
+    - `access_token + openid -> userinfo`
+  - 若任一配置缺失，自动回退 Mock 微信客户端，保障本地 PoC 可运行
+- 当前审计写入策略：
+  - PostgreSQL 可用时，优先写入 `audit_events` 表
+  - PostgreSQL 不可用时，自动回退 JSONL 文件
+- 当前已增加审计文件回退（PoC）：
+  - `data/audit/rag_citations.jsonl`
+  - `data/audit/llm_request_logs.jsonl`
+  - `data/audit/knowledge_events.jsonl`
+
+## 知识库导入 PoC 示例
+- 导入文档：
+  - `curl -X POST http://127.0.0.1:18082/api/v1/knowledge/documents -H 'content-type: application/json' -d '{"kb_type":"principle","title":"LDO设计指南","source_type":"manual","source_ref":"doc-ldo-v1","lang":"zh-CN","content":"LDO输入输出电容应尽量靠近芯片引脚。"}'`
+- 导入返回说明：
+  - `import_mode=created`：首次创建文档
+  - `import_mode=updated`：同一 `kb_type + source_type + source_ref + lang` 已存在，按新内容更新
+  - `import_mode=skipped_duplicate`：同一来源且内容未变化，跳过重复导入
+- 查询文档列表：
+  - `curl "http://127.0.0.1:18082/api/v1/knowledge/documents?limit=20"`
+- 重建索引：
+  - `curl -X POST http://127.0.0.1:18082/api/v1/knowledge/documents/doc_xxx:reindex`
+- 创建导入任务：
+  - `curl -X POST http://127.0.0.1:18082/api/v1/knowledge/import-tasks -H 'content-type: application/json' -d '{"kb_type":"principle","title":"LDO设计指南","source_type":"manual","source_ref":"doc-ldo-v1","lang":"zh-CN","content":"LDO输入输出电容应尽量靠近芯片引脚。","idempotency_key":"imp-ldo-v1"}'`
+- 说明：
+  - 创建任务后会自动进入后台队列执行。
+  - 失败会按固定策略自动重试（当前默认最多 3 次）。
+  - 相同 `idempotency_key` 的重复创建请求会复用已有任务，不重复创建新任务。
+- 触发任务执行：
+  - `curl -X POST http://127.0.0.1:18082/api/v1/knowledge/import-tasks/kbt_xxx:run`
+- 重新入队执行：
+  - `curl -X POST http://127.0.0.1:18082/api/v1/knowledge/import-tasks/kbt_xxx:enqueue`
+- 重置失败任务并重新执行（适用于达到最大重试后的死信任务）：
+  - `curl -X POST http://127.0.0.1:18082/api/v1/knowledge/import-tasks/kbt_xxx:retry`
+- 查询任务状态：
+  - `curl http://127.0.0.1:18082/api/v1/knowledge/import-tasks/kbt_xxx`
+- 查询任务队列统计：
+  - `curl http://127.0.0.1:18082/api/v1/knowledge/import-tasks/stats`
+- 查询死信记录：
+  - `curl "http://127.0.0.1:18082/api/v1/knowledge/import-tasks/dead-letters?limit=20"`
+- 说明：
+  - `stats` 中包含：
+    - `deduplicated_create_count`（幂等去重命中次数）
+    - `lock_conflict_count`（分布式锁冲突次数）
+    - `lock_error_count`（分布式锁异常次数）
+    - `ack_success_count`（消息 ack 成功次数）
+    - `ack_error_count`（消息 ack 失败次数）
+    - `ack_retry_count`（消息 ack 重试次数）
+    - `ack_retry_exhausted_count`（消息 ack 重试耗尽次数）
+    - `retry_delay_last_ms`（最近一次任务重试延迟）
+    - `retry_delay_total_ms`（累计任务重试延迟）
+    - `retry_backoff_fixed_count`（固定退避命中次数）
+    - `retry_backoff_exponential_count`（指数退避命中次数）
+    - `manual_retry_rejected_count`（非死信任务触发 `:retry` 的拒绝次数）
+    - `claimed_message_count`（从 pending 认领处理次数）
+    - `stream_message_count`（消费组新消息处理次数）
+    - `queue_pending_count`（队列当前 pending 估算值）

@@ -1,0 +1,83 @@
+server:
+  port: "28080"
+  base_url: "http://127.0.0.1:28080"
+
+database:
+  host: "127.0.0.1"
+  port: "15432"
+  name: "lceda_ai"
+  user: "lceda"
+  password: "lceda_dev_password"
+  sslmode: "disable"
+
+redis:
+  addr: "127.0.0.1:16379"
+  password: "lceda_redis_dev_password"
+  db: 0
+
+smtp:
+  host: "smtpdm.aliyun.com"
+  port: 465
+  user: "oyzm@www.ouyangzm.cn"
+  pass: "OYzm19871125"
+  tls: true
+  from: "oyzm@www.ouyangzm.cn"
+
+memory:
+  qdrant_url: "http://127.0.0.1:6333"
+  qdrant_api_key: ""
+  collection: "lceda_ai_memory"
+  embedding_provider: "qwen"
+  embedding_model: "text-embedding-v4"
+  top_k: 5
+  enable_fallback: true
+
+llm:
+  provider: "openai"
+  amap_api_key: "6aea7e118c9f978bff92d3cadbd9bcd6"
+  enable_fallback: true
+  request_timeout_ms: 25000
+  retry_count: 1
+  retry_backoff_ms: 300
+  qwen:
+    endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    apikey: "sk-6d224f13592842dbaaaec86ee0a7095a"
+    model: "qwen-plus"
+  deepseek:
+    endpoint: "https://api.deepseek.com/v1"
+    apikey: "sk-c3bb8cb8e90140c288a55daa3df6a1e4"
+    model: "deepseek-chat"
+  kimi:
+    endpoint: "https://api.moonshot.cn/v1"
+    apikey: "sk-HhbltRR7JJiJxJ0rJzJuE4OQTt9tR9N0KOb6JxkMZh9D0o6v"
+    model: "moonshot-v1-8k"
+  doubao:
+    endpoint: "https://ark.cn-beijing.volces.com/api/v3"
+    apikey: "7f8e7abb-4117-4793-8ea3-3e5c2be076d4"
+    model: "doubao-seed-2-0-mini-250821"
+  openai:
+    endpoint: "https://right.codes/codex/v1"
+    apikey: "sk-27d803a7b3d6489b8d08dd56ad81966f"
+    model: "gpt-5.4"
+
+wechat:
+  app_id: ""
+  app_secret: ""
+  redirect_uri: "https://your-domain.example.com/api/v1/auth/wechat/callback"
+
+knowledge:
+  queue_mode: "stream" # stream | list
+  queue_stream: "lceda:knowledge:import_tasks:stream"
+  queue_group: "lceda_import_task_workers"
+  queue_block_ms: 2000
+  queue_claim_enabled: true
+  queue_claim_count: 1
+  queue_claim_interval_ms: 2000
+  queue_claim_idle_ms: 30000
+  task_max_attempts: 3
+  task_retry_delay_ms: 2000
+  task_retry_backoff_mode: "fixed" # fixed | exponential
+  task_retry_max_delay_ms: 30000
+  task_lock_ttl_ms: 60000
+  ack_retry_count: 2
+  ack_retry_interval_ms: 200

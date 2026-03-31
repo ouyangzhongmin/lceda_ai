@@ -1,0 +1,176 @@
+import type {
+  LocateTarget,
+  PluginChannel,
+  SchematicContext,
+  SchematicSelection,
+} from "../../types/schematic";
+import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
+import type { HostEditorBridge } from "../host/runtime";
+
+export interface ApplyPlanResult {
+  applied: boolean;
+  componentCount: number;
+  netCount: number;
+  transactionId?: string;
+  rollbackSupported?: boolean;
+}
+
+export interface EditorAdapter {
+  readonly channel: PluginChannel;
+  readonly source: "host" | "mock" | "unimplemented";
+  isAvailable(): Promise<boolean>;
+  getCapabilityReport(): Promise<{
+    channel: PluginChannel;
+    available: boolean;
+    missing: string[];
+    optionalMissing: string[];
+  } | null>;
+  getCurrentContext(): Promise<SchematicContext>;
+  getSelection(): Promise<SchematicSelection>;
+  locate(target: LocateTarget): Promise<void>;
+  previewApplyPlan(plan: DraftPlan): Promise<DraftPreview>;
+  applyPlan(plan: DraftPlan): Promise<ApplyPlanResult>;
+  rollbackApplyPlan(transactionId: string): Promise<{ rolledBack: boolean; transactionId: string }>;
+}
+
+export class HostBackedEditorAdapter implements EditorAdapter {
+  readonly source = "host" as const;
+
+  constructor(
+    public readonly channel: PluginChannel,
+    private readonly bridge: HostEditorBridge
+  ) {}
+
+  private async assertCapability(capability: string): Promise<void> {
+    if (!this.bridge.getCapabilityReport) {
+      return;
+    }
+    const report = await this.bridge.getCapabilityReport();
+    if (!report) {
+      return;
+    }
+    const missing = new Set([...report.missing, ...report.optionalMissing]);
+    if (missing.has(capability)) {
+      throw new Error(`host missing capability: ${capability}`);
+    }
+  }
+
+  async isAvailable(): Promise<boolean> {
+    if (!this.bridge.isAvailable) {
+      return true;
+    }
+
+    return Boolean(await this.bridge.isAvailable());
+  }
+
+  async getCurrentContext(): Promise<SchematicContext> {
+    return this.bridge.getCurrentContext();
+  }
+
+  async getCapabilityReport(): Promise<{
+    channel: PluginChannel;
+    available: boolean;
+    missing: string[];
+    optionalMissing: string[];
+  } | null> {
+    if (!this.bridge.getCapabilityReport) {
+      return null;
+    }
+    // 允许宿主桥接返回同步或异步报告。
+    return this.bridge.getCapabilityReport();
+  }
+
+  async getSelection(): Promise<SchematicSelection> {
+    return this.bridge.getSelection();
+  }
+
+  async locate(target: LocateTarget): Promise<void> {
+    await this.bridge.locate(target);
+  }
+
+  async previewApplyPlan(plan: DraftPlan): Promise<DraftPreview> {
+    if (!this.bridge.previewApplyPlan) {
+      await this.assertCapability("previewApplyPlan");
+      throw new Error("host preview_apply_plan is not available");
+    }
+
+    return this.bridge.previewApplyPlan(plan);
+  }
+
+  async applyPlan(plan: DraftPlan): Promise<ApplyPlanResult> {
+    if (!this.bridge.applyPlan) {
+      await this.assertCapability("applyPlan");
+      throw new Error("host apply_plan is not available");
+    }
+
+    return this.bridge.applyPlan(plan);
+  }
+
+  async rollbackApplyPlan(transactionId: string): Promise<{ rolledBack: boolean; transactionId: string }> {
+    if (!this.bridge.rollbackApplyPlan) {
+      await this.assertCapability("rollbackApplyPlan");
+      throw new Error("host rollback_apply_plan is not available");
+    }
+    return this.bridge.rollbackApplyPlan(transactionId);
+  }
+}
+
+export class UnimplementedEditorAdapter implements EditorAdapter {
+  readonly source = "unimplemented" as const;
+
+  constructor(public readonly channel: PluginChannel) {}
+
+  async isAvailable(): Promise<boolean> {
+    return false;
+  }
+
+  async getCurrentContext(): Promise<SchematicContext> {
+    throw new Error(`editor adapter not implemented for ${this.channel}`);
+  }
+
+  async getCapabilityReport(): Promise<{
+    channel: PluginChannel;
+    available: boolean;
+    missing: string[];
+    optionalMissing: string[];
+  } | null> {
+    return {
+      channel: this.channel,
+      available: false,
+      missing: ["getCurrentContext", "getSelection", "locate"],
+      optionalMissing: ["previewApplyPlan", "applyPlan", "rollbackApplyPlan", "openExternal"],
+    };
+  }
+
+  async getSelection(): Promise<SchematicSelection> {
+    throw new Error(`editor selection not implemented for ${this.channel}`);
+  }
+
+  async locate(_target: LocateTarget): Promise<void> {
+    throw new Error(`editor locate not implemented for ${this.channel}`);
+  }
+
+  async previewApplyPlan(_plan: DraftPlan): Promise<DraftPreview> {
+    return {
+      title: _plan.title,
+      rationale: _plan.rationale,
+      componentRefs: _plan.components.map((component) => component.ref ?? component.id),
+      netNames: _plan.nets.map((net) => net.name ?? net.id),
+      componentCount: _plan.components.length,
+      netCount: _plan.nets.length,
+    };
+  }
+
+  async applyPlan(_plan: DraftPlan): Promise<ApplyPlanResult> {
+    return {
+      applied: true,
+      componentCount: _plan.components.length,
+      netCount: _plan.nets.length,
+      rollbackSupported: false,
+    };
+  }
+
+  async rollbackApplyPlan(transactionId: string): Promise<{ rolledBack: boolean; transactionId: string }> {
+    return { rolledBack: false, transactionId };
+  }
+}

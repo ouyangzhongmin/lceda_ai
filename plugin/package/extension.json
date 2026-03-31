@@ -1,0 +1,43 @@
+{
+  "name": "lceda-ai-assistant",
+  "uuid": "8f6b9a9d4e8348a8b0fd67c2a1a4c9e1",
+  "displayName": "LCEDA AI Assistant",
+  "description": "AI assistant for schematic analysis, drafting, and guided review in JLCEDA.",
+  "version": "0.1.0",
+  "entry": "dist/index.js",
+  "publisher": "oyzm",
+  "engines": {
+    "eda": ">=1.0.0"
+  },
+  "license": "MIT",
+  "categories": [
+    "Schematic"
+  ],
+  "keywords": [
+    "lceda",
+    "eda",
+    "ai",
+    "schematic"
+  ],
+  "homepage": "https://github.com/oyzm/lceda-ai-assistant",
+  "bugs": "https://github.com/oyzm/lceda-ai-assistant/issues",
+  "headerMenus": {
+    "sch": [
+      {
+        "id": "lceda-ai-assistant-root",
+        "title": "LCEDA AI Assistant",
+        "menuItems": [
+          {
+            "id": "lceda-ai-assistant-open",
+            "title": "Open Assistant",
+            "registerFn": "activate"
+          }
+        ]
+      }
+    ]
+  },
+  "repository": {
+    "type": "github",
+    "url": "https://github.com/oyzm/lceda-ai-assistant"
+  }
+}
