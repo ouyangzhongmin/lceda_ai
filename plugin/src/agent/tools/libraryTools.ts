@@ -10,7 +10,7 @@ export function createLibraryTools(bridge: HostEditorBridge | undefined): AgentT
   return [
     {
       name: "library.search_devices",
-      description: "Search component devices from JLCEDA professional integrated libraries",
+      description: "在嘉立创专业版集成元件库中搜索器件",
       riskLevel: "low",
       execute: async (input: {
         query: string;
@@ -29,7 +29,7 @@ export function createLibraryTools(bridge: HostEditorBridge | undefined): AgentT
     },
     {
       name: "library.get_device",
-      description: "Get detailed component device info from JLCEDA professional integrated libraries",
+      description: "从嘉立创专业版集成元件库读取器件详情",
       riskLevel: "low",
       execute: async (input: {
         deviceUuid: string;
@@ -44,7 +44,7 @@ export function createLibraryTools(bridge: HostEditorBridge | undefined): AgentT
     },
     {
       name: "library.get_devices_by_lcsc_ids",
-      description: "Find component devices by LCSC ids from JLCEDA professional integrated libraries",
+      description: "按 LCSC 编号从嘉立创专业版集成元件库查找器件",
       riskLevel: "low",
       execute: async (input: {
         lcscIds: string[];

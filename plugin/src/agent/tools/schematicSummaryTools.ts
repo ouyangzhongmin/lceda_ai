@@ -65,55 +65,99 @@ export interface SchematicControlPathSummary {
   }>;
 }
 
+export interface SchematicAnalysisEvidence {
+  project: {
+    pageName?: string;
+    projectId?: string;
+    pageId?: string;
+    channel: string;
+  };
+  stats: {
+    componentCount: number;
+    netCount: number;
+    pinCount: number;
+    selectionCount: number;
+  };
+  keyComponents: Array<{
+    ref: string;
+    name?: string;
+    value?: string;
+    packageName?: string;
+    category: string;
+    reasons: string[];
+    pins: Array<{
+      pin: string;
+      net?: string;
+      electricalType?: string;
+    }>;
+  }>;
+  representativeNets: Array<{
+    name: string;
+    isPower: boolean;
+    members: string[];
+  }>;
+  notableComponents: Array<{
+    label: string;
+    category: string;
+    nets: string[];
+  }>;
+}
+
 export function createSchematicSummaryTools(): AgentTool[] {
   return [
     {
       name: "schematic.summarize_bom",
-      description: "Summarize schematic BOM categories from current context",
+      description: "基于当前上下文汇总原理图 BOM 分类",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => summarizeBom(input.context),
     },
     {
       name: "schematic.identify_key_components",
-      description: "Identify key components such as MCU, power IC, interface IC, and sensor",
+      description: "识别主控、电源、接口、传感器等关键器件",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => identifyKeyComponentsSummary(input.context),
     },
     {
       name: "schematic.identify_functional_blocks",
-      description: "Identify functional blocks and representative evidence from schematic context",
+      description: "从原理图上下文中识别功能模块及代表证据",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => identifyFunctionalBlocksSummary(input.context),
     },
     {
       name: "schematic.identify_power_domains",
-      description: "Identify major power domains and attached components from schematic context",
+      description: "识别主要电源域及其关联器件",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => identifyPowerDomainsSummary(input.context),
     },
     {
       name: "schematic.summarize_connectivity",
-      description: "Summarize connectivity and network distribution of the whole schematic",
+      description: "汇总整张原理图的连接性与网络分布",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => summarizeConnectivity(input.context),
     },
     {
       name: "schematic.trace_power_paths",
-      description: "Trace major power paths from power nets to critical components",
+      description: "追踪从电源网络到关键器件的主要电源路径",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => tracePowerPaths(input.context),
     },
     {
       name: "schematic.trace_signal_paths",
-      description: "Trace representative signal paths for key functional blocks",
+      description: "追踪关键功能模块的代表性信号路径",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => traceSignalPaths(input.context),
     },
     {
       name: "schematic.trace_control_paths",
-      description: "Trace controller-centric paths from main MCU/SoC to major peripherals",
+      description: "追踪从主控到主要外设的控制链路",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => traceControlPaths(input.context),
+    },
+    {
+      name: "schematic.build_analysis_evidence",
+      description: "构建适合分析的原理图证据，输出人类可读的器件、网络与引脚映射",
+      riskLevel: "low",
+      execute: async (input: { context: SchematicContext }) => buildAnalysisEvidence(input.context),
     },
   ];
 }
@@ -158,10 +202,8 @@ export function identifyKeyComponentsSummary(context: SchematicContext): Schemat
       .sort((a, b) => b.score - a.score)
       .slice(0, 6)
       .map((item) => ({
-        ref: item.component.ref || item.component.id,
-        label:
-          [item.component.name, item.component.value, item.component.packageName].filter(Boolean).join(" / ") ||
-          formatComponentLabel(item.component),
+        ref: safeComponentRef(item.component),
+        label: formatComponentDescriptor(item.component),
         reason: item.reason,
       })),
   };
@@ -219,6 +261,7 @@ export function identifyPowerDomainsSummary(context: SchematicContext): Schemati
           )
         ).slice(0, 6),
       }))
+      .filter((item) => item.nodeCount > 0)
       .sort((a, b) => b.nodeCount - a.nodeCount)
       .slice(0, 6),
   };
@@ -267,7 +310,7 @@ export function tracePowerPaths(context: SchematicContext): SchematicPowerPathSu
               ? `该电源域驱动关键器件：${criticalLoads.join("、")}`
               : `该电源域连接 ${attachedComponents.length} 个主要器件`,
         };
-      }),
+      }).filter((item) => item.path.length > 1 || !/连接 0 个主要器件$/.test(item.note)),
   };
 }
 
@@ -283,7 +326,7 @@ export function traceSignalPaths(context: SchematicContext): SchematicSignalPath
         block.netHints.length > 0
           ? `模块主要关联网络：${block.netHints.join("、")}`
           : `模块主要器件：${block.evidence.join("、")}`,
-    })),
+    })).filter((item) => item.path.length > 0),
   };
 }
 
@@ -300,11 +343,88 @@ export function traceControlPaths(context: SchematicContext): SchematicControlPa
     .slice(0, 5);
   return {
     paths: targets.map((target) => ({
-      controller: controller.ref || controller.id,
-      target: target.ref || target.id,
+      controller: safeComponentRef(controller),
+      target: safeComponentRef(target),
       path: traceComponentPath(context, adjacency, controller.id, target.id, componentById, 4, "signal"),
-      note: `${controller.ref || controller.id} 到 ${target.ref || target.id} 的主控链路`,
-    })),
+      note: `${safeComponentRef(controller)} 到 ${safeComponentRef(target)} 的主控链路`,
+    })).filter((item) => item.path.length > 0),
+  };
+}
+
+export function buildAnalysisEvidence(context: SchematicContext): SchematicAnalysisEvidence {
+  const pinById = new Map(context.pins.map((pin) => [pin.id, pin]));
+  const netsByComponent = buildNetHintsByComponent(context.nets, pinById);
+  const keyIds = new Set(
+    identifyKeyComponentsSummary(context).keyComponents
+      .map((item) => context.components.find((component) => (component.ref || component.id) === item.ref)?.id)
+      .filter(Boolean) as string[]
+  );
+
+  const keyComponents = context.components
+    .filter((component) => keyIds.has(component.id))
+    .slice(0, 8)
+    .map((component) => ({
+      ref: safeComponentRef(component),
+      name: sanitizeDisplayText(component.name),
+      value: sanitizeDisplayText(component.value),
+      packageName: sanitizeDisplayText(component.packageName),
+      category: classifyComponent(component),
+      reasons: summarizeComponentReasons(component),
+      pins: context.pins
+        .filter((pin) => pin.componentId === component.id)
+        .slice(0, 10)
+        .map((pin) => ({
+          pin: [pin.pinName, pin.pinNumber].filter(Boolean).join(" ") || pin.id,
+          net: findNetNameForPin(context, pin.id),
+          electricalType: pin.electricalType,
+        })),
+    }));
+
+  const representativeNets = context.nets
+    .filter((net) => Boolean(net.name) || net.nodeIds.length > 1)
+    .sort((a, b) => {
+      const aScore = (a.isPower ? 1000 : 0) + a.nodeIds.length;
+      const bScore = (b.isPower ? 1000 : 0) + b.nodeIds.length;
+      return bScore - aScore;
+    })
+    .slice(0, 12)
+    .map((net) => ({
+      name: net.name || net.id,
+      isPower: Boolean(net.isPower || isLikelyPowerNet(net)),
+      members: getComponentsOnNet(context, net, new Map(context.components.map((component) => [component.id, component])))
+        .slice(0, 8)
+        .map((component) => formatComponentLabel(component)),
+    }))
+    .filter((item) => item.members.length > 0 || item.name);
+
+  const notableComponents = context.components
+    .filter((component) => {
+      const category = classifyComponent(component);
+      return category === "集成电路" || category === "连接器" || category === "开关/按键";
+    })
+    .slice(0, 20)
+    .map((component) => ({
+      label: formatComponentLabel(component),
+      category: classifyComponent(component),
+      nets: (netsByComponent.get(component.id) ?? []).slice(0, 6),
+    }));
+
+  return {
+    project: {
+      pageName: context.project.pageName,
+      projectId: context.project.projectId,
+      pageId: context.project.pageId,
+      channel: context.project.channel,
+    },
+    stats: {
+      componentCount: context.components.length,
+      netCount: context.nets.length,
+      pinCount: context.pins.length,
+      selectionCount: context.selection.objectIds.length,
+    },
+    keyComponents,
+    representativeNets,
+    notableComponents,
   };
 }
 
@@ -539,7 +659,51 @@ function buildSearchText(component: SchematicComponent): string {
 }
 
 function formatComponentLabel(component: SchematicComponent): string {
-  return [component.ref || component.id, component.name || component.value || component.packageName || ""]
+  return [safeComponentRef(component), formatComponentDescriptor(component)]
     .filter(Boolean)
     .join(" ");
+}
+
+function formatComponentDescriptor(component: SchematicComponent): string {
+  return [
+    sanitizeDisplayText(component.name),
+    sanitizeDisplayText(component.value),
+    sanitizeDisplayText(component.packageName),
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function safeComponentRef(component: SchematicComponent): string {
+  const ref = String(component.ref || "").trim();
+  return ref && !looksLikeOpaqueId(ref) ? ref : classifyComponent(component);
+}
+
+function sanitizeDisplayText(value: string | undefined): string | undefined {
+  const text = String(value || "").trim();
+  if (!text) return undefined;
+  if (text.includes("={Manufacturer Part}")) return undefined;
+  if (looksLikeOpaqueId(text)) return undefined;
+  return text;
+}
+
+function looksLikeOpaqueId(value: string): boolean {
+  const text = value.trim();
+  return /^[0-9a-f]{12,}$/i.test(text) || /^\{?=?[A-Za-z ]+\}?$/.test(text) === false && /^[A-Z0-9_-]{10,}$/i.test(text);
+}
+
+function summarizeComponentReasons(component: SchematicComponent): string[] {
+  const text = buildSearchText(component);
+  const reasons: string[] = [];
+  if (/esp32|stm32|mcu|soc|processor|cpu|wroom/i.test(text)) reasons.push("主控/处理器");
+  if (/charger|ldo|buck|boost|pmic|battery|tp4056|ry3715|me6211/i.test(text)) reasons.push("电源管理");
+  if (/audio|codec|mic|speaker|amp|es8311|max98357|i2s/i.test(text)) reasons.push("音频链路");
+  if (/usb|uart|serial|type-c|cp210|ch340/i.test(text)) reasons.push("接口通信");
+  if (/sensor|hall|imu|accelerometer|gyro/i.test(text)) reasons.push("传感器");
+  if (reasons.length === 0) reasons.push(classifyComponent(component));
+  return reasons;
+}
+
+function findNetNameForPin(context: SchematicContext, pinId: string): string | undefined {
+  return context.nets.find((net) => net.nodeIds.includes(pinId))?.name;
 }

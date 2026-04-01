@@ -2,10 +2,15 @@ import type { SchematicContext } from "../../types/schematic";
 import type { RuleIssue } from "../models/issue";
 
 export function runFloatingPinsCheck(context: SchematicContext): RuleIssue[] {
+  const hasReliableNetMapping = context.nets.some((net) => net.nodeIds.length > 0);
+  if (!hasReliableNetMapping) {
+    return [];
+  }
+
   const connectedPinIds = new Set(context.nets.flatMap((net) => net.nodeIds));
 
   return context.pins
-    .filter((pin) => !connectedPinIds.has(pin.id))
+    .filter((pin) => !pin.noConnected && !connectedPinIds.has(pin.id))
     .map((pin) => ({
       id: `issue-${pin.id}-floating`,
       ruleId: "wiring.floating-pin",

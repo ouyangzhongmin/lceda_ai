@@ -120,10 +120,11 @@ func (h *AuthHandler) ExchangeToken(c *gin.Context) {
 		return
 	}
 	ginSuccess(c, map[string]any{
-		"access_token":  token.AccessToken,
-		"refresh_token": token.RefreshToken,
-		"expires_in":    token.ExpiresIn,
-		"user":          user,
+		"access_token":       token.AccessToken,
+		"refresh_token":      token.RefreshToken,
+		"expires_in":         token.ExpiresIn,
+		"refresh_expires_in": token.RefreshExpiresIn,
+		"user":               user,
 	})
 }
 
@@ -138,10 +139,11 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 	ginSuccess(c, map[string]any{
-		"access_token":  token.AccessToken,
-		"refresh_token": token.RefreshToken,
-		"expires_in":    token.ExpiresIn,
-		"user":          user,
+		"access_token":       token.AccessToken,
+		"refresh_token":      token.RefreshToken,
+		"expires_in":         token.ExpiresIn,
+		"refresh_expires_in": token.RefreshExpiresIn,
+		"user":               user,
 	})
 }
 

@@ -54,10 +54,6 @@ export function resolveStandardRawHostApi(): StandardRawHostApi | undefined {
       getCurrentDocument: fromNamespace?.schematic?.getCurrentDocument
         ? fromNamespace.schematic.getCurrentDocument
         : async (): Promise<unknown> => {
-            const typedDocumentContext = await getTypedDocumentContext("standard");
-            if (typedDocumentContext) {
-              return typedDocumentContext;
-            }
             const result = await callApiCandidate(callApi, [
               ["getSource"],
               ["getSchSource"],

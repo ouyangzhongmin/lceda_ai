@@ -4,7 +4,6 @@ import type {
   SchematicContext,
   SchematicSelection,
 } from "../../types/schematic";
-import { mockProfessionalContext, mockStandardContext } from "../adapters/mockData";
 import {
   isProfessionalSchematicContext,
   isProfessionalSelection,
@@ -63,15 +62,14 @@ export function createStandardHostBridge(rawApi?: RawHostApi): HostEditorBridge 
     getChannel: () => "standard",
     isAvailable: () => Boolean(capabilities.getCurrentDocument || capabilities.getSelection),
     getCurrentContext: async () =>
-      mapRawDocumentToContext("standard", capabilities.getCurrentDocument, mockStandardContext),
-    getSelection: async () => mapRawSelection(capabilities.getSelection, mockStandardContext.selection),
+      mapRawDocumentToContext("standard", capabilities.getCurrentDocument),
+    getSelection: async () => mapRawSelection(capabilities.getSelection),
     locate: async (target) => {
       if (capabilities.locateObject) {
         await capabilities.locateObject(target);
         return;
       }
-
-      ensureKnownTarget(mockStandardContext, target, "standard");
+      throw new Error("standard host bridge locate is not available");
     },
     previewApplyPlan: capabilities.previewApplyPlan,
     applyPlan: capabilities.applyPlan,
@@ -120,16 +118,15 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
     getChannel: () => "professional",
     isAvailable: () => Boolean(capabilities.getCurrentDocument || capabilities.getSelection),
     getCurrentContext: async () =>
-      mapRawDocumentToContext("professional", capabilities.getCurrentDocument, mockProfessionalContext),
+      mapRawDocumentToContext("professional", capabilities.getCurrentDocument),
     getSelection: async () =>
-      mapRawSelection(capabilities.getSelection, mockProfessionalContext.selection),
+      mapRawSelection(capabilities.getSelection),
     locate: async (target) => {
       if (capabilities.locateObject) {
         await capabilities.locateObject(target);
         return;
       }
-
-      ensureKnownTarget(mockProfessionalContext, target, "professional");
+      throw new Error("professional host bridge locate is not available");
     },
     previewApplyPlan: capabilities.previewApplyPlan,
     applyPlan: capabilities.applyPlan,
@@ -153,19 +150,14 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
 
 async function mapRawDocumentToContext(
   channel: PluginChannel,
-  getCurrentDocument: (() => Promise<unknown>) | undefined,
-  fallback: SchematicContext
+  getCurrentDocument: (() => Promise<unknown>) | undefined
 ): Promise<SchematicContext> {
   const typedDocumentContext = await getTypedDocumentContext(channel);
   if (!getCurrentDocument) {
     if (typedDocumentContext) {
-      return {
-        ...fallback,
-        project: typedDocumentContext.project,
-        selection: typedDocumentContext.selection,
-      };
+      throw new Error(`${channel} host bridge returned metadata only; schematic primitives are unavailable`);
     }
-    return fallback;
+    throw new Error(`${channel} host bridge missing getCurrentDocument`);
   }
 
   const rawDocument = await getCurrentDocument();
@@ -187,6 +179,7 @@ async function mapRawDocumentToContext(
           ...normalized.project,
           projectId: typedDocumentContext.project.projectId ?? normalized.project.projectId,
           pageId: typedDocumentContext.project.pageId ?? normalized.project.pageId,
+          pageName: typedDocumentContext.project.pageName ?? normalized.project.pageName,
           channel,
         },
         selection: typedDocumentContext.selection.objectIds.length > 0
@@ -198,22 +191,17 @@ async function mapRawDocumentToContext(
   }
 
   if (typedDocumentContext) {
-    return {
-      ...fallback,
-      project: typedDocumentContext.project,
-      selection: typedDocumentContext.selection,
-    };
+    throw new Error(`${channel} host bridge returned metadata only; schematic primitives are unavailable`);
   }
 
   throw new Error(`${channel} host bridge could not map raw current document to schematic context`);
 }
 
 async function mapRawSelection(
-  getSelection: (() => Promise<unknown>) | undefined,
-  fallback: SchematicSelection
+  getSelection: (() => Promise<unknown>) | undefined
 ): Promise<SchematicSelection> {
   if (!getSelection) {
-    return fallback;
+    return { objectIds: [] };
   }
 
   const rawSelection = await getSelection();
@@ -226,23 +214,7 @@ async function mapRawSelection(
     return normalized;
   }
 
-  return fallback;
-}
-
-function ensureKnownTarget(
-  context: SchematicContext,
-  target: LocateTarget,
-  channel: PluginChannel
-): void {
-  const knownObjectIds = new Set([
-    ...context.components.map((item) => item.id),
-    ...context.pins.map((item) => item.id),
-    ...context.nets.map((item) => item.id),
-  ]);
-
-  if (!knownObjectIds.has(target.objectId)) {
-    throw new Error(`${channel} host bridge could not locate ${target.objectId}`);
-  }
+  return { objectIds: [] };
 }
 
 function normalizeSelection(raw: unknown): SchematicSelection | undefined {
@@ -302,6 +274,7 @@ function normalizeSchematicContext(raw: unknown, channel: PluginChannel): Schema
       channel,
       projectId: readString(candidate, ["projectId", "project_id"]),
       pageId: readString(candidate, ["pageId", "page_id", "sheetId"]),
+      pageName: readString(candidate, ["pageName", "page_name", "sheetName", "name", "title"]),
     },
     components: normalizedComponents,
     pins: normalizedPins,

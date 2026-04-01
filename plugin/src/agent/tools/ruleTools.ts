@@ -7,13 +7,13 @@ export function createRuleTools(): AgentTool[] {
   return [
     {
       name: "rules.run_schematic_checks",
-      description: "Run local schematic rule checks for wiring and attribute issues",
+      description: "执行本地原理图规则检查，发现连线与属性问题",
       riskLevel: "low",
       execute: async (input: { context: SchematicContext }) => runSchematicChecks(input.context),
     },
     {
       name: "rules.validate_draft",
-      description: "Validate a generated schematic draft before apply",
+      description: "在应用前校验生成的原理图草案",
       riskLevel: "high",
       execute: async (input: {
         draft: {

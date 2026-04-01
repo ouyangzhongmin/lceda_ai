@@ -7,58 +7,58 @@ export function createEditorTools(adapter: EditorAdapter): AgentTool[] {
   return [
     {
       name: "editor.get_current_context",
-      description: "Read the current schematic context from editor",
+      description: "读取当前编辑器中的原理图上下文",
       riskLevel: "low",
       execute: async (): Promise<SchematicContext> => adapter.getCurrentContext(),
     },
     {
       name: "editor.get_selection",
-      description: "Read the current selection from editor",
+      description: "读取当前编辑器中的选中对象",
       riskLevel: "low",
       execute: async () => adapter.getSelection(),
     },
     {
       name: "editor.describe_selection",
-      description: "Describe the currently selected schematic objects with contextual details",
+      description: "结合上下文描述当前选中的原理图对象",
       riskLevel: "low",
       execute: async () => describeSelection(await adapter.getCurrentContext(), await adapter.getSelection()),
     },
     {
       name: "editor.describe_object",
-      description: "Describe a schematic object by objectId and objectType using current context",
+      description: "结合当前上下文按对象类型和对象 ID 描述原理图对象",
       riskLevel: "low",
       execute: async (input: { objectId: string; objectType: "component" | "pin" | "net" }) =>
         describeObject(await adapter.getCurrentContext(), input.objectId, input.objectType),
     },
     {
       name: "editor.find_object",
-      description: "Find a schematic object by ref, pin label, net name, or object id using current context",
+      description: "基于当前上下文按位号、引脚名、网络名或对象 ID 查找原理图对象",
       riskLevel: "low",
       execute: async (input: { query: string }) => findObject(await adapter.getCurrentContext(), input.query),
     },
     {
       name: "editor.locate",
-      description: "Locate a schematic object in editor",
+      description: "在编辑器中定位指定原理图对象",
       riskLevel: "low",
       execute: async (input: { objectId: string; objectType: "component" | "pin" | "net" }) =>
         adapter.locate(input),
     },
     {
       name: "editor.preview_apply_plan",
-      description: "Preview the result of applying a draft plan into the editor",
+      description: "在编辑器中预览应用草案计划后的结果",
       riskLevel: "medium",
       execute: async (input: { plan: DraftPlan }) => adapter.previewApplyPlan(input.plan),
     },
     {
       name: "editor.apply_plan",
-      description: "Apply a confirmed draft plan into the editor",
+      description: "将确认后的草案计划应用到编辑器中",
       riskLevel: "high",
       requiresConfirmation: true,
       execute: async (input: { plan: DraftPlan }) => adapter.applyPlan(input.plan),
     },
     {
       name: "editor.rollback_apply_plan",
-      description: "Rollback a previous apply_plan transaction by transactionId",
+      description: "按事务 ID 回滚之前的 apply_plan 操作",
       riskLevel: "high",
       requiresConfirmation: true,
       execute: async (input: { transactionId: string }) => adapter.rollbackApplyPlan(input.transactionId),

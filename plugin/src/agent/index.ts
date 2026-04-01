@@ -6,7 +6,7 @@ import type { CustomLlmConfigStore } from "../services/llm/customLlmConfigStore"
 import type { LlmProxyClient } from "../services/llm/llmProxyClient";
 import type { RagClient } from "../services/rag/ragClient";
 import { executeAgentTurn } from "./agentRunner";
-import { buildPlannerSystemPrompt, buildPlannerUserPrompt, normalizePlannerPlan } from "./prompts/plannerPrompts";
+import { buildFallbackPlan, buildPlannerSystemPrompt, buildPlannerUserPrompt, normalizePlannerPlan } from "./prompts/plannerPrompts";
 import type { AgentResult, AgentTaskType, AgentTurnPlan, AgentTurnResult } from "./shared/agentTypes";
 import { SkillLoader } from "./skills/skillLoader";
 import { ToolRegistry } from "./tools/toolRegistry";
@@ -65,6 +65,7 @@ export interface PluginAgent {
     issueCount: number;
     topIssueTitle?: string;
     locateStatus?: string;
+    locateLabel?: string;
     analysisReport?: AgentResult["analysisReport"];
     libraryInsights?: AgentResult["libraryInsights"];
     issueItems?: MainPanelState["issueItems"];
@@ -106,6 +107,27 @@ export interface PluginAgent {
 
 export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
   const skillLoader = new SkillLoader();
+  const buildStepTranscript = (
+    reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"]
+  ): string[] | undefined => {
+    if (!Array.isArray(reactEvents) || reactEvents.length === 0) {
+      return undefined;
+    }
+    const lines = reactEvents
+      .map((event) => {
+        if (!event || !event.kind) return "";
+        if (event.kind === "task") return `任务: ${event.text || event.label || ""}`;
+        if (event.kind === "thought") return `思考: ${event.text || event.label || ""}`;
+        if (event.kind === "tool_call") {
+          return `Tool: ${(event.label || event.toolName || "tool")}${event.inputSummary ? ` ${event.inputSummary}` : ""}`;
+        }
+        if (event.kind === "observation") return `观察: ${event.outputSummary || event.text || ""}`;
+        if (event.kind === "final") return `完成: ${event.text || event.label || ""}`;
+        return `${event.kind}: ${event.text || event.label || ""}`;
+      })
+      .filter(Boolean);
+    return lines.length > 0 ? lines : undefined;
+  };
   return {
     createToolRegistry: (adapter, options) => createAgentToolRegistry(adapter, deps, options),
     run: async (input) => {
@@ -303,6 +325,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         executionTraces: result.executionTraces,
         uiEvents: undefined,
         reactEvents: hasToolSteps ? reactEvents : undefined,
+        stepTranscript: hasToolSteps ? buildStepTranscript(reactEvents) : undefined,
         stepStates: hasToolSteps ? result.stepStates : undefined,
         workingMemory: result.workingMemory,
         suggestions: result.structuredSuggestions,
@@ -319,6 +342,19 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     },
   buildAnalysisMessages: (input) => {
       const report = input.analysisReport;
+      const schematicEntries = [
+        report?.schematicInfo?.pageName ? `原理图：${report.schematicInfo.pageName}` : "",
+        report?.schematicInfo?.projectId ? `项目ID：${report.schematicInfo.projectId}` : "",
+        report?.schematicInfo?.pageId ? `页面ID：${report.schematicInfo.pageId}` : "",
+        report?.schematicInfo?.channel
+          ? `版本：${report.schematicInfo.channel === "professional" ? "专业版" : "标准版"}`
+          : "",
+        typeof report?.schematicInfo?.componentCount === "number" ? `器件数：${report.schematicInfo.componentCount}` : "",
+        typeof report?.schematicInfo?.netCount === "number" ? `网络数：${report.schematicInfo.netCount}` : "",
+        typeof report?.schematicInfo?.selectionCount === "number" ? `选中对象：${report.schematicInfo.selectionCount}` : "",
+      ].filter(Boolean);
+      const schematicInfoHint =
+        schematicEntries.length > 0 ? `\n\n当前原理图信息：\n${schematicEntries.map((item) => `- ${item}`).join("\n")}` : "";
       const libraryHint =
         input.libraryInsights && input.libraryInsights.length > 0
           ? `\n\n关联器件信息：\n${input.libraryInsights
@@ -408,6 +444,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         issueCount: input.issueCount,
         topIssueTitle: input.topIssueTitle,
         locateStatus: input.locateStatus,
+        locateLabel: input.locateLabel,
         issueItems: input.issueItems,
         nextSuggestions: input.nextSuggestions,
         libraryInsights: input.libraryInsights,
@@ -419,10 +456,10 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           tone: input.issueCount > 0 ? "warning" : "success",
           content:
             input.issueCount > 0
-              ? `${report?.overview ?? `我已经完成当前原理图的首轮检查，发现 ${input.issueCount} 个需要关注的问题。`}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}\n\n优先问题：${
+              ? `${report?.overview ?? `我已经完成当前原理图的首轮检查，发现 ${input.issueCount} 个需要关注的问题。`}${schematicInfoHint}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}\n\n优先问题：${
                   input.topIssueTitle ?? "未命名问题"
-                }\n定位结果：${formatLocateStatus(input.locateStatus)}\n\n${issueLines || "暂无可定位问题。"}${riskHint}${libraryHint}${suggestionHint}`
-              : `${report?.overview ?? "当前原理图未发现明显规则问题，可以继续进行草案生成或更深入问答。"}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}${riskHint}${libraryHint}${suggestionHint}`,
+                }\n定位结果：${input.locateLabel || formatLocateStatus(input.locateStatus)}\n\n${issueLines || "暂无可定位问题。"}${riskHint}${libraryHint}${suggestionHint}`
+              : `${report?.overview ?? "当前原理图未发现明显规则问题，可以继续进行草案生成或更深入问答。"}${schematicInfoHint}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}${riskHint}${libraryHint}${suggestionHint}`,
           structuredContent,
           evidenceItems: buildEvidenceItems({
             toolTraces: input.toolTraces,
@@ -433,6 +470,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           executionTraces: input.executionTraces,
           uiEvents: input.uiEvents,
           reactEvents: input.reactEvents,
+          stepTranscript: buildStepTranscript(input.reactEvents),
           stepStates: input.stepStates,
           workingMemory: input.workingMemory,
           analysisReport: input.analysisReport,
@@ -499,13 +537,14 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
              reactEvents: input.reactEvents,
              uiEvents: input.uiEvents,
            }),
-            toolTraces: input.toolTraces,
-           executionTraces: input.executionTraces,
-           uiEvents: input.uiEvents,
-           reactEvents: input.reactEvents,
-           stepStates: input.stepStates,
-           workingMemory: input.workingMemory,
-           suggestions: input.structuredSuggestions,
+             toolTraces: input.toolTraces,
+            executionTraces: input.executionTraces,
+            uiEvents: input.uiEvents,
+            reactEvents: input.reactEvents,
+            stepTranscript: buildStepTranscript(input.reactEvents),
+            stepStates: input.stepStates,
+            workingMemory: input.workingMemory,
+            suggestions: input.structuredSuggestions,
           actions,
         },
       ];
@@ -629,7 +668,16 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     const plan = normalizePlannerPlan(plannerResult.output_text);
     if (!plan) {
       console.error("[agent] planUserTurn: failed to parse planner output", plannerResult.output_text);
-      throw new Error("PLANNER_PARSE_FAILED");
+      const fallbackIntent =
+        resolvedIntentHint.includes("draft") || resolvedIntentHint.includes("design") || resolvedIntentHint.includes("generate")
+          ? "draft"
+          : resolvedIntentHint.includes("analysis") ||
+              resolvedIntentHint.includes("schematic") ||
+              resolvedIntentHint.includes("检查") ||
+              resolvedIntentHint.includes("分析")
+            ? "analysis"
+            : "chat";
+      return buildFallbackPlan(fallbackIntent);
     }
 
     return plan;
@@ -840,6 +888,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     issueCount: number;
     topIssueTitle?: string;
     locateStatus?: string;
+    locateLabel?: string;
     issueItems?: MainPanelState["issueItems"];
     nextSuggestions?: AgentResult["nextSuggestions"];
     libraryInsights?: AgentResult["libraryInsights"];
@@ -856,6 +905,31 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           : "当前原理图未发现明显规则问题，可以继续进行草案生成或更深入问答。"),
     });
 
+    const schematicEntries = [
+      report?.schematicInfo?.pageName ? { key: "原理图", value: report.schematicInfo.pageName } : null,
+      report?.schematicInfo?.projectId ? { key: "项目ID", value: report.schematicInfo.projectId } : null,
+      report?.schematicInfo?.pageId ? { key: "页面ID", value: report.schematicInfo.pageId } : null,
+      report?.schematicInfo?.channel
+        ? { key: "版本", value: report.schematicInfo.channel === "professional" ? "专业版" : "标准版" }
+        : null,
+      typeof report?.schematicInfo?.componentCount === "number"
+        ? { key: "器件数", value: String(report.schematicInfo.componentCount) }
+        : null,
+      typeof report?.schematicInfo?.netCount === "number"
+        ? { key: "网络数", value: String(report.schematicInfo.netCount) }
+        : null,
+      typeof report?.schematicInfo?.selectionCount === "number"
+        ? { key: "选中对象", value: String(report.schematicInfo.selectionCount) }
+        : null,
+    ].filter(Boolean) as Array<{ key: string; value: string }>;
+    if (schematicEntries.length > 0) {
+      blocks.push({
+        kind: "kv",
+        title: "当前原理图信息",
+        entries: schematicEntries,
+      });
+    }
+
     if (report?.executiveSummary) {
       blocks.push({
         kind: "section",
@@ -870,7 +944,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         title: "快速定位",
         entries: [
           { key: "优先问题", value: input.topIssueTitle ?? "未命名问题" },
-          { key: "定位结果", value: formatLocateStatus(input.locateStatus) },
+          { key: "定位结果", value: input.locateLabel || formatLocateStatus(input.locateStatus) },
         ],
       });
     }
@@ -1111,6 +1185,36 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
   function humanizeEvidenceLabel(value?: string): string {
     if (!value) {
       return "证据";
+    }
+    const exact = {
+      "editor.get_current_context": "原理图上下文",
+      "editor.get_selection": "当前选区",
+      "editor.describe_selection": "选区描述",
+      "editor.describe_object": "对象描述",
+      "editor.find_object": "对象查找",
+      "editor.locate": "对象定位",
+      "rules.run_schematic_checks": "规则检查",
+      "rules.validate_draft": "草案校验",
+      "library.search_devices": "器件库搜索",
+      "library.get_device": "器件详情",
+      "library.get_devices_by_lcsc_ids": "LCSC 器件查询",
+      "schematic.summarize_bom": "BOM 摘要",
+      "schematic.identify_key_components": "关键器件识别",
+      "schematic.identify_functional_blocks": "功能模块识别",
+      "schematic.identify_power_domains": "电源域识别",
+      "schematic.summarize_connectivity": "连接性摘要",
+      "schematic.trace_power_paths": "电源路径追踪",
+      "schematic.trace_signal_paths": "信号路径追踪",
+      "schematic.trace_control_paths": "控制链路追踪",
+      "schematic.build_analysis_evidence": "分析证据构建",
+      "issues.locate_first": "问题定位",
+      "todo_list": "任务列表",
+      "rag.search": "知识检索",
+      "rag.build_citations": "引用构建",
+      "llm.generate": "LLM 生成",
+    };
+    if (exact[value]) {
+      return exact[value];
     }
     const label = value
       .replace(/\./g, " / ")

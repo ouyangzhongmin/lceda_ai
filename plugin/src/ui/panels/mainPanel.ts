@@ -95,6 +95,7 @@ export interface MainPanelState {
       inputSummary?: string;
       outputSummary?: string;
     }>;
+    stepTranscript?: string[];
     stepStates?: Array<{
       kind: "context" | "mcp" | "rules" | "library" | "llm" | "draft";
       required: boolean;

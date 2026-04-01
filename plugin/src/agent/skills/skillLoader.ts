@@ -35,6 +35,7 @@ const SKILLS: Record<SkillName, SkillDefinition> = {
       "schematic.trace_power_paths",
       "schematic.trace_signal_paths",
       "schematic.trace_control_paths",
+      "schematic.build_analysis_evidence",
       "rules.run_schematic_checks",
       "issues.locate_first",
       "library.search_devices",

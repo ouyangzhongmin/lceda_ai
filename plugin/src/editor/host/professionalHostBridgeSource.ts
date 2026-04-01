@@ -4,6 +4,7 @@ import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
 import type { ApplyPlanResult } from "../adapters/editorAdapter";
 import {
   getTypedDocumentContext,
+  getTypedSchematicContext,
   getTypedSelection,
   hasTypedLibraryRuntime,
   hasTypedSchematicPlacementRuntime,
@@ -61,9 +62,9 @@ export function resolveProfessionalRawHostApi(): ProfessionalRawHostApi | undefi
       getActiveSchematicContext: fromNamespace?.editor?.getActiveSchematicContext
         ? fromNamespace.editor.getActiveSchematicContext
         : async (): Promise<unknown> => {
-            const typedDocumentContext = await getTypedDocumentContext("professional");
-            if (typedDocumentContext) {
-              return typedDocumentContext;
+            const typedContext = await getTypedSchematicContext("professional");
+            if (typedContext) {
+              return typedContext;
             }
             const result = await callApiCandidate(callApi, [
               ["getSource"],

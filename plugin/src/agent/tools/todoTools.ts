@@ -13,7 +13,7 @@ export function createTodoTools(): AgentTool[] {
   return [
     {
       name: "todo_list",
-      description: "Create or update a lightweight execution task list",
+      description: "创建或更新轻量级执行任务列表",
       execute: async (input: TodoListInput): Promise<TodoListOutput> => {
         const tasks = (input.tasks || []).map((item, index) => {
           if (typeof item === "string") {

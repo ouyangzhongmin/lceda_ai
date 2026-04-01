@@ -34,7 +34,7 @@ export function formatReactTraceAsText(reactEvents: AgentReactEvent[]): string {
 
     // 工具调用 + 观测结果（合并显示）
     if (event.kind === "tool_call") {
-      const toolLabel = event.toolName || event.label;
+      const toolLabel = event.label || event.toolName;
       lines.push(`   → 调用工具: ${toolLabel}`);
       if (event.text) {
         lines.push(`     目标: ${event.text}`);
@@ -63,38 +63,31 @@ export function formatReactTraceAsText(reactEvents: AgentReactEvent[]): string {
 }
 
 /**
- * 将 ExecutionTrace 格式化为易读的文字链路
+ * 将执行轨迹格式化为易读的文字链路
  */
 export function formatExecutionTraceAsText(traces: AgentExecutionTrace[]): string {
   const lines: string[] = [];
   let stepNumber = 0;
 
   for (const trace of traces) {
-    const icon = {
-      reason: "🤔",
-      act: "🔧",
-      observe: "👁️",
-      finish: "✅",
-    }[trace.phase];
-
     const label = {
-      reason: "推理",
-      act: "行动",
+      reason: "思考",
+      act: "执行",
       observe: "观测",
       finish: "完成",
     }[trace.phase];
 
     if (trace.phase === "reason") {
       stepNumber++;
-      lines.push(`${stepNumber}. ${icon} [${label}] ${trace.message}`);
+      lines.push(`${stepNumber}. [${label}] ${trace.message}`);
     } else if (trace.phase === "act") {
-      lines.push(`   ${icon} [${label}] ${trace.message}`);
+      lines.push(`   [${label}] ${trace.message}`);
     } else if (trace.phase === "observe") {
-      lines.push(`   ${icon} [${label}] ${trace.message}`);
+      lines.push(`   [${label}] ${trace.message}`);
       lines.push("");
     } else if (trace.phase === "finish") {
       lines.push("");
-      lines.push(`${icon} [${label}] ${trace.message}`);
+      lines.push(`[${label}] ${trace.message}`);
     }
   }
 
@@ -102,7 +95,7 @@ export function formatExecutionTraceAsText(traces: AgentExecutionTrace[]): strin
 }
 
 /**
- * 生成完整的执行报告（包含 ReAct 事件和 Execution Traces）
+ * 生成完整的执行报告（包含 ReAct 事件和执行轨迹）
  */
 export function formatCompleteExecutionReport(input: {
   reactEvents?: AgentReactEvent[];
@@ -117,7 +110,7 @@ export function formatCompleteExecutionReport(input: {
   }
 
   if (input.reactEvents && input.reactEvents.length > 0) {
-    sections.push("# ReAct 执行链路（详细版）");
+    sections.push("# 执行链路（详细版）");
     sections.push("");
     sections.push(formatReactTraceAsText(input.reactEvents));
     sections.push("");
@@ -126,7 +119,7 @@ export function formatCompleteExecutionReport(input: {
   }
 
   if (input.executionTraces && input.executionTraces.length > 0) {
-    sections.push("# Execution Traces（标准 ReAct 格式）");
+    sections.push("# 执行轨迹（标准格式）");
     sections.push("");
     sections.push(formatExecutionTraceAsText(input.executionTraces));
   }
@@ -182,7 +175,7 @@ export function analyzeReactTrace(reactEvents: AgentReactEvent[]): {
       phases.push(currentPhase);
     } else if (event.kind === "tool_call" && currentPhase) {
       pendingToolCall = {
-        name: event.toolName || event.label,
+        name: event.label || event.toolName,
         status: event.status,
       };
     } else if (event.kind === "observation" && currentPhase && pendingToolCall) {

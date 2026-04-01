@@ -137,10 +137,11 @@
   - `LLM Provider` 抽象 + OpenAI 兼容 Provider（可对接豆包/通义/DeepSeek/Kimi）
 - 当前已实现自动回退：
   - Qdrant 查询失败时回退到内存检索
-  - 外部模型调用失败时回退到 Demo Provider
+  - 外部模型调用失败时可配置回退到 Demo Provider
 - 当前回退策略可配置：
   - `MEMORY_ENABLE_FALLBACK=false` 时，Qdrant 失败将直接报错
   - `LLM_ENABLE_FALLBACK=false` 时，外部模型失败将直接报错
+  - 默认情况下 `LLM_ENABLE_FALLBACK=false`，避免插件端误把 Demo Provider 的占位文本当成真实分析结果
 - 当前仍为 PoC 级：
   - 失败场景回退策略是“可用优先”，后续应按生产策略改成可配置
 - 微信登录为 PoC 模拟流程，尚未接入真实微信开放平台鉴权

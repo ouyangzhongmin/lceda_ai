@@ -232,10 +232,11 @@ export class AuthClient {
 }
 
 export function toAuthSession(data: TokenExchangeData): AuthSession {
+  const expiresIn = data.refresh_expires_in || data.expires_in;
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
-    expiresAt: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+    expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
     user: data.user,
   };
 }

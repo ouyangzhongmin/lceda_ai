@@ -22,6 +22,26 @@ const PANEL_STATE_STORAGE_KEY = "lceda_ai.panel.last_state";
 type IssueObjectType = "component" | "pin" | "net";
 const LOG_PREFIX = "[LCEDA-AI][runtime]";
 
+function formatReactEventLine(event: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T> ? T : never): string {
+  if (!event || !event.kind) return "";
+  if (event.kind === "task") return `任务: ${event.text || event.label || ""}`;
+  if (event.kind === "thought") return `思考: ${event.text || event.label || ""}`;
+  if (event.kind === "tool_call") return `Tool: ${(event.label || event.toolName || "tool")}${event.inputSummary ? ` ${event.inputSummary}` : ""}`;
+  if (event.kind === "observation") return `观察: ${event.outputSummary || event.text || ""}`;
+  if (event.kind === "final") return `完成: ${event.text || event.label || ""}`;
+  return `${event.kind}: ${event.text || event.label || ""}`;
+}
+
+function buildStepTranscriptFromReactEvents(
+  reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"]
+): string[] | undefined {
+  if (!Array.isArray(reactEvents) || reactEvents.length === 0) {
+    return undefined;
+  }
+  const lines = reactEvents.map(formatReactEventLine).filter(Boolean);
+  return lines.length > 0 ? lines : undefined;
+}
+
 export interface AssistantRuntime {
   openPanel(): Promise<MainPanelState>;
   rerunAnalysis(): Promise<MainPanelState>;
@@ -118,14 +138,14 @@ function createAssistantRuntime(): AssistantRuntime {
     if (existingSession && !hasUsableSession(existingSession) && existingSession.refreshToken) {
       await refreshSessionIfNeeded("startup_restore");
     }
-    await fillSettingsState(state, sessionStore, creditsClient, customLlmConfigStore);
+    await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore);
     return state;
   }
 
   async function openIdlePanelState(): Promise<MainPanelState> {
     const restored = await restorePanelState(storage);
     if (restored) {
-      await fillSettingsState(restored, sessionStore, creditsClient, customLlmConfigStore);
+      await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore);
       if (
         restored.agentRunState === "planning" ||
         restored.agentRunState === "running_tools" ||
@@ -576,7 +596,21 @@ function createAssistantRuntime(): AssistantRuntime {
       try {
         const channel = resolveRuntimeChannel();
         const adapter = createEditorAdapter(channel);
-        const plan = await pluginAgent.planUserTurn({ userQuery: trimmed });
+        let plan;
+        try {
+          plan = await pluginAgent.planUserTurn({ userQuery: trimmed });
+        } catch (error) {
+          const plannerMessage = error instanceof Error ? error.message : String(error);
+          if (typeof console !== "undefined") {
+            console.warn(`${LOG_PREFIX} sendChat.plan.fallback`, { error: plannerMessage });
+          }
+          plan = {
+            intent: "chat" as const,
+            route: "chat" as const,
+            requiresContext: false,
+            steps: [{ kind: "llm" as const, required: true, note: "自然对话回复" }],
+          };
+        }
         let context;
         if (plan.requiresContext) {
           context = await buildSchematicContext(adapter);
@@ -657,12 +691,13 @@ function createAssistantRuntime(): AssistantRuntime {
                   lastMessage.content = event.detail;
                 }
               }
-              if (event.reactEvents) {
-                lastMessage.reactEvents = event.reactEvents;
-              }
-              if (event.stepStates) {
-                lastMessage.stepStates = event.stepStates;
-              }
+            if (event.reactEvents) {
+              lastMessage.reactEvents = event.reactEvents;
+              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+            }
+            if (event.stepStates) {
+              lastMessage.stepStates = event.stepStates;
+            }
               if (event.workingMemory) {
                 lastMessage.workingMemory = event.workingMemory;
               }
@@ -714,6 +749,21 @@ function createAssistantRuntime(): AssistantRuntime {
           const unauthorizedState = internals.currentState ?? current;
           unauthorizedState.agentRunState = "failed";
           unauthorizedState.agentRunDetail = "登录失效";
+          unauthorizedState.summary = "登录已失效，请重新登录";
+          unauthorizedState.chatMessages = replaceTrailingPendingAssistant(
+            nextMessages,
+            pluginAgent.buildStatusMessages({
+              title: "处理失败",
+              content: unauthorizedState.summary,
+              tone: "warning",
+              actions: [
+                {
+                  label: "去登录",
+                  action: "login",
+                },
+              ],
+            })
+          );
           unauthorizedState.toast = {
             id: Date.now(),
             message: "登录已失效，请重新登录",
@@ -734,13 +784,14 @@ function createAssistantRuntime(): AssistantRuntime {
           id: Date.now(),
           message: current.summary,
         };
-        // Ensure the UI can recover from stuck streaming state.
-        const messages = current.chatMessages ?? [];
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.role === "assistant") {
-          lastMessage.streaming = false;
-        }
-        current.chatMessages = nextMessages;
+        current.chatMessages = replaceTrailingPendingAssistant(
+          nextMessages,
+          pluginAgent.buildStatusMessages({
+            title: "处理失败",
+            content: current.summary,
+            tone: "warning",
+          })
+        );
         return commitState(internals, current, storage);
       }
     },
@@ -1002,12 +1053,13 @@ function createAssistantRuntime(): AssistantRuntime {
     const lastMessage = input.userMessages[input.userMessages.length - 1];
     if (lastMessage?.role === "assistant" && lastMessage.streaming) {
       // 直接更新最后一条消息，保留reactEvents和stepStates
-      const newMessages = pluginAgent.buildAnalysisMessages({
-        issueCount: analyzed.issueCount ?? 0,
-        topIssueTitle: analyzed.topIssueTitle,
-        locateStatus: analyzed.locateStatus,
-        analysisReport: input.result.analysisReport,
-        libraryInsights: input.result.libraryInsights,
+        const newMessages = pluginAgent.buildAnalysisMessages({
+          issueCount: analyzed.issueCount ?? 0,
+          topIssueTitle: analyzed.topIssueTitle,
+          locateStatus: analyzed.locateStatus,
+          locateLabel: input.result.locateLabel,
+          analysisReport: input.result.analysisReport,
+          libraryInsights: input.result.libraryInsights,
         issueItems: analyzed.issueItems,
         mcpResources: input.result.mcpResources,
         mcpResourceReads: input.result.mcpResourceReads,
@@ -1035,6 +1087,10 @@ function createAssistantRuntime(): AssistantRuntime {
         lastMessage.actions = newMessage.actions;
         // 保留streaming期间累积的reactEvents（如果新消息没有的话）
         lastMessage.reactEvents = preferNonEmptyArray(newMessage.reactEvents, lastMessage.reactEvents);
+        lastMessage.stepTranscript =
+          buildStepTranscriptFromReactEvents(lastMessage.reactEvents) ??
+          newMessage.stepTranscript ??
+          lastMessage.stepTranscript;
         lastMessage.stepStates = preferNonEmptyArray(newMessage.stepStates, lastMessage.stepStates);
         lastMessage.workingMemory = newMessage.workingMemory || lastMessage.workingMemory;
         lastMessage.toolTraces = newMessage.toolTraces || lastMessage.toolTraces;
@@ -1108,6 +1164,7 @@ function createAssistantRuntime(): AssistantRuntime {
       issueCount: state.issueCount ?? 0,
       topIssueTitle: state.topIssueTitle,
       locateStatus: state.locateStatus,
+      locateLabel: result.locateLabel,
       analysisReport: result.analysisReport,
       libraryInsights: result.libraryInsights,
       issueItems: state.issueItems,
@@ -1152,6 +1209,7 @@ function createAssistantRuntime(): AssistantRuntime {
       issueCount: state.issueCount ?? 0,
       topIssueTitle: state.topIssueTitle,
       locateStatus: state.locateStatus,
+      locateLabel: result.locateLabel,
       analysisReport: result.analysisReport,
       libraryInsights: result.libraryInsights,
       issueItems: state.issueItems,
@@ -1248,6 +1306,24 @@ function attachStateVersion(state: MainPanelState, stateVersion: number): MainPa
   return state;
 }
 
+function normalizeChatMessagesForPersistence(
+  messages: MainPanelState["chatMessages"]
+): NonNullable<MainPanelState["chatMessages"]> {
+  return sanitizeChatMessages(messages).map((message) => {
+    const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : undefined;
+    const stepTranscript =
+      Array.isArray(message.stepTranscript) && message.stepTranscript.length > 0
+        ? message.stepTranscript
+        : buildStepTranscriptFromReactEvents(reactEvents);
+    return {
+      ...message,
+      reactEvents,
+      stepTranscript,
+      streaming: false,
+    };
+  });
+}
+
 function sanitizeChatMessages(
   messages: MainPanelState["chatMessages"]
 ): NonNullable<MainPanelState["chatMessages"]> {
@@ -1316,9 +1392,11 @@ function replaceTrailingPendingAssistant(
     // 将保留的数据合并到新消息中
     const mergedReplacements = normalized.map((msg, idx) => {
       if (idx === 0 && msg.role === "assistant") {
+        const mergedReactEvents = preferNonEmptyArray(msg.reactEvents, preservedReactEvents);
         return {
           ...msg,
-          reactEvents: preferNonEmptyArray(msg.reactEvents, preservedReactEvents),
+          reactEvents: mergedReactEvents,
+          stepTranscript: buildStepTranscriptFromReactEvents(mergedReactEvents) ?? msg.stepTranscript,
           stepStates: preferNonEmptyArray(msg.stepStates, preservedStepStates),
           workingMemory: msg.workingMemory || preservedWorkingMemory,
         };
@@ -1345,6 +1423,7 @@ function preferNonEmptyArray<T>(primary?: T[], fallback?: T[]): T[] | undefined 
 async function fillSettingsState(
   state: MainPanelState,
   sessionStore: PersistentSessionStore,
+  authClient: AuthClient,
   creditsClient: CreditsClient,
   customLlmConfigStore: CustomLlmConfigStore
 ): Promise<void> {
@@ -1355,13 +1434,27 @@ async function fillSettingsState(
   state.creditsCurrency = undefined;
   state.creditsTransactions = [];
   try {
-    const session = await sessionStore.get();
+    let session = await sessionStore.get();
     if (typeof console !== "undefined") {
       console.log(`${LOG_PREFIX} session.restore`, summarizeSessionForLog(session));
     }
     if (session && !hasUsableSession(session) && session.refreshToken) {
       if (typeof console !== "undefined") {
         console.log(`${LOG_PREFIX} session.restore.refresh-needed`, summarizeSessionForLog(session));
+      }
+      try {
+        const refreshed = await authClient.refreshToken(session.refreshToken);
+        session = toSession(refreshed);
+        await sessionStore.set(session);
+        if (typeof console !== "undefined") {
+          console.log(`${LOG_PREFIX} session.restore.refresh-success`, summarizeSessionForLog(session));
+        }
+      } catch (error) {
+        if (typeof console !== "undefined") {
+          console.warn(`${LOG_PREFIX} session.restore.refresh-failed`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
     if (!hasUsableSession(session)) {
@@ -1455,7 +1548,7 @@ async function pollLoginSessionUntilDone(
         const state = internals.currentState ?? {
           loggedIn: false,
         };
-        await fillSettingsState(state, sessionStore, creditsClient, customLlmConfigStore);
+        await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore);
         state.summary = `登录成功，欢迎回来 ${tokenData.user.display_name || tokenData.user.email}。`;
         state.nextActions = buildNextActions(state);
         commitState(internals, state, storage);
@@ -1708,7 +1801,7 @@ async function restorePanelState(storage: LocalStorageKeyValueStore): Promise<Ma
       });
     }
     
-    parsed.chatMessages = sanitizeChatMessages(parsed.chatMessages);
+    parsed.chatMessages = normalizeChatMessagesForPersistence(parsed.chatMessages);
     return parsed;
   } catch {
     return undefined;
@@ -1732,13 +1825,10 @@ async function persistPanelState(storage: LocalStorageKeyValueStore, state: Main
       });
     }
     
-    const snapshot: MainPanelState = {
+      const snapshot: MainPanelState = {
       ...state,
       __stateVersion: undefined,
-      chatMessages: sanitizeChatMessages(state.chatMessages).map((message) => ({
-        ...message,
-        streaming: false,
-      })),
+      chatMessages: normalizeChatMessagesForPersistence(state.chatMessages),
     };
     
     // Log reactEvents status after creating snapshot

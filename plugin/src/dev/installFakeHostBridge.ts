@@ -1,10 +1,9 @@
 import type { PluginChannel } from "../types/schematic";
 import { installHostBridge } from "../editor/host/installHostBridge";
-import { mockProfessionalContext, mockStandardContext } from "../editor/adapters/mockData";
 import { previewDraftPlan } from "../editor/apply-plan/previewDraftPlan";
 
 export function installFakeHostBridge(channel: PluginChannel): void {
-  const context = channel === "professional" ? mockProfessionalContext : mockStandardContext;
+  const context = buildFakeContext(channel);
   let txSeq = 0;
 
   const locate = async (target: { objectId: string }): Promise<void> => {
@@ -131,4 +130,46 @@ export function installFakeHostBridge(channel: PluginChannel): void {
       },
     },
   });
+}
+
+function buildFakeContext(channel: PluginChannel) {
+  return {
+    project: {
+      projectId: `${channel}-fake-project`,
+      pageId: `${channel}-fake-page`,
+      pageName: channel === "professional" ? "Fake Pro Schematic" : "Fake Standard Schematic",
+      channel,
+    },
+    components: [
+      {
+        id: "cmp-u1",
+        ref: "U1",
+        name: "Fake MCU",
+        libraryId: "fake-lib-mcu",
+        packageName: "QFN-48",
+        value: "FAKE-MCU",
+        properties: {},
+      },
+    ],
+    pins: [
+      {
+        id: "pin-u1-1",
+        componentId: "cmp-u1",
+        pinNumber: "1",
+        pinName: "VCC",
+        electricalType: "power_in",
+      },
+    ],
+    nets: [
+      {
+        id: "net-vcc",
+        name: "VCC_3V3",
+        nodeIds: ["pin-u1-1"],
+        isPower: true,
+      },
+    ],
+    selection: {
+      objectIds: [],
+    },
+  };
 }

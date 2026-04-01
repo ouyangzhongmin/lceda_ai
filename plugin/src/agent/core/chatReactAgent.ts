@@ -180,6 +180,10 @@ export async function runChatReactAgent(
       
       // 构建详细的上下文摘要，包含原理图标识信息
       const schematicInfo = [];
+      const schematicName = context.project?.pageName?.trim();
+      if (schematicName) {
+        schematicInfo.push(`原理图: ${schematicName}`);
+      }
       if (context.project?.projectId) {
         schematicInfo.push(`项目ID: ${context.project.projectId}`);
       }
@@ -643,14 +647,14 @@ async function invokeObserved<TInput, TOutput>(deps: ReactAgentDeps, state: Reac
 
 function summarizeToolInput(toolName: string, input: unknown): string {
   if ((toolName === "llm.generate" || toolName === "rag.search") && input && typeof input === "object") {
-    if (toolName === "llm.generate") return `messages=${((input as { messages?: unknown[] }).messages || []).length}`;
-    return `query=${String((input as { query?: string }).query || "")}`;
+    if (toolName === "llm.generate") return `消息数=${((input as { messages?: unknown[] }).messages || []).length}`;
+    return `查询=${String((input as { query?: string }).query || "")}`;
   }
   if (toolName === "todo_list" && input && typeof input === "object") {
-    return `tasks=${((input as { tasks?: unknown[] }).tasks || []).length}`;
+    return `任务数=${((input as { tasks?: unknown[] }).tasks || []).length}`;
   }
   if (toolName === "library.search_devices" && input && typeof input === "object") {
-    return `query=${String((input as { query?: string }).query || "")}`;
+    return `查询=${String((input as { query?: string }).query || "")}`;
   }
   return "";
 }
@@ -707,16 +711,16 @@ function summarizeToolOutput(toolName: string, output: unknown): string {
 
 function mapToolNameToLabel(toolName: string): string {
   const map: Record<string, string> = {
-    "todo_list": "todo_list",
-    "llm.generate": "llm_generate_reply",
-    "editor.get_current_context": "jlceda_get_schematic_context",
-    "editor.get_selection": "jlceda_get_selection",
-    "editor.describe_selection": "jlceda_describe_selection",
-    "editor.describe_object": "jlceda_describe_object",
-    "editor.find_object": "jlceda_find_object",
-    "rag.search": "rag_search",
-    "library.search_devices": "jlceda_search_component_library",
-    "library.get_device": "jlceda_get_component_detail",
+    "todo_list": "任务列表",
+    "llm.generate": "LLM 生成",
+    "editor.get_current_context": "原理图上下文",
+    "editor.get_selection": "当前选区",
+    "editor.describe_selection": "选区描述",
+    "editor.describe_object": "对象描述",
+    "editor.find_object": "对象查找",
+    "rag.search": "知识检索",
+    "library.search_devices": "器件库搜索",
+    "library.get_device": "器件详情",
   };
   return map[toolName] ?? toolName;
 }

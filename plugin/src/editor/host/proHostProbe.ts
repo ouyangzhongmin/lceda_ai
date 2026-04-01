@@ -118,12 +118,86 @@ export async function getTypedDocumentContext(
     ]);
 
     return {
-      project: {
-        channel,
-        projectId: currentSchematic?.parentProjectUuid ?? currentDocument?.parentProjectUuid,
-        pageId: currentPage?.uuid ?? currentDocument?.uuid,
-      },
-      selection: selection ?? { objectIds: [] },
+        project: {
+          channel,
+          projectId: currentSchematic?.parentProjectUuid ?? currentDocument?.parentProjectUuid,
+          pageId: currentPage?.uuid ?? currentDocument?.uuid,
+          pageName:
+            currentPage?.name ??
+            currentPage?.title ??
+            currentSchematic?.name ??
+            currentSchematic?.title ??
+            currentDocument?.name ??
+            currentDocument?.title,
+        },
+        selection: selection ?? { objectIds: [] },
+      };
+  } catch {
+    return null;
+  }
+}
+
+export async function getTypedSchematicContext(
+  channel: PluginChannel
+): Promise<SchematicContext | null> {
+  const documentContext = await getTypedDocumentContext(channel);
+  if (!documentContext) {
+    return null;
+  }
+
+  if (
+    typeof eda === "undefined" ||
+    typeof eda.sch_PrimitiveComponent?.getAllPrimitiveId !== "function" ||
+    typeof eda.sch_PrimitiveComponent?.get !== "function" ||
+    typeof eda.sch_PrimitiveComponent?.getAllPinsByPrimitiveId !== "function" ||
+    typeof eda.sch_PrimitiveWire?.getAll !== "function"
+  ) {
+    return null;
+  }
+
+  try {
+    const [componentIdsRaw, rawWires] = await Promise.all([
+      eda.sch_PrimitiveComponent.getAllPrimitiveId(undefined, false),
+      eda.sch_PrimitiveWire.getAll(),
+    ]);
+
+    const componentIds = Array.isArray(componentIdsRaw)
+      ? componentIdsRaw.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [];
+    const rawComponents =
+      componentIds.length > 0 ? await eda.sch_PrimitiveComponent.get(componentIds) : [];
+    const components = Array.isArray(rawComponents) ? rawComponents : [];
+    const wires = Array.isArray(rawWires) ? rawWires : [];
+    const pinsPerComponent = await Promise.all(
+      componentIds.map(async (componentId) => {
+        if (!componentId) {
+          return [];
+        }
+        try {
+          const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(componentId);
+          return Array.isArray(pins) ? pins : [];
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    const normalizedComponents = (
+      await Promise.all(components.map((component) => normalizeTypedComponent(component)))
+    ).filter((component): component is SchematicContext["components"][number] => Boolean(component));
+    const normalizedPins = pinsPerComponent.flatMap((pins, index) =>
+      pins
+        .map((pin) => normalizeTypedPin(pin, normalizedComponents[index]?.id))
+        .filter((pin): pin is SchematicContext["pins"][number] => Boolean(pin))
+    );
+    const normalizedNets = normalizeTypedNets(wires, normalizedPins);
+
+    return {
+      project: documentContext.project,
+      selection: documentContext.selection,
+      components: normalizedComponents,
+      pins: normalizedPins,
+      nets: normalizedNets,
     };
   } catch {
     return null;
@@ -316,6 +390,229 @@ function normalizeLibraryDeviceDetail(value: unknown): LibraryDeviceDetail {
   };
 }
 
+async function normalizeTypedComponent(
+  value: unknown
+): Promise<SchematicContext["components"][number] | undefined> {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id =
+    (await callStateString(record, ["getState_PrimitiveId"])) ??
+    readStringRecord(record, ["primitiveId", "PrimitiveId"]);
+  if (!id) {
+    return undefined;
+  }
+
+  const properties =
+    normalizeStringMap(await callStateValue(record, ["getState_OtherProperty"])) ||
+    normalizeStringMap(record.otherProperty);
+  const componentType =
+    (await callStateString(record, ["getState_ComponentType"])) ??
+    readStringRecord(record, ["componentType", "ComponentType", "type", "Type"]);
+  const ref =
+    (await callStateString(record, ["getState_Designator"])) ??
+    readStringRecord(record, ["designator", "Designator"]) ??
+    readStringRecord(properties, ["Designator", "Ref", "REF", "位号"]);
+  const name =
+    (await callStateString(record, ["getState_Name"])) ??
+    readStringRecord(record, ["name", "Name"]) ??
+    readStringRecord(properties, ["Name", "Comment", "名称"]);
+  const packageName =
+    normalizeFootprintName(await callStateValue(record, ["getState_Footprint"])) ??
+    normalizeFootprintName(record.footprint) ??
+    readStringRecord(record, ["footprint", "Footprint"]) ??
+    readStringRecord(properties, ["Footprint", "Package", "封装"]);
+  const componentLink = normalizeLinkedEntity(await callStateValue(record, ["getState_Component"])) ?? normalizeLinkedEntity(record.component);
+  const footprintLink =
+    normalizeLinkedEntity(await callStateValue(record, ["getState_Footprint"])) ?? normalizeLinkedEntity(record.footprint);
+  const libraryId =
+    (await callStateString(record, ["getState_UniqueId"])) ??
+    readStringRecord(record, ["uniqueId", "UniqueId", "componentUuid"]) ??
+    componentLink?.uuid;
+  const addIntoBom = normalizeBoolean(await callStateValue(record, ["getState_AddIntoBom"]));
+  const addIntoPcb = normalizeBoolean(await callStateValue(record, ["getState_AddIntoPcb"]));
+  const componentValue =
+    readStringRecord(properties, ["Value", "value", "Comment", "COMMENT", "型号", "Model", "MPN"]) ??
+    name;
+
+  return {
+    id,
+    ref: shouldKeepComponentDesignator(componentType) ? ref : undefined,
+    name,
+    libraryId,
+    packageName: packageName ?? footprintLink?.name,
+    value: componentValue,
+    componentType,
+    addIntoBom,
+    addIntoPcb,
+    properties,
+  };
+}
+
+function normalizeTypedPin(
+  value: unknown,
+  fallbackComponentId?: string
+): SchematicContext["pins"][number] | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const properties =
+    normalizeStringMap(callMaybeSync(record, ["getState_OtherProperty"])) ||
+    normalizeStringMap(record.otherProperty);
+  const id =
+    callMaybeSyncString(record, ["getState_PrimitiveId"]) ??
+    readStringRecord(record, ["primitiveId", "PrimitiveId", "id", "Id"]);
+  const componentId =
+    readStringRecord(record, ["parentPrimitiveId", "ParentPrimitiveId", "componentId"]) ?? fallbackComponentId;
+  if (!id || !componentId) {
+    return undefined;
+  }
+
+  return {
+    id,
+    componentId,
+    pinNumber:
+      callMaybeSyncString(record, ["getState_PinNumber"]) ??
+      readStringRecord(record, ["pinNumber", "number", "Number"]),
+    pinName:
+      callMaybeSyncString(record, ["getState_PinName"]) ??
+      readStringRecord(record, ["pinName", "name", "Name"]),
+    electricalType:
+      normalizePinType(callMaybeSync(record, ["getState_pinType"])) ??
+      readStringRecord(record, ["electricalType", "type", "Type"]),
+    noConnected:
+      normalizeBoolean(callMaybeSync(record, ["getState_NoConnected"])) ??
+      normalizeBoolean(record.noConnected) ??
+      false,
+    netName: readStringRecord(properties, ["Net", "NET", "net", "网络"]),
+  };
+}
+
+function normalizeTypedNets(
+  wires: unknown[],
+  pins: SchematicContext["pins"]
+): SchematicContext["nets"] {
+  const pinIdsByNet = new Map<string, Set<string>>();
+  const netsById = new Map<string, SchematicContext["nets"][number]>();
+
+  for (const pin of pins) {
+    const pinNetName = pin.netName?.trim();
+    if (!pinNetName) continue;
+    const bucket = pinIdsByNet.get(pinNetName) ?? new Set<string>();
+    bucket.add(pin.id);
+    pinIdsByNet.set(pinNetName, bucket);
+  }
+
+  for (const wire of wires) {
+    if (typeof wire !== "object" || wire === null) {
+      continue;
+    }
+    const record = wire as Record<string, unknown>;
+    const id =
+      callMaybeSyncString(record, ["getState_PrimitiveId"]) ??
+      readStringRecord(record, ["primitiveId", "PrimitiveId"]);
+    if (!id) {
+      continue;
+    }
+    const name =
+      callMaybeSyncString(record, ["getState_Net"]) ??
+      readStringRecord(record, ["net", "Net"]);
+    const nodeIds = name ? Array.from(pinIdsByNet.get(name) ?? []) : [];
+    netsById.set(id, {
+      id,
+      name,
+      nodeIds,
+      isPower: Boolean(name && /^(vcc|vdd|gnd|3v3|5v|12v|power)/i.test(name)),
+    });
+  }
+
+  if (netsById.size === 0 && pinIdsByNet.size > 0) {
+    let syntheticIndex = 0;
+    for (const [name, nodeSet] of pinIdsByNet.entries()) {
+      syntheticIndex += 1;
+      netsById.set(`net:${name || syntheticIndex}`, {
+        id: `net:${name || syntheticIndex}`,
+        name,
+        nodeIds: Array.from(nodeSet),
+        isPower: Boolean(name && /^(vcc|vdd|gnd|3v3|5v|12v|power)/i.test(name)),
+      });
+    }
+  }
+
+  return Array.from(netsById.values());
+}
+
+function normalizeStringMap(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null) {
+    return {};
+  }
+  const record = value as Record<string, unknown>;
+  const entries = Object.entries(record)
+    .map(([key, entryValue]) => [key, stringifyRecordValue(entryValue)] as const)
+    .filter((entry): entry is readonly [string, string] => Boolean(entry[1]));
+  return Object.fromEntries(entries);
+}
+
+async function callStateString(
+  record: Record<string, unknown>,
+  methodNames: string[]
+): Promise<string | undefined> {
+  const value = await callStateValue(record, methodNames);
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+async function callStateValue(
+  record: Record<string, unknown>,
+  methodNames: string[]
+): Promise<unknown> {
+  for (const methodName of methodNames) {
+    const candidate = record[methodName];
+    if (typeof candidate !== "function") {
+      continue;
+    }
+    try {
+      return await candidate.call(record);
+    } catch {
+      // Ignore typed getter failures and continue with other candidates.
+    }
+  }
+  return undefined;
+}
+
+function callMaybeSync(record: Record<string, unknown>, methodNames: string[]): unknown {
+  for (const methodName of methodNames) {
+    const candidate = record[methodName];
+    if (typeof candidate !== "function") {
+      continue;
+    }
+    try {
+      return candidate.call(record);
+    } catch {
+      // Ignore sync typed getter failures and continue with other candidates.
+    }
+  }
+  return undefined;
+}
+
+function callMaybeSyncString(record: Record<string, unknown>, methodNames: string[]): string | undefined {
+  const value = callMaybeSync(record, methodNames);
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function stringifyRecordValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
+}
+
 function normalizeLinkedLibraryItem(value: unknown):
   | {
       uuid?: string;
@@ -332,6 +629,50 @@ function normalizeLinkedLibraryItem(value: unknown):
     name: readStringRecord(record, ["name"]),
     libraryUuid: readStringRecord(record, ["libraryUuid"]),
   };
+}
+
+function normalizeLinkedEntity(value: unknown):
+  | {
+      uuid?: string;
+      name?: string;
+      libraryUuid?: string;
+    }
+  | undefined {
+  return normalizeLinkedLibraryItem(value);
+}
+
+function normalizeFootprintName(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  const entity = normalizeLinkedEntity(value);
+  return entity?.name;
+}
+
+function normalizeBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value === "true") return true;
+    if (value === "false") return false;
+  }
+  return undefined;
+}
+
+function normalizePinType(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) {
+    return value.toLowerCase();
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return undefined;
+}
+
+function shouldKeepComponentDesignator(componentType?: string): boolean {
+  const normalized = componentType?.trim().toLowerCase();
+  return normalized === undefined || normalized === "" || normalized === "part" || normalized === "component";
 }
 
 function readStringRecord(record: Record<string, unknown>, keys: string[]): string | undefined {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -71,13 +72,13 @@ func (p *OpenAICompatibleProvider) Generate(req domainllm.GenerateRequest) (doma
 	if p.apiKey == "" {
 		return domainllm.CompletionResult{}, errors.New("llm api key is empty")
 	}
-
+	fmt.Printf("llm.Generate  endpoint:%s, apiKey:%s", p.endpoint, p.apiKey)
 	model := req.Model
 	if model == "" {
 		model = p.defaultModel
 	}
 	if model == "" {
-		model = "default-model"
+		return domainllm.CompletionResult{}, errors.New("model没有配置")
 	}
 
 	reqBody := map[string]any{

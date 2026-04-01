@@ -141,6 +141,10 @@ export async function runDraftReactAgent(deps: ReactAgentDeps): Promise<ReactAge
       
       // 显示原理图标识信息，让用户确认
       const schematicInfo = [];
+      const schematicName = liveContext.project.pageName?.trim();
+      if (schematicName) {
+        schematicInfo.push(`原理图: ${schematicName}`);
+      }
       if (liveContext.project.projectId) {
         schematicInfo.push(`项目ID: ${liveContext.project.projectId}`);
       }

@@ -5,6 +5,10 @@ export function runComponentAttributesCheck(context: SchematicContext): RuleIssu
   const issues: RuleIssue[] = [];
 
   for (const component of context.components) {
+    if (component.componentType && component.componentType !== "part" && component.componentType !== "component") {
+      continue;
+    }
+
     if (!component.ref) {
       issues.push({
         id: `issue-${component.id}-missing-ref`,
@@ -18,7 +22,7 @@ export function runComponentAttributesCheck(context: SchematicContext): RuleIssu
       });
     }
 
-    if (!component.packageName) {
+    if (component.addIntoPcb !== false && !component.packageName) {
       issues.push({
         id: `issue-${component.id}-missing-package`,
         ruleId: "component.missing-package",
@@ -31,7 +35,7 @@ export function runComponentAttributesCheck(context: SchematicContext): RuleIssu
       });
     }
 
-    if (!component.value) {
+    if (component.addIntoBom !== false && !component.value) {
       issues.push({
         id: `issue-${component.id}-missing-value`,
         ruleId: "component.missing-value",

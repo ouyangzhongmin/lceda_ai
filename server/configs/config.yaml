@@ -35,7 +35,7 @@ memory:
 llm:
   provider: "openai"
   amap_api_key: "6aea7e118c9f978bff92d3cadbd9bcd6"
-  enable_fallback: true
+  enable_fallback: false
   request_timeout_ms: 25000
   retry_count: 1
   retry_backoff_ms: 300
@@ -57,8 +57,8 @@ llm:
     model: "doubao-seed-2-0-mini-250821"
   openai:
     endpoint: "https://right.codes/codex/v1"
-    apikey: "sk-27d803a7b3d6489b8d08dd56ad81966f"
-    model: "gpt-5.4"
+    apikey: "sk-2def9a9f0f314377be3f7bb381faaaf7"
+    model: "gpt-5.2"
 
 wechat:
   app_id: ""

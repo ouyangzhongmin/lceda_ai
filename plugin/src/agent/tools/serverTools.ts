@@ -11,19 +11,19 @@ export function createServerTools(
   return [
     {
       name: "rag.search",
-      description: "Search knowledge evidence from the Go server",
+      description: "从服务端检索知识证据",
       execute: async (input: { query: string; topK?: number }) =>
         ragClient.search(input.query, input.topK ?? 3),
     },
     {
       name: "rag.build_citations",
-      description: "Build a standard citation package from the Go server",
+      description: "从服务端构建标准引用结果",
       execute: async (input: { query: string; topK?: number }) =>
         ragClient.buildCitations(input.query, input.topK ?? 3),
     },
     {
       name: "llm.generate",
-      description: "Generate an AI answer from the Go server LLM proxy",
+      description: "通过服务端 LLM 代理生成 AI 回复",
       execute: async (input: {
         provider?: string;
         model?: string;

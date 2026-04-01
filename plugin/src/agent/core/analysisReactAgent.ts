@@ -51,6 +51,44 @@ interface SchematicOverviewSummary {
   connectivityNotes: string[];
 }
 
+interface SchematicAnalysisEvidence {
+  project: {
+    pageName?: string;
+    projectId?: string;
+    pageId?: string;
+    channel: string;
+  };
+  stats: {
+    componentCount: number;
+    netCount: number;
+    pinCount: number;
+    selectionCount: number;
+  };
+  keyComponents: Array<{
+    ref: string;
+    name?: string;
+    value?: string;
+    packageName?: string;
+    category: string;
+    reasons: string[];
+    pins: Array<{
+      pin: string;
+      net?: string;
+      electricalType?: string;
+    }>;
+  }>;
+  representativeNets: Array<{
+    name: string;
+    isPower: boolean;
+    members: string[];
+  }>;
+  notableComponents: Array<{
+    label: string;
+    category: string;
+    nets: string[];
+  }>;
+}
+
 interface LibrarySearchResultItem {
   name: string;
   uuid: string;
@@ -95,8 +133,18 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
   let powerPathSummary: SchematicPowerPathSummary | undefined;
   let signalPathSummary: SchematicSignalPathSummary | undefined;
   let controlPathSummary: SchematicControlPathSummary | undefined;
+  let analysisEvidence: SchematicAnalysisEvidence | undefined;
   let overviewSummary: SchematicOverviewSummary | undefined;
   let liveContext = context;
+  const schematicInfo = {
+    pageName: liveContext.project.pageName,
+    projectId: liveContext.project.projectId,
+    pageId: liveContext.project.pageId,
+    channel: liveContext.project.channel,
+    componentCount: liveContext.components.length,
+    netCount: liveContext.nets.length,
+    selectionCount: liveContext.selection.objectIds.length,
+  };
   let checkResult: AgentResult["checkResult"] | undefined;
   let locateResult: AgentResult["locateResult"] = { located: false };
   let analysisReport: AgentResult["analysisReport"] | undefined;
@@ -153,7 +201,8 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
       canUse(deps, "schematic.summarize_connectivity") ||
       canUse(deps, "schematic.trace_power_paths") ||
       canUse(deps, "schematic.trace_signal_paths") ||
-      canUse(deps, "schematic.trace_control_paths"))
+      canUse(deps, "schematic.trace_control_paths") ||
+      canUse(deps, "schematic.build_analysis_evidence"))
   ) {
     await updateTodoList({ mcp: "running" }, "更新任务列表：mcp");
     updateTask(state, tasks.mcp, "running");
@@ -231,6 +280,15 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
         "追踪主控中心链路"
       );
     }
+    if (canUse(deps, "schematic.build_analysis_evidence")) {
+      analysisEvidence = await invokeObserved<{ context: NonNullable<AgentTask["context"]> }, SchematicAnalysisEvidence>(
+        deps,
+        state,
+        "schematic.build_analysis_evidence",
+        { context: liveContext },
+        "构建面向分析的器件与网络证据"
+      );
+    }
     overviewSummary = {
       componentCount: bomSummary?.componentCount ?? liveContext.components.length,
       netCount: connectivitySummary?.netCount ?? liveContext.nets.length,
@@ -306,6 +364,10 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
       
       // 显示原理图标识信息，让用户确认
       const schematicInfo = [];
+      const schematicName = liveContext.project.pageName?.trim();
+      if (schematicName) {
+        schematicInfo.push(`原理图: ${schematicName}`);
+      }
       if (liveContext.project.projectId) {
         schematicInfo.push(`项目ID: ${liveContext.project.projectId}`);
       }
@@ -349,11 +411,11 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
     state.workingMemory.lastObservation = checkResult?.summary || `发现 ${checkResult?.issues.length ?? 0} 个问题`;
     if (checkResult && checkResult.issues.length > 0 && canUse(deps, "issues.locate_first")) {
       thought(state, "Locate", `已发现 ${checkResult.issues.length} 个问题，继续定位首个可操作问题。`, "rules");
-      locateResult = await invokeObserved<{ issues: NonNullable<typeof checkResult>["issues"] }, AgentResult["locateResult"]>(
+      locateResult = await invokeObserved<{ issues: NonNullable<typeof checkResult>["issues"]; context: NonNullable<AgentTask["context"]> }, AgentResult["locateResult"]>(
         deps,
         state,
         "issues.locate_first",
-        { issues: checkResult.issues },
+        { issues: checkResult.issues, context: liveContext },
         "定位首个问题对象"
       );
     }
@@ -486,9 +548,10 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
             userQuery: deps.task.userQuery,
             context: liveContext,
             checkResult: checkResult!,
-            locateLabel: locateResult?.located ? formatLocateLabel(locateResult.objectType, locateResult.objectId) : undefined,
+            locateLabel: resolveLocateLabel(locateResult),
             libraryInsights,
             overviewSummary,
+            analysisEvidence,
             mcpSummaries: mcpResourceReads,
           }),
         },
@@ -496,15 +559,32 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
     },
     "生成最终分析报告"
   );
-    analysisReport = parseAnalysisReport(llmResult.output_text, checkResult, locateResult);
+    const usedPlaceholderFallback = looksLikePlaceholderLlmOutput(llmResult.output_text || "");
+    analysisReport = parseAnalysisReport(
+      llmResult.output_text,
+      checkResult,
+      locateResult,
+      schematicInfo,
+      overviewSummary,
+      analysisEvidence
+    );
     state.workingMemory.llmReady = true;
     state.workingMemory.lastObservation = "分析报告已生成";
-    updateTask(state, tasks.llm, "done", "分析报告已生成");
+    updateTask(state, tasks.llm, "done", usedPlaceholderFallback ? "检测到占位模型输出，已回退到真实证据报告" : "分析报告已生成");
     await updateTodoList({ llm: "done" }, "更新任务列表：llm 完成");
-    markStep(state, "llm", "done", "分析报告已生成");
-    emitProgress(deps, state, "分析报告已生成");
+    markStep(
+      state,
+      "llm",
+      "done",
+      usedPlaceholderFallback
+        ? "检测到占位模型输出，已改用真实规则结果与原理图证据生成报告"
+        : llmResult.output_text
+          ? `分析报告已生成\n\n${llmResult.output_text}`
+          : "分析报告已生成"
+    );
+    emitProgress(deps, state, usedPlaceholderFallback ? "检测到占位模型输出，已回退到真实证据报告" : "分析报告已生成");
   } else {
-    analysisReport = buildFallbackAnalysisReport(checkResult, locateResult);
+    analysisReport = buildFallbackAnalysisReport(checkResult, locateResult, schematicInfo, overviewSummary, analysisEvidence);
     markStep(state, "llm", "skipped", shouldRun("llm") ? "LLM 不可用，已回退到规则结果摘要" : "计划未包含 LLM 生成");
     await updateTodoList({ llm: shouldRun("llm") ? "failed" : "skipped" }, "更新任务列表：llm 跳过");
   }
@@ -517,6 +597,7 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
     result: {
       summary: `collected schematic context for schematic_analysis; ${checkResult?.summary ?? "no result"}; locate_first=${locateResult?.located ?? false}; mcp_resources=${mcpResources.length}`,
       analysisReport,
+      locateLabel: resolveLocateLabel(locateResult),
       nextSuggestions: buildAnalysisSuggestions(checkResult, locateResult),
       structuredSuggestions: buildAnalysisStructuredSuggestions(checkResult),
       toolTraceNames: deps.listToolNames(),
@@ -529,6 +610,9 @@ export async function runAnalysisReactAgent(deps: ReactAgentDeps): Promise<React
       locateResult,
       contextDigest: {
         channel: liveContext.project.channel,
+        pageName: liveContext.project.pageName,
+        projectId: liveContext.project.projectId,
+        pageId: liveContext.project.pageId,
         componentCount: liveContext.components.length,
         netCount: liveContext.nets.length,
         selectionCount: liveContext.selection.objectIds.length,
@@ -669,14 +753,18 @@ async function invokeObserved<TInput, TOutput>(
   try {
     const output = await deps.invokeTool<TInput, TOutput>(toolName, input);
     const outputSummary = summarizeToolOutput(toolName, output);
+    const observationText =
+      toolName === "llm.generate" && output && typeof output === "object"
+        ? (((output as { output_text?: string }).output_text || outputSummary) as string)
+        : (outputSummary || `${mapToolNameToLabel(toolName)} completed`);
     state.toolTraces.push({ toolName, status: "success", note: outputSummary || undefined });
     state.reactEvents.push({
       kind: "observation",
       label: mapToolNameToLabel(toolName),
       status: "done",
-      text: outputSummary || `${mapToolNameToLabel(toolName)} completed`,
+      text: observationText,
       toolName,
-      outputSummary,
+      outputSummary: toolName === "llm.generate" ? undefined : outputSummary,
     });
     return output;
   } catch (error) {
@@ -732,13 +820,23 @@ function buildAnalysisStructuredSuggestions(
 function parseAnalysisReport(
   rawText: string | undefined,
   checkResult: AgentResult["checkResult"],
-  locateResult: AgentResult["locateResult"]
+  locateResult: AgentResult["locateResult"],
+  schematicInfo?: NonNullable<AgentResult["analysisReport"]>["schematicInfo"],
+  overviewSummary?: SchematicOverviewSummary,
+  analysisEvidence?: SchematicAnalysisEvidence
 ): NonNullable<AgentResult["analysisReport"]> {
-  const fallback = buildFallbackAnalysisReport(checkResult, locateResult);
+  const fallback = buildFallbackAnalysisReport(checkResult, locateResult, schematicInfo, overviewSummary, analysisEvidence);
   if (!rawText) return fallback;
+  if (looksLikePlaceholderLlmOutput(rawText)) {
+    return fallback;
+  }
   try {
     const parsed = JSON.parse(extractJsonBlock(rawText)) as Partial<NonNullable<AgentResult["analysisReport"]>>;
-    return {
+    const parsedReport = {
+      schematicInfo: {
+        ...fallback.schematicInfo,
+        ...parsed.schematicInfo,
+      },
       overview: typeof parsed.overview === "string" && parsed.overview.trim() ? parsed.overview.trim() : fallback.overview,
       executiveSummary:
         typeof parsed.executiveSummary === "string" && parsed.executiveSummary.trim()
@@ -784,6 +882,7 @@ function parseAnalysisReport(
       keyFindings: Array.isArray(parsed.keyFindings) && parsed.keyFindings.length > 0 ? parsed.keyFindings.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 3) : fallback.keyFindings,
       nextSteps: Array.isArray(parsed.nextSteps) && parsed.nextSteps.length > 0 ? parsed.nextSteps.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 3) : fallback.nextSteps,
     };
+    return enforceReportQuality(parsedReport, fallback, checkResult, locateResult);
   } catch {
     return fallback;
   }
@@ -791,34 +890,69 @@ function parseAnalysisReport(
 
 function buildFallbackAnalysisReport(
   checkResult: AgentResult["checkResult"],
-  locateResult: AgentResult["locateResult"]
+  locateResult: AgentResult["locateResult"],
+  schematicInfo?: NonNullable<AgentResult["analysisReport"]>["schematicInfo"],
+  overviewSummary?: SchematicOverviewSummary,
+  analysisEvidence?: SchematicAnalysisEvidence
 ): NonNullable<AgentResult["analysisReport"]> {
   const issues = checkResult?.issues ?? [];
+  const highCount = issues.filter((issue) => issue.severity === "high").length;
+  const mediumCount = issues.filter((issue) => issue.severity === "medium").length;
+  const lowCount = issues.filter((issue) => issue.severity === "low").length;
+  const topTitles = summarizeIssueTitles(issues);
   const firstThree = issues.slice(0, 3).map((issue) => {
     const location = formatLocateLabel(issue.objectType, issue.objectId);
     return `${issue.title}${location ? `：${location}` : ""}`;
   });
   const nextSteps = buildAnalysisSuggestions(checkResult, locateResult).slice(0, 3);
   return {
-    overview: issues.length > 0 ? `已完成当前原理图检查，发现 ${issues.length} 个需要关注的问题，建议优先处理高风险连接错误。` : "已完成当前原理图检查，暂未发现明显规则问题。",
+    schematicInfo,
+    overview:
+      issues.length > 0
+        ? `已完成当前原理图检查，发现 ${issues.length} 个需要关注的问题，当前以${topTitles[0] ?? "规则问题"}为主。`
+        : "已完成当前原理图检查，暂未发现明显规则问题。",
     executiveSummary:
       issues.length > 0
-        ? "已完成整图首轮理解与规则诊断。当前主要风险集中在高风险接线、电源域冲突或关键引脚连接错误，建议先修复核心风险再继续功能扩展。"
+        ? `已完成整图首轮理解与规则诊断。当前共发现 ${issues.length} 个问题，其中高风险 ${highCount} 个、中风险 ${mediumCount} 个、低风险 ${lowCount} 个。当前最突出的已知问题类型为 ${topTitles.slice(0, 3).join("、") || "规则问题"}。基于当前证据，报告仅覆盖已观测到的属性、连接与规则结果。`
         : "已完成整图首轮理解与规则诊断。当前未发现明显规则问题，可以继续做模块化复核与设计优化。",
     ercSummary:
       issues.length > 0
         ? [
             `规则检查共发现 ${issues.length} 个问题。`,
-            `${issues.filter((issue) => issue.severity === "high").length} 个高风险问题需要优先处理。`,
+            `高风险 ${highCount} 个，中风险 ${mediumCount} 个，低风险 ${lowCount} 个。`,
+            topTitles.length > 0 ? `主要问题类型：${topTitles.slice(0, 3).join("、")}。` : "",
           ]
+            .filter(Boolean)
         : ["规则检查未发现明显 ERC 风险。"],
-    bomOverview: [],
-    functionalBlocks: [],
-    powerDomains: [],
-    powerPaths: [],
-    signalPaths: [],
-    controlPaths: [],
-    keyComponents: [],
+    bomOverview:
+      overviewSummary?.categories?.slice(0, 6).map((item) => {
+        const examples = item.examples.filter((example) => !looksNoisyLabel(example)).slice(0, 3).join("、");
+        return `${item.category} ${item.count} 个${examples ? `，代表器件：${examples}` : ""}`;
+      }) ?? [],
+    functionalBlocks:
+      overviewSummary?.functionalBlocks?.slice(0, 5).map((item) => {
+        const evidence = item.evidence.filter(Boolean).slice(0, 3).join("、");
+        return evidence ? `${item.name}：证据包括 ${evidence}` : `${item.name}：已识别到该功能模块`;
+      }) ?? [],
+    powerDomains:
+      overviewSummary?.powerDomains?.slice(0, 4).map((item) => {
+        const attached = item.attachedComponents.filter(Boolean).slice(0, 4).join("、");
+        return `${item.name}：连接 ${item.nodeCount} 个节点${attached ? `，关联器件 ${attached}` : ""}`;
+      }).filter((item) => !/连接 0 个节点/.test(item)) ?? [],
+    powerPaths:
+      overviewSummary?.powerPaths?.slice(0, 4).map((item) => `${item.sourceNet}：${item.path.join(" -> ")}${item.note ? `；${item.note}` : ""}`).filter((item) => !/连接 0 个主要器件/.test(item)) ?? [],
+    signalPaths:
+      overviewSummary?.signalPaths?.slice(0, 4).map((item) => `${item.block}：${item.path.join(" -> ")}${item.note ? `；${item.note}` : ""}`).filter((item) => !looksNoisyLabel(item)) ?? [],
+    controlPaths:
+      overviewSummary?.controlPaths?.slice(0, 4).map((item) => `${item.controller} -> ${item.target}：${item.path.join(" -> ")}${item.note ? `；${item.note}` : ""}`).filter((item) => !looksNoisyLabel(item)) ?? [],
+    keyComponents:
+      (analysisEvidence?.keyComponents?.slice(0, 6).map((item) => {
+        const labels = [item.ref, item.name, item.value, item.packageName].filter(Boolean).join(" / ");
+        const reasons = item.reasons.filter(Boolean).slice(0, 2).join("、");
+        return reasons ? `${labels}：${reasons}` : labels;
+      }) ??
+        overviewSummary?.keyComponents?.slice(0, 6).map((item) => `${item.ref}：${item.label}`) ??
+        []).filter((item) => !looksNoisyLabel(item)),
     riskGroups: {
       high: issues.filter((issue) => issue.severity === "high").slice(0, 3).map((issue) => `${issue.title}${formatLocateLabel(issue.objectType, issue.objectId) ? `：${formatLocateLabel(issue.objectType, issue.objectId)}` : ""}`),
       medium: issues.filter((issue) => issue.severity === "medium").slice(0, 3).map((issue) => `${issue.title}${formatLocateLabel(issue.objectType, issue.objectId) ? `：${formatLocateLabel(issue.objectType, issue.objectId)}` : ""}`),
@@ -827,6 +961,70 @@ function buildFallbackAnalysisReport(
     keyFindings: firstThree.length > 0 ? firstThree : ["未发现需要优先处理的问题"],
     nextSteps: nextSteps.length > 0 ? nextSteps : ["如需更深入确认，可以继续询问具体器件或网络问题"],
   };
+}
+
+function enforceReportQuality(
+  report: NonNullable<AgentResult["analysisReport"]>,
+  fallback: NonNullable<AgentResult["analysisReport"]>,
+  checkResult: AgentResult["checkResult"],
+  locateResult: AgentResult["locateResult"]
+): NonNullable<AgentResult["analysisReport"]> {
+  const issues = checkResult?.issues ?? [];
+  const locateLabel = resolveLocateLabel(locateResult);
+  const uniqueMedium = new Set(report.riskGroups?.medium ?? []);
+  const looksCollapsed =
+    report.keyFindings.length === 0 ||
+    report.keyFindings.every((item) => !item || item === report.keyFindings[0]) ||
+    uniqueMedium.size <= 1;
+
+  if (looksCollapsed && issues.length > 0) {
+    const rebuilt = buildFallbackAnalysisReport(checkResult, locateResult, fallback.schematicInfo);
+    return {
+      ...report,
+      overview: report.overview && !/高风险连接错误/.test(report.overview) ? report.overview : rebuilt.overview,
+      executiveSummary:
+        report.executiveSummary && report.executiveSummary !== fallback.executiveSummary
+          ? report.executiveSummary
+          : rebuilt.executiveSummary,
+      ercSummary: rebuilt.ercSummary,
+      riskGroups: rebuilt.riskGroups,
+      keyFindings: rebuilt.keyFindings,
+      nextSteps:
+        rebuilt.nextSteps.map((item) =>
+          locateLabel && item.includes("优先检查已定位对象")
+            ? `优先检查已定位对象 ${locateLabel}。`
+            : item
+        ),
+    };
+  }
+
+  if (locateLabel && report.nextSteps.length > 0) {
+    report.nextSteps = report.nextSteps.map((item) =>
+      item.includes("优先检查已定位对象") ? `优先检查已定位对象 ${locateLabel}。` : item
+    );
+  }
+  return report;
+}
+
+function looksLikePlaceholderLlmOutput(rawText: string): boolean {
+  const text = rawText.trim();
+  if (!text) {
+    return true;
+  }
+  return (
+    text.startsWith("PoC response:") ||
+    text.includes("structured placeholder answer") ||
+    text.includes("请输出 JSON。`") ||
+    text.includes("用户问题：分析原理图是否有问题")
+  );
+}
+
+function looksNoisyLabel(value: string): boolean {
+  const text = String(value || "").trim();
+  if (!text) {
+    return true;
+  }
+  return text.includes("={Manufacturer Part}") || /\b[0-9a-f]{12,}\b/i.test(text);
 }
 
 function extractJsonBlock(text: string): string {
@@ -840,9 +1038,36 @@ function formatLocateLabel(objectType?: string, objectId?: string): string {
     const match = objectId.match(/^pin-([^-]+)-(.+)$/i);
     if (match) return `${match[1].toUpperCase()} 的 ${match[2].toUpperCase()} 脚`;
   }
-  if (objectType === "component") return `器件 ${objectId.replace(/^component-/i, "").toUpperCase()}`;
-  if (objectType === "net") return `网络 ${objectId.replace(/^net-/i, "")}`;
-  return `${objectType}:${objectId}`;
+  if (objectType === "component" && /^component-/i.test(objectId)) {
+    return `器件 ${objectId.replace(/^component-/i, "").toUpperCase()}`;
+  }
+  if (objectType === "net" && /^net-/i.test(objectId)) {
+    return `网络 ${objectId.replace(/^net-/i, "")}`;
+  }
+  return "";
+}
+
+function resolveLocateLabel(locateResult: AgentResult["locateResult"]): string | undefined {
+  if (!locateResult?.located) {
+    return undefined;
+  }
+  const preferred = String(locateResult.objectLabel || "").trim();
+  if (preferred) {
+    return preferred;
+  }
+  const fallback = formatLocateLabel(locateResult.objectType, locateResult.objectId);
+  return fallback || undefined;
+}
+
+function summarizeIssueTitles(issues: NonNullable<AgentResult["checkResult"]>["issues"]): string[] {
+  const counts = new Map<string, number>();
+  for (const issue of issues) {
+    counts.set(issue.title, (counts.get(issue.title) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([title]) => title)
+    .slice(0, 5);
 }
 
 function buildAnalysisLibraryQueries(
@@ -900,27 +1125,45 @@ function buildAnalysisLibraryQueries(
 }
 
 function summarizeToolInput(toolName: string, input: unknown): string {
+  if (toolName === "editor.get_current_context" && input === undefined) {
+    return "读取当前打开的原理图上下文";
+  }
   if (toolName === "rules.run_schematic_checks" && input && typeof input === "object") {
-    const context = (input as { context?: { components?: unknown[]; nets?: unknown[]; selection?: { objectIds?: unknown[] } } }).context;
-    return context ? buildAnalysisSummaryPrompt(context as never) : "使用当前原理图上下文";
+    const context = (input as { context?: { project?: { pageName?: string; projectId?: string; pageId?: string }; components?: unknown[]; nets?: unknown[] } }).context;
+    if (!context) {
+      return "使用当前原理图上下文";
+    }
+    const parts = [];
+    if (context.project?.pageName) parts.push(`原理图=${context.project.pageName}`);
+    if (context.project?.projectId) parts.push(`项目ID=${context.project.projectId}`);
+    if (context.project?.pageId) parts.push(`页面ID=${context.project.pageId}`);
+    if (typeof context.components?.length === "number") parts.push(`器件=${context.components.length}`);
+    if (typeof context.nets?.length === "number") parts.push(`网络=${context.nets.length}`);
+    return parts.length > 0 ? parts.join("，") : buildAnalysisSummaryPrompt(context as never);
   }
   if (toolName === "library.search_devices" && input && typeof input === "object") {
-    return `query=${String((input as { query?: string }).query || "")}`;
+    return `查询=${String((input as { query?: string }).query || "")}`;
   }
   if (toolName === "mcp.read_resource" && input && typeof input === "object") {
-    return `uri=${String((input as { uri?: string }).uri || "")}`;
+    return `资源=${String((input as { uri?: string }).uri || "")}`;
   }
   if (toolName === "todo_list" && input && typeof input === "object") {
-    return `tasks=${((input as { tasks?: unknown[] }).tasks || []).length}`;
+    return `任务数=${((input as { tasks?: unknown[] }).tasks || []).length}`;
   }
   if (toolName === "issues.locate_first" && input && typeof input === "object") {
-    return `issues=${((input as { issues?: unknown[] }).issues || []).length}`;
+    return `问题数=${((input as { issues?: unknown[] }).issues || []).length}`;
   }
   if (toolName.startsWith("schematic.") && input && typeof input === "object") {
-    return "使用当前原理图上下文生成整图摘要";
+    const context = (input as { context?: { project?: { pageName?: string; pageId?: string }; components?: unknown[]; nets?: unknown[] } }).context;
+    const parts = ["使用当前原理图上下文生成整图摘要"];
+    if (context?.project?.pageName) parts.push(`原理图=${context.project.pageName}`);
+    if (context?.project?.pageId) parts.push(`页面ID=${context.project.pageId}`);
+    if (typeof context?.components?.length === "number") parts.push(`器件=${context.components.length}`);
+    if (typeof context?.nets?.length === "number") parts.push(`网络=${context.nets.length}`);
+    return parts.join("，");
   }
   if (toolName === "llm.generate" && input && typeof input === "object") {
-    return `messages=${((input as { messages?: unknown[] }).messages || []).length}`;
+    return `消息数=${((input as { messages?: unknown[] }).messages || []).length}`;
   }
   return "";
 }
@@ -975,6 +1218,10 @@ function summarizeToolOutput(toolName: string, output: unknown): string {
     const result = output as SchematicControlPathSummary;
     return `主控链路 ${result.paths.length} 条`;
   }
+  if (toolName === "schematic.build_analysis_evidence" && output && typeof output === "object") {
+    const result = output as SchematicAnalysisEvidence;
+    return `分析证据：关键器件 ${result.keyComponents.length} 个，代表网络 ${result.representativeNets.length} 条`;
+  }
   if (toolName === "mcp.list_resources" && output && typeof output === "object") {
     const result = output as { resources?: unknown[] };
     return `已加载 ${result.resources?.length ?? 0} 条知识资源`;
@@ -996,23 +1243,23 @@ function summarizeToolOutput(toolName: string, output: unknown): string {
 
 function mapToolNameToLabel(toolName: string): string {
   const map: Record<string, string> = {
-    "todo_list": "todo_list",
-    "editor.get_current_context": "jlceda_get_schematic_context",
-    "schematic.summarize_bom": "jlceda_summarize_bom",
-    "schematic.identify_key_components": "jlceda_identify_key_components",
-    "schematic.identify_functional_blocks": "jlceda_identify_functional_blocks",
-    "schematic.identify_power_domains": "jlceda_identify_power_domains",
-    "schematic.summarize_connectivity": "jlceda_summarize_connectivity",
-    "schematic.trace_power_paths": "jlceda_trace_power_paths",
-    "schematic.trace_signal_paths": "jlceda_trace_signal_paths",
-    "schematic.trace_control_paths": "jlceda_trace_control_paths",
-    "library.search_devices": "jlceda_search_component_library",
-    "library.get_device": "jlceda_get_component_detail",
-    "mcp.list_resources": "jlceda_list_knowledge_resources",
-    "mcp.read_resource": "jlceda_read_knowledge_resource",
-    "rules.run_schematic_checks": "jlceda_schematic_check",
-    "issues.locate_first": "jlceda_locate_issue",
-    "llm.generate": "llm_generate_report",
+    "todo_list": "任务列表",
+    "editor.get_current_context": "原理图上下文",
+    "schematic.summarize_bom": "BOM 摘要",
+    "schematic.identify_key_components": "关键器件识别",
+    "schematic.identify_functional_blocks": "功能模块识别",
+    "schematic.identify_power_domains": "电源域识别",
+    "schematic.summarize_connectivity": "连接性摘要",
+    "schematic.trace_power_paths": "电源路径追踪",
+    "schematic.trace_signal_paths": "信号路径追踪",
+    "schematic.trace_control_paths": "控制链路追踪",
+    "library.search_devices": "器件库搜索",
+    "library.get_device": "器件详情",
+    "mcp.list_resources": "知识资源列表",
+    "mcp.read_resource": "知识资源读取",
+    "rules.run_schematic_checks": "规则检查",
+    "issues.locate_first": "问题定位",
+    "llm.generate": "LLM 生成",
   };
   return map[toolName] ?? toolName;
 }

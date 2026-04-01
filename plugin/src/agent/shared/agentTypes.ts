@@ -99,6 +99,15 @@ export interface AgentEvidenceItem {
 export interface AgentResult {
   summary: string;
   analysisReport?: {
+    schematicInfo?: {
+      pageName?: string;
+      projectId?: string;
+      pageId?: string;
+      channel?: string;
+      componentCount?: number;
+      netCount?: number;
+      selectionCount?: number;
+    };
     overview: string;
     executiveSummary?: string;
     ercSummary?: string[];
@@ -146,6 +155,7 @@ export interface AgentResult {
     issueId?: string;
     objectId?: string;
     objectType?: string;
+    objectLabel?: string;
   };
   draftPlan?: DraftPlan;
   draftPreview?: DraftPreview;
@@ -158,10 +168,14 @@ export interface AgentResult {
   };
   contextDigest?: {
     channel: string;
+    pageName?: string;
+    projectId?: string;
+    pageId?: string;
     componentCount: number;
     netCount: number;
     selectionCount: number;
   };
+  locateLabel?: string;
   uiEvents?: AgentUiEvent[];
   reactEvents?: AgentReactEvent[];
   stepStates?: AgentStepState[];

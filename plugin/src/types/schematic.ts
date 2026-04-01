@@ -3,6 +3,7 @@ export type PluginChannel = "standard" | "professional";
 export interface SchematicProjectRef {
   projectId?: string;
   pageId?: string;
+  pageName?: string;
   channel: PluginChannel;
 }
 
@@ -13,6 +14,9 @@ export interface SchematicComponent {
   libraryId?: string;
   packageName?: string;
   value?: string;
+  componentType?: string;
+  addIntoBom?: boolean;
+  addIntoPcb?: boolean;
   properties: Record<string, string>;
 }
 
@@ -22,6 +26,8 @@ export interface SchematicPin {
   pinNumber?: string;
   pinName?: string;
   electricalType?: string;
+  noConnected?: boolean;
+  netName?: string;
 }
 
 export interface SchematicNet {

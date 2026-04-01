@@ -178,7 +178,7 @@ func LoadConfig() (Config, error) {
 		LLM: LLMConfig{
 			Provider:         strings.ToLower(firstNonEmpty(os.Getenv("LLM_PROVIDER"), firstNonEmpty(fileCfg.LLM.Provider, "doubao"))),
 			AMapAPIKey:       firstNonEmpty(os.Getenv("LLM_AMAP_API_KEY"), fileCfg.LLM.AMapAPIKey),
-			EnableFallback:   boolPtr(resolveBool("LLM_ENABLE_FALLBACK", fileCfg.LLM.EnableFallback, true)),
+			EnableFallback:   boolPtr(resolveBool("LLM_ENABLE_FALLBACK", fileCfg.LLM.EnableFallback, false)),
 			RequestTimeoutMS: resolveInt("LLM_REQUEST_TIMEOUT_MS", fileCfg.LLM.RequestTimeoutMS, 25000),
 			RetryCount:       resolveInt("LLM_RETRY_COUNT", fileCfg.LLM.RetryCount, 1),
 			RetryBackoffMS:   resolveInt("LLM_RETRY_BACKOFF_MS", fileCfg.LLM.RetryBackoffMS, 300),
