@@ -45,6 +45,8 @@ func (h *LLMHandler) Generate(c *gin.Context) {
 		Provider:    req.Provider,
 		Model:       req.Model,
 		Messages:    req.Messages,
+		Tools:       req.Tools,
+		ToolChoice:  req.ToolChoice,
 	})
 	if providerErr != nil {
 		log.Printf("[LCEDA-AI][server][llm] request.failed user_id=%s provider=%s model=%s error=%v", user.UserID, req.Provider, req.Model, providerErr)
@@ -64,6 +66,7 @@ func (h *LLMHandler) Generate(c *gin.Context) {
 		"request_id":          result.RequestID,
 		"model":               result.Model,
 		"output_text":         result.OutputText,
+		"tool_calls":          result.ToolCalls,
 		"prompt_tokens":       result.PromptTokens,
 		"completion_tokens":   result.CompletionTokens,
 		"cost_credits":        result.CostCredits,
@@ -103,10 +106,17 @@ func (h *LLMHandler) GenerateStream(c *gin.Context) {
 		Provider:    req.Provider,
 		Model:       req.Model,
 		Messages:    req.Messages,
+		Tools:       req.Tools,
+		ToolChoice:  req.ToolChoice,
 	}, func(text string) {
 		streamEvent(c, "delta", map[string]any{
 			"type":  "delta",
 			"delta": text,
+		})
+	}, func(text string) {
+		streamEvent(c, "reasoning_delta", map[string]any{
+			"type":            "reasoning_delta",
+			"reasoning_delta": text,
 		})
 	})
 	if providerErr != nil {
@@ -129,6 +139,7 @@ func (h *LLMHandler) GenerateStream(c *gin.Context) {
 		"request_id":          result.RequestID,
 		"model":               result.Model,
 		"output_text":         result.OutputText,
+		"tool_calls":          result.ToolCalls,
 		"prompt_tokens":       result.PromptTokens,
 		"completion_tokens":   result.CompletionTokens,
 		"cost_credits":        result.CostCredits,

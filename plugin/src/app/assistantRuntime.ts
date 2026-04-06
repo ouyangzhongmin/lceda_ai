@@ -11,7 +11,9 @@ import { HostBrowserLauncher } from "../services/auth/browserLauncher";
 import { PersistentSessionStore, type AuthSession } from "../services/auth/sessionStore";
 import { CreditsClient } from "../services/credits/creditsClient";
 import { CustomLlmConfigStore } from "../services/llm/customLlmConfigStore";
-import { LlmProxyClient } from "../services/llm/llmProxyClient";
+import { LlmModeStore, type LlmMode } from "../services/llm/llmModeStore";
+import { LlmProxyClient, type LlmMessage } from "../services/llm/llmProxyClient";
+import { UnifiedLlmClient } from "../services/llm/unifiedLlmClient";
 import { RagClient } from "../services/rag/ragClient";
 import { LocalStorageKeyValueStore } from "../storage/keyValueStore";
 import type { MainPanelState } from "../ui/panels/mainPanel";
@@ -21,6 +23,168 @@ const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
 const PANEL_STATE_STORAGE_KEY = "lceda_ai.panel.last_state";
 type IssueObjectType = "component" | "pin" | "net";
 const LOG_PREFIX = "[LCEDA-AI][runtime]";
+const ENABLE_VERBOSE_RUNTIME_LOGS = false;
+// Streaming can emit lots of deltas; committing/persisting on every delta makes the UI churn.
+const STREAM_COMMIT_MIN_INTERVAL_MS = 80;
+const PERSIST_PANEL_STATE_THROTTLE_MS = 600;
+const CONTEXT_COMPACTION_TRIGGER_TURNS = 20;
+const CONTEXT_COMPACTION_KEEP_RECENT_TURNS = 3;
+const CONTEXT_COMPACTION_MAX_TURNS = 30;
+const CONTEXT_COMPACTION_TITLE = "上下文下压缩";
+
+let persistPanelTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPersist: { storage: LocalStorageKeyValueStore; state: MainPanelState } | null = null;
+
+type ChatMessage = NonNullable<MainPanelState["chatMessages"]>[number];
+
+export function planContextCompaction(messages: MainPanelState["chatMessages"]): {
+  shouldCompact: boolean;
+  olderMessages: ChatMessage[];
+  recentMessages: ChatMessage[];
+} {
+  const sanitized = sanitizeChatMessages(messages).filter((message) => !message.streaming);
+  const turnIndices = sanitized
+    .map((message, index) => (message.role === "user" ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (turnIndices.length < CONTEXT_COMPACTION_TRIGGER_TURNS) {
+    return {
+      shouldCompact: false,
+      olderMessages: [],
+      recentMessages: sanitized,
+    };
+  }
+
+  const keepTurnCount = Math.min(CONTEXT_COMPACTION_KEEP_RECENT_TURNS, turnIndices.length);
+  const rawStartIndex = turnIndices[turnIndices.length - keepTurnCount] ?? 0;
+  const olderMessages = sanitized.slice(0, rawStartIndex);
+  const recentMessages = sanitized.slice(rawStartIndex);
+
+  return {
+    shouldCompact: olderMessages.length > 0,
+    olderMessages,
+    recentMessages,
+  };
+}
+
+function formatMessagesForCompaction(messages: ChatMessage[]): string {
+  return messages
+    .map((message) => {
+      if (message.contextCompaction) {
+        return "";
+      }
+      const role = message.role === "user" ? "用户" : "助手";
+      const title = message.title ? `（${message.title}）` : "";
+      const content = String(message.content || message.analysisMarkdown || "").trim();
+      if (!content) return "";
+      return `${role}${title}：\n${content}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+async function compactChatHistoryIfNeeded(input: {
+  state: MainPanelState;
+  llmClient: UnifiedLlmClient;
+}): Promise<void> {
+  const { state, llmClient } = input;
+  const currentMessages = sanitizeChatMessages(state.chatMessages).filter((message) => !message.streaming);
+  const plan = planContextCompaction(currentMessages);
+  if (!plan.shouldCompact) return;
+
+  const recentTurnCount = plan.recentMessages.filter((message) => message.role === "user").length;
+  const olderTurnCount = plan.olderMessages.filter((message) => message.role === "user").length;
+  const olderText = formatMessagesForCompaction(plan.olderMessages);
+  if (!olderText) return;
+
+  const compressionPrompt: LlmMessage[] = [
+    {
+      role: "system",
+      content: [
+        "你是对话上下文压缩助手。",
+        "请将给定的历史对话压缩成一条供后续多轮对话继续使用的摘要。",
+        "要求：",
+        "- 只保留对后续继续理解用户诉求和助手承诺有帮助的信息。",
+        "- 保留：用户目标、关键约束、已确认结论、未解决问题、关键建议。",
+        "- 删除：寒暄、重复表述、详细推理过程、工具日志。",
+        "- 输出必须是简洁 Markdown，长度控制在 600 汉字以内。",
+        `- 标题固定为：## ${CONTEXT_COMPACTION_TITLE}`,
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `请压缩以下较早历史对话，共 ${olderTurnCount} 轮：`,
+        "",
+        olderText,
+      ].join("\n"),
+    },
+  ];
+
+  const compressed = await llmClient.generate({
+    messages: compressionPrompt,
+  });
+  const summary = String(compressed.output_text || "").trim();
+  if (!summary) return;
+
+  const compactedMessage: ChatMessage = {
+    role: "assistant",
+    title: CONTEXT_COMPACTION_TITLE,
+    content: summary,
+    tone: "default",
+    contextCompaction: {
+      compressedTurns: olderTurnCount,
+      keptRecentTurns: recentTurnCount,
+      createdAt: new Date().toISOString(),
+      version: 1,
+    },
+    structuredContent: [
+      {
+        kind: "paragraph",
+        text: `已执行${CONTEXT_COMPACTION_TITLE}：压缩 ${olderTurnCount} 轮历史，保留最近 ${recentTurnCount} 轮原始对话。`,
+      },
+      {
+        kind: "section",
+        title: "压缩摘要",
+        text: summary.replace(/^##\s*上下文下压缩\s*/u, "").trim(),
+      },
+    ],
+  };
+
+  const merged = [compactedMessage, ...plan.recentMessages];
+  const trimmed = merged.slice(-(CONTEXT_COMPACTION_MAX_TURNS * 2 + 1));
+  state.chatMessages = trimmed;
+  state.summary = `已执行${CONTEXT_COMPACTION_TITLE}：压缩 ${olderTurnCount} 轮历史，保留最近 ${recentTurnCount} 轮原始对话。`;
+}
+
+function schedulePersistPanelState(
+  storage: LocalStorageKeyValueStore,
+  state: MainPanelState,
+  force: boolean
+): void {
+  pendingPersist = { storage, state };
+  if (force) {
+    if (persistPanelTimer) {
+      clearTimeout(persistPanelTimer);
+      persistPanelTimer = null;
+    }
+    const latest = pendingPersist;
+    pendingPersist = null;
+    if (latest) {
+      void persistPanelState(latest.storage, latest.state);
+    }
+    return;
+  }
+  if (persistPanelTimer) return;
+  persistPanelTimer = setTimeout(() => {
+    persistPanelTimer = null;
+    const latest = pendingPersist;
+    pendingPersist = null;
+    if (latest) {
+      void persistPanelState(latest.storage, latest.state);
+    }
+  }, PERSIST_PANEL_STATE_THROTTLE_MS);
+}
 
 function formatReactEventLine(event: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T> ? T : never): string {
   if (!event || !event.kind) return "";
@@ -42,6 +206,37 @@ function buildStepTranscriptFromReactEvents(
   return lines.length > 0 ? lines : undefined;
 }
 
+// Intentionally do not inject host-side "LLM progress" into reactEvents.
+// Reasoner-style thinking should come from `reasoning_delta`, and steps should reflect
+// real tool calls/observations rather than synthetic counters.
+
+function upsertLlmReasoningEvent(
+  message: NonNullable<MainPanelState["chatMessages"]>[number],
+  reasoningDelta: string | undefined
+): void {
+  if (!reasoningDelta) return;
+  const msgAny = message as unknown as { __llmReasoningText?: string };
+  msgAny.__llmReasoningText = `${msgAny.__llmReasoningText || ""}${reasoningDelta}`;
+
+  const events = (message.reactEvents ??= []);
+  const label = "Reasoning";
+  const stepKind = "llm" as const;
+  const existing = events.find((e) => e && e.kind === "thought" && e.label === label && e.stepKind === stepKind);
+  const text = msgAny.__llmReasoningText;
+  if (existing) {
+    existing.text = text;
+    existing.status = "done";
+    return;
+  }
+  events.push({
+    kind: "thought",
+    label,
+    status: "done",
+    text,
+    stepKind,
+  });
+}
+
 export interface AssistantRuntime {
   openPanel(): Promise<MainPanelState>;
   rerunAnalysis(): Promise<MainPanelState>;
@@ -58,6 +253,7 @@ export interface AssistantRuntime {
     apiKey: string;
     model: string;
   }): Promise<MainPanelState>;
+  setLlmMode(input: { mode: LlmMode }): Promise<MainPanelState>;
   syncState(): Promise<MainPanelState>;
   getLastState(): MainPanelState | null;
 }
@@ -100,6 +296,7 @@ function createAssistantRuntime(): AssistantRuntime {
   const storage = new LocalStorageKeyValueStore();
   const sessionStore = new PersistentSessionStore(storage);
   const customLlmConfigStore = new CustomLlmConfigStore(storage);
+  const llmModeStore = new LlmModeStore(storage);
   const config = getConfig();
   let refreshInFlight: Promise<boolean> | null = null;
   const authHttpClient = new FetchHttpClient(config.serverBaseUrl);
@@ -113,17 +310,31 @@ function createAssistantRuntime(): AssistantRuntime {
   const llmClient = new LlmProxyClient(httpClient);
   const ragClient = new RagClient(httpClient);
   const mcpClient = new MCPClient();
+  const unifiedLlmClient = new UnifiedLlmClient(
+    llmClient,
+    sessionStore,
+    customLlmConfigStore,
+    llmModeStore
+  );
   const pluginAgent = createPluginAgent({
     llmClient,
     ragClient,
     sessionStore,
     customLlmConfigStore,
+    llmModeStore,
+    onLlmRoute: (info) => {
+      const state = internals.currentState;
+      if (!state) return;
+      state.llmLastRoute = info.route;
+      state.llmLastModel = info.model || state.llmLastModel;
+      state.llmLastAt = new Date().toISOString();
+    },
     hostBridge: resolveHostEditorBridge(),
     mcpClient,
   });
 
   // 启动主动刷新定时器
-  startTokenRefreshTimer(sessionStore, authClient, internals, creditsClient, customLlmConfigStore, storage);
+  startTokenRefreshTimer(sessionStore, authClient, internals, creditsClient, customLlmConfigStore, llmModeStore, storage);
 
   async function buildBaseState(): Promise<MainPanelState> {
     const channel = resolveRuntimeChannel();
@@ -138,14 +349,14 @@ function createAssistantRuntime(): AssistantRuntime {
     if (existingSession && !hasUsableSession(existingSession) && existingSession.refreshToken) {
       await refreshSessionIfNeeded("startup_restore");
     }
-    await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore);
+    await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
     return state;
   }
 
   async function openIdlePanelState(): Promise<MainPanelState> {
     const restored = await restorePanelState(storage);
     if (restored) {
-      await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore);
+        await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
       if (
         restored.agentRunState === "planning" ||
         restored.agentRunState === "running_tools" ||
@@ -216,17 +427,87 @@ function createAssistantRuntime(): AssistantRuntime {
     const adapter = createEditorAdapter(channel);
     const state = await buildBaseState();
 
-      try {
-        const context = await buildSchematicContext(adapter);
-        const result = await pluginAgent.run({
-          type: "schematic_analysis",
-          userQuery: "collect current schematic context",
-          context,
-          adapter,
-        });
-        if (typeof console !== "undefined") {
-          console.log(`${LOG_PREFIX} analysis.react.trace`, result.executionTraces ?? []);
+    state.agentRunState = "running_tools";
+    state.agentRunRoute = "analysis";
+    state.agentRunDetail = "正在读取原理图并执行分析";
+    state.summary = "正在分析当前原理图...";
+    state.chatMessages = [createPendingAssistantMessage("analysis")];
+    commitState(internals, state, storage);
+
+    let streamCommitTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastStreamCommitAt = 0;
+    const scheduleStreamCommit = (force: boolean) => {
+      if (force) {
+        if (streamCommitTimer) {
+          clearTimeout(streamCommitTimer);
+          streamCommitTimer = null;
         }
+        lastStreamCommitAt = Date.now();
+        commitState(internals, state, storage);
+        return;
+      }
+      const now = Date.now();
+      const elapsed = now - lastStreamCommitAt;
+      if (elapsed >= STREAM_COMMIT_MIN_INTERVAL_MS && !streamCommitTimer) {
+        lastStreamCommitAt = now;
+        commitState(internals, state, storage);
+        return;
+      }
+      if (streamCommitTimer) return;
+      streamCommitTimer = setTimeout(() => {
+        streamCommitTimer = null;
+        lastStreamCommitAt = Date.now();
+        commitState(internals, state, storage);
+      }, Math.max(0, STREAM_COMMIT_MIN_INTERVAL_MS - elapsed));
+    };
+
+    try {
+      const context = await buildSchematicContext(adapter);
+      const result = await pluginAgent.run({
+        type: "schematic_analysis",
+        userQuery: "collect current schematic context",
+        context,
+        adapter,
+        onStreamEvent: (event) => {
+          if (event.route !== "analysis") {
+            return;
+          }
+          const messages = state.chatMessages ?? [];
+          const lastMessage = messages[messages.length - 1];
+          if (!lastMessage || lastMessage.role !== "assistant") {
+            return;
+          }
+          state.agentRunState = event.stage === "llm" ? "waiting_llm" : "running_tools";
+          if (event.detail) {
+            state.agentRunDetail = event.detail;
+          }
+          lastMessage.streaming = true;
+          lastMessage.title = "分析中";
+          if (event.stage === "llm") {
+            if (event.textDelta) {
+              lastMessage.content = `${lastMessage.content || ""}${event.textDelta}`;
+            } else if (event.text !== undefined) {
+              lastMessage.content = event.text || lastMessage.content || "";
+            }
+          } else {
+            // progress 阶段只更新步骤，不写入 content；content 留给最终流式报告。
+            if (event.reactEvents) {
+              lastMessage.reactEvents = event.reactEvents;
+              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+            }
+            if (event.stepStates) {
+              lastMessage.stepStates = event.stepStates;
+            }
+            if (event.workingMemory) {
+              lastMessage.workingMemory = event.workingMemory;
+            }
+          }
+          scheduleStreamCommit(false);
+        },
+      });
+      if (typeof console !== "undefined") {
+        console.log(`${LOG_PREFIX} analysis.react.trace`, result.executionTraces ?? []);
+      }
 
       state.agentRunState = "completed";
       state.agentRunRoute = "analysis";
@@ -265,14 +546,14 @@ function createAssistantRuntime(): AssistantRuntime {
           structuredSuggestions: result.structuredSuggestions,
         });
         
-        if (typeof console !== "undefined") {
-          console.log(`${LOG_PREFIX} buildAnalysisMessages.result`, {
-            hasReactEvents: Boolean(result.reactEvents),
-            reactEventsCount: result.reactEvents?.length ?? 0,
-            messageCount: state.chatMessages?.length ?? 0,
-            lastMessageHasReactEvents: state.chatMessages?.[state.chatMessages.length - 1]?.reactEvents?.length ?? 0,
-          });
-        }
+      if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
+        console.log(`${LOG_PREFIX} buildAnalysisMessages.result`, {
+          hasReactEvents: Boolean(result.reactEvents),
+          reactEventsCount: result.reactEvents?.length ?? 0,
+          messageCount: state.chatMessages?.length ?? 0,
+          lastMessageHasReactEvents: state.chatMessages?.[state.chatMessages.length - 1]?.reactEvents?.length ?? 0,
+        });
+      }
       // 使用详细报告的 overview 作为 summary，而不是简陋的总结
       state.summary = result.analysisReport?.overview ?? buildAnalysisSummary(state, adapter.source);
 
@@ -288,12 +569,16 @@ function createAssistantRuntime(): AssistantRuntime {
       state.agentRunRoute = "analysis";
       state.agentRunDetail = resultError;
       state.summary = `分析未完成：${resultError}（adapter_source=${adapter.source}）`;
-      state.chatMessages = buildErrorChatMessages(state.summary);
+      state.chatMessages = replaceTrailingPendingAssistant(
+        state.chatMessages ?? [],
+        buildErrorChatMessages(state.summary)
+      );
       state.issueItems = [];
       internals.issueItems = [];
     }
 
     state.nextActions = buildNextActions(state);
+    scheduleStreamCommit(true);
     return commitState(internals, state, storage);
   }
 
@@ -301,7 +586,7 @@ function createAssistantRuntime(): AssistantRuntime {
     const refreshed = await refreshSessionIfNeeded("http_401");
     if (refreshed) {
       if (internals.currentState) {
-        await fillSettingsState(internals.currentState, sessionStore, creditsClient, customLlmConfigStore);
+        await fillSettingsState(internals.currentState, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
         internals.currentState.summary = "登录状态已自动刷新。";
         internals.currentState.nextActions = buildNextActions(internals.currentState);
         commitState(internals, internals.currentState, storage);
@@ -489,7 +774,7 @@ function createAssistantRuntime(): AssistantRuntime {
         }
         return internals.currentState ?? computeAnalysisState();
       }
-      if (typeof console !== "undefined") {
+      if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
         console.log(`${LOG_PREFIX} sendChat.start`, {
           promptLength: trimmed.length,
           hasState: Boolean(internals.currentState),
@@ -513,14 +798,15 @@ function createAssistantRuntime(): AssistantRuntime {
           },
           storage
         );
+      const llmMode = await llmModeStore.get();
       const session = await sessionStore.get();
-      if (!session?.accessToken) {
+      if (llmMode === "proxy" && !session?.accessToken) {
         // Avoid waiting for credits syncing before showing the login-required toast.
         // Settings can be refreshed lazily via syncState / settings drawer.
         current.agentRunState = "idle";
         current.agentRunRoute = "chat";
         current.agentRunDetail = "未登录";
-        current.summary = "请先登录后再继续自然聊天";
+        current.summary = "当前 LLM 模式为服务器转发，请先登录后再继续。";
         try {
           await resolveHostEditorBridge()?.showToastMessage?.("请先登录后再发送消息", 2200);
         } catch {
@@ -539,6 +825,10 @@ function createAssistantRuntime(): AssistantRuntime {
       if (!current.sessionTitle || current.sessionTitle === "New Session") {
         current.sessionTitle = buildSessionTitleFromPrompt(trimmed);
       }
+      await compactChatHistoryIfNeeded({
+        state: current,
+        llmClient: unifiedLlmClient,
+      });
       const historyMessages = stripInitialWelcomeMessages(sanitizeChatMessages(current.chatMessages));
       const nextMessages = historyMessages.slice();
       const userMessage = {
@@ -561,7 +851,7 @@ function createAssistantRuntime(): AssistantRuntime {
       current.agentRunState = "planning";
       current.agentRunDetail = "正在规划本轮 agent 执行";
       
-      if (typeof console !== "undefined") {
+      if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
         console.log(`${LOG_PREFIX} sendChat.pending-message-added`, {
           messageCount: nextMessages.length,
           lastMessage: nextMessages[nextMessages.length - 1],
@@ -571,7 +861,7 @@ function createAssistantRuntime(): AssistantRuntime {
       
       commitState(internals, current, storage);
       
-      if (typeof console !== "undefined") {
+      if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
         console.log(`${LOG_PREFIX} sendChat.state-committed`, {
           version: internals.stateVersion,
           willWait: true,
@@ -582,7 +872,7 @@ function createAssistantRuntime(): AssistantRuntime {
       // 增加到 50ms 以确保 iframe 有足够时间处理事件和渲染
       await new Promise(resolve => setTimeout(resolve, 50));
       
-      if (typeof console !== "undefined") {
+      if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
         console.log(`${LOG_PREFIX} sendChat.after-delay`, {
           version: internals.stateVersion,
           proceedingToPlanning: true,
@@ -593,36 +883,51 @@ function createAssistantRuntime(): AssistantRuntime {
       turnIdCounter += 1;
       const turnId = turnIdCounter;
       internals.activeTurnId = turnId;
+
+      let turnCommitTimer: ReturnType<typeof setTimeout> | null = null;
+      let lastTurnCommitAt = 0;
+      const scheduleTurnCommit = (force: boolean) => {
+        if (force) {
+          if (turnCommitTimer) {
+            clearTimeout(turnCommitTimer);
+            turnCommitTimer = null;
+          }
+          lastTurnCommitAt = Date.now();
+          commitState(internals, current, storage);
+          return;
+        }
+        const now = Date.now();
+        const elapsed = now - lastTurnCommitAt;
+        if (elapsed >= STREAM_COMMIT_MIN_INTERVAL_MS && !turnCommitTimer) {
+          lastTurnCommitAt = now;
+          commitState(internals, current, storage);
+          return;
+        }
+        if (turnCommitTimer) return;
+        turnCommitTimer = setTimeout(() => {
+          turnCommitTimer = null;
+          lastTurnCommitAt = Date.now();
+          commitState(internals, current, storage);
+        }, Math.max(0, STREAM_COMMIT_MIN_INTERVAL_MS - elapsed));
+      };
       try {
         const channel = resolveRuntimeChannel();
         const adapter = createEditorAdapter(channel);
-        let plan;
-        try {
-          plan = await pluginAgent.planUserTurn({ userQuery: trimmed });
-        } catch (error) {
-          const plannerMessage = error instanceof Error ? error.message : String(error);
-          if (typeof console !== "undefined") {
-            console.warn(`${LOG_PREFIX} sendChat.plan.fallback`, { error: plannerMessage });
-          }
-          plan = {
-            intent: "chat" as const,
-            route: "chat" as const,
-            requiresContext: false,
-            steps: [{ kind: "llm" as const, required: true, note: "自然对话回复" }],
-          };
-        }
+        const plan = {
+          intent: "chat" as const,
+          route: "chat" as const,
+          // LLM decides whether it needs context via tool calls; runtime still tries to load context best-effort.
+          requiresContext: false,
+          steps: [],
+        };
         let context;
-        if (plan.requiresContext) {
+        try {
           context = await buildSchematicContext(adapter);
-        } else {
-          try {
-            context = await buildSchematicContext(adapter);
-          } catch (error) {
-            if (typeof console !== "undefined") {
-              console.warn(`${LOG_PREFIX} sendChat.context.optional-failed`, {
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
+        } catch (error) {
+          if (typeof console !== "undefined") {
+            console.warn(`${LOG_PREFIX} sendChat.context.optional-failed`, {
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
         current.agentRunState = plan.route === "chat" ? "waiting_llm" : "running_tools";
@@ -633,26 +938,56 @@ function createAssistantRuntime(): AssistantRuntime {
         const messages = current.chatMessages ?? [];
         if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
           const lastMsg = messages[messages.length - 1];
-          lastMsg.content = plan.route === "chat" 
-            ? "正在思考并请求模型回复..." 
-            : plan.route === "draft" 
-              ? "正在规划草案与校验约束..." 
-              : "正在读取原理图并执行分析...";
           lastMsg.streaming = true;
         }
         commitState(internals, current, storage);
-        const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
-          let timer: ReturnType<typeof setTimeout> | undefined;
-          const timeout = new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error(`timeout: ${label}`)), timeoutMs);
+        // Timeout policy:
+        // - Max timeout: hard ceiling for a single turn.
+        // - Idle timeout: only triggers when we receive no onStreamEvent updates for a while.
+        // This prevents long but healthy tool/LLM runs from being cut off by a fixed 90s timer.
+        // Some schematic analyses + tool calls can be slow; allow long turns as long as we keep receiving progress.
+        const TURN_MAX_TIMEOUT_MS = 25 * 60_000;
+        const TURN_IDLE_TIMEOUT_MS = 6 * 60_000;
+        const withActivityTimeout = async <T>(
+          promise: Promise<T>,
+          label: string,
+          onRegisterTouch: (touch: () => void) => void
+        ): Promise<T> => {
+          let hardTimer: ReturnType<typeof setTimeout> | undefined;
+          let idleTimer: ReturnType<typeof setTimeout> | undefined;
+          let idleReject: ((error: Error) => void) | null = null;
+
+          const armIdle = () => {
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+              idleReject?.(new Error(`timeout: ${label} (idle ${TURN_IDLE_TIMEOUT_MS}ms)`));
+            }, TURN_IDLE_TIMEOUT_MS);
+          };
+
+          // The touch fn resets idle timeout; it should be called on each stream/progress event.
+          const touch = () => armIdle();
+          onRegisterTouch(touch);
+
+          const hardTimeout = new Promise<never>((_, reject) => {
+            hardTimer = setTimeout(() => {
+              reject(new Error(`timeout: ${label} (max ${TURN_MAX_TIMEOUT_MS}ms)`));
+            }, TURN_MAX_TIMEOUT_MS);
           });
+
+          const idleTimeout = new Promise<never>((_, reject) => {
+            idleReject = (error) => reject(error);
+            armIdle();
+          });
+
           try {
-            return await Promise.race([promise, timeout]);
+            return await Promise.race([promise, hardTimeout, idleTimeout]);
           } finally {
-            if (timer) clearTimeout(timer);
+            if (hardTimer) clearTimeout(hardTimer);
+            if (idleTimer) clearTimeout(idleTimer);
           }
         };
 
+        let touchTurnActivity: (() => void) | null = null;
         const turnPromise = pluginAgent.handleUserTurn({
           userQuery: trimmed,
           panelState: current,
@@ -661,36 +996,23 @@ function createAssistantRuntime(): AssistantRuntime {
           onStreamEvent: (event) => {
             // Ignore late events from previous turns to prevent UI getting stuck.
             if (internals.activeTurnId !== turnId) return;
+            touchTurnActivity?.();
             const messages = current.chatMessages ?? [];
             const lastMessage = messages[messages.length - 1];
             if (!lastMessage || lastMessage.role !== "assistant") {
               return;
             }
-            if (event.detail) {
-              current.agentRunDetail = event.detail;
+          if (event.detail) {
+            current.agentRunDetail = event.detail;
+          }
+          if (event.stage === "llm") {
+            lastMessage.streaming = true;
+            lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "analysis" ? "分析中" : "处理中";
+            // 执行期 llm 事件只更新思考/步骤，不写入 message.content。
+            // 最终正文统一在 applyTurnResultToState 中落盘，避免主内容区与思考区重复流式渲染。
+            if (event.reasoningDelta) {
+              upsertLlmReasoningEvent(lastMessage, event.reasoningDelta);
             }
-            if (event.stage === "llm") {
-              if (event.textDelta) {
-                lastMessage.content = `${lastMessage.content || ""}${event.textDelta}`;
-                lastMessage.streaming = true;
-              }
-              if (event.text !== undefined) {
-                lastMessage.content = event.text || lastMessage.content || "";
-              }
-            } else if (event.stage === "progress") {
-              lastMessage.streaming = true;
-              lastMessage.title = event.route === "draft" ? "草案生成中" : "分析中";
-              if (event.textDelta) {
-                lastMessage.content = `${lastMessage.content || ""}${event.textDelta}`;
-              } else if (event.text !== undefined) {
-                lastMessage.content = event.text || lastMessage.content || "";
-              } else if (event.detail) {
-                // Do not overwrite streamed report content with status text like "分析完成..."。
-                // Status belongs to header/steps; message.content is reserved for the final report stream.
-                if (!lastMessage.content) {
-                  lastMessage.content = event.detail;
-                }
-              }
             if (event.reactEvents) {
               lastMessage.reactEvents = event.reactEvents;
               lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
@@ -698,16 +1020,33 @@ function createAssistantRuntime(): AssistantRuntime {
             if (event.stepStates) {
               lastMessage.stepStates = event.stepStates;
             }
-              if (event.workingMemory) {
-                lastMessage.workingMemory = event.workingMemory;
-              }
+            if (event.workingMemory) {
+              lastMessage.workingMemory = event.workingMemory;
             }
-            commitState(internals, current, storage);
+          } else if (event.stage === "progress") {
+            lastMessage.streaming = true;
+            lastMessage.title = event.route === "draft" ? "草案生成中" : "分析中";
+            // progress 阶段只更新 header/steps，不写入 message.content，避免污染最终流式报告。
+            if (event.reactEvents) {
+              lastMessage.reactEvents = event.reactEvents;
+              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+            }
+            if (event.stepStates) {
+              lastMessage.stepStates = event.stepStates;
+            }
+            if (event.workingMemory) {
+              lastMessage.workingMemory = event.workingMemory;
+            }
+          }
+            scheduleTurnCommit(false);
           },
         });
 
-        const turn = await withTimeout(turnPromise, 90_000, "handleUserTurn");
-        if (typeof console !== "undefined") {
+        const turn = await withActivityTimeout(turnPromise, "handleUserTurn", (touch) => {
+          touchTurnActivity = touch;
+          touch(); // start idle timer immediately
+        });
+        if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
           console.log(`${LOG_PREFIX} sendChat.plan`, turn.plan);
           console.log(`${LOG_PREFIX} sendChat.intent`, { intent: turn.intent });
           console.log(`${LOG_PREFIX} sendChat.route`, { route: turn.route });
@@ -725,7 +1064,7 @@ function createAssistantRuntime(): AssistantRuntime {
           plan: turn.plan,
           result: turn.result,
         });
-        if (typeof console !== "undefined") {
+        if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
           console.log(`${LOG_PREFIX} sendChat.success`, { 
             route: turn.route,
             agentRunState: finalState.agentRunState,
@@ -733,8 +1072,9 @@ function createAssistantRuntime(): AssistantRuntime {
             messageCount: finalState.chatMessages?.length,
           });
         }
+        scheduleTurnCommit(true);
         const committedState = commitState(internals, finalState, storage);
-        if (typeof console !== "undefined") {
+        if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
           console.log(`${LOG_PREFIX} sendChat.committed`, {
             agentRunState: committedState.agentRunState,
             version: committedState.__stateVersion,
@@ -883,7 +1223,7 @@ function createAssistantRuntime(): AssistantRuntime {
           apiKey: input.apiKey.trim(),
           model: input.model.trim(),
         });
-        await fillSettingsState(state, sessionStore, creditsClient, customLlmConfigStore);
+        await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
         state.summary = "自定义 LLM 配置已保存。";
         state.chatMessages = pluginAgent.buildConfigSavedMessages();
       } catch (error) {
@@ -893,6 +1233,17 @@ function createAssistantRuntime(): AssistantRuntime {
           message: state.summary,
         };
       }
+      state.nextActions = buildNextActions(state);
+      return commitState(internals, state, storage);
+    },
+    setLlmMode: async (input): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await computeAnalysisState());
+      await llmModeStore.set(input.mode);
+      await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
+      state.summary =
+        input.mode === "proxy"
+          ? "已切换为 LLM 服务器转发（需要登录）。"
+          : "已切换为自定义 LLM（无需登录）。";
       state.nextActions = buildNextActions(state);
       return commitState(internals, state, storage);
     },
@@ -1059,6 +1410,7 @@ function createAssistantRuntime(): AssistantRuntime {
           locateStatus: analyzed.locateStatus,
           locateLabel: input.result.locateLabel,
           analysisReport: input.result.analysisReport,
+          analysisMarkdown: input.result.analysisMarkdown,
           libraryInsights: input.result.libraryInsights,
         issueItems: analyzed.issueItems,
         mcpResources: input.result.mcpResources,
@@ -1166,6 +1518,7 @@ function createAssistantRuntime(): AssistantRuntime {
       locateStatus: state.locateStatus,
       locateLabel: result.locateLabel,
       analysisReport: result.analysisReport,
+      analysisMarkdown: result.analysisMarkdown,
       libraryInsights: result.libraryInsights,
       issueItems: state.issueItems,
       mcpResources: result.mcpResources,
@@ -1211,6 +1564,7 @@ function createAssistantRuntime(): AssistantRuntime {
       locateStatus: state.locateStatus,
       locateLabel: result.locateLabel,
       analysisReport: result.analysisReport,
+      analysisMarkdown: result.analysisMarkdown,
       libraryInsights: result.libraryInsights,
       issueItems: state.issueItems,
       mcpResources: result.mcpResources,
@@ -1270,7 +1624,8 @@ function commitState(
     // Ignore assignment failures in constrained runtimes.
   }
   if (storage) {
-    void persistPanelState(storage, nextState);
+    // Persisting on every state delta is expensive; throttle while running.
+    schedulePersistPanelState(storage, nextState, !isRunning);
   }
   try {
     const runtime = globalThis as typeof globalThis & {
@@ -1283,7 +1638,7 @@ function commitState(
   } catch {
     // Ignore frame broadcast failures; state is still committed locally.
   }
-  if (typeof console !== "undefined") {
+  if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
     const running =
       nextState.agentRunState === "planning" ||
       nextState.agentRunState === "running_tools" ||
@@ -1340,12 +1695,22 @@ function createPendingAssistantMessage(route: "chat" | "analysis" | "draft"): No
   return {
     role: "assistant",
     title: route === "chat" ? "助手" : route === "draft" ? "草案生成中" : "分析中",
-    content:
-      route === "chat"
-        ? "正在思考并请求模型回复..."
-        : route === "draft"
-          ? "正在规划草案与校验约束..."
-          : "正在读取原理图并执行分析...",
+    // content 只用于最终流式报告/回复，进度与步骤展示由 reactEvents/stepStates 承载，避免污染最终输出。
+    content: "",
+    reactEvents: [
+      {
+        kind: "thought",
+        label: "思考",
+        status: "running",
+        text:
+          route === "draft"
+            ? "正在规划草案与校验约束..."
+            : route === "analysis"
+              ? "正在读取原理图并准备分析..."
+              : "正在分析用户意图并规划下一步...",
+        stepKind: "llm",
+      },
+    ],
     streaming: true,
   };
 }
@@ -1378,10 +1743,10 @@ function replaceTrailingPendingAssistant(
     const preservedStepStates = last.stepStates;
     const preservedWorkingMemory = last.workingMemory;
     
-    if (typeof console !== "undefined") {
-      console.log(`${LOG_PREFIX} replaceTrailingPendingAssistant.preserve`, {
-        hasReactEvents: Boolean(preservedReactEvents),
-        reactEventsCount: preservedReactEvents?.length ?? 0,
+      if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
+        console.log(`${LOG_PREFIX} replaceTrailingPendingAssistant.preserve`, {
+          hasReactEvents: Boolean(preservedReactEvents),
+          reactEventsCount: preservedReactEvents?.length ?? 0,
         hasStepStates: Boolean(preservedStepStates),
         stepStatesCount: preservedStepStates?.length ?? 0,
       });
@@ -1425,7 +1790,8 @@ async function fillSettingsState(
   sessionStore: PersistentSessionStore,
   authClient: AuthClient,
   creditsClient: CreditsClient,
-  customLlmConfigStore: CustomLlmConfigStore
+  customLlmConfigStore: CustomLlmConfigStore,
+  llmModeStore: LlmModeStore
 ): Promise<void> {
   state.loggedIn = false;
   state.userDisplayName = undefined;
@@ -1519,6 +1885,12 @@ async function fillSettingsState(
   } catch {
     state.customLlmConfig = undefined;
   }
+
+  try {
+    state.llmMode = await llmModeStore.get();
+  } catch {
+    state.llmMode = "custom";
+  }
 }
 
 async function pollLoginSessionUntilDone(
@@ -1548,7 +1920,7 @@ async function pollLoginSessionUntilDone(
         const state = internals.currentState ?? {
           loggedIn: false,
         };
-        await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore);
+        await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
         state.summary = `登录成功，欢迎回来 ${tokenData.user.display_name || tokenData.user.email}。`;
         state.nextActions = buildNextActions(state);
         commitState(internals, state, storage);
@@ -1787,7 +2159,7 @@ async function restorePanelState(storage: LocalStorageKeyValueStore): Promise<Ma
     }
     
     // Log reactEvents status after deserialization
-    if (typeof console !== "undefined") {
+    if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
       console.log(`${LOG_PREFIX} restorePanelState.after-parse`, {
         messageCount: parsed.chatMessages?.length ?? 0,
         reactEventsInMessages: parsed.chatMessages?.map((m, idx) => ({
@@ -1811,7 +2183,7 @@ async function restorePanelState(storage: LocalStorageKeyValueStore): Promise<Ma
 async function persistPanelState(storage: LocalStorageKeyValueStore, state: MainPanelState): Promise<void> {
   try {
     // Log reactEvents status before serialization
-    if (typeof console !== "undefined") {
+    if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
       console.log(`${LOG_PREFIX} persistPanelState.before-serialize`, {
         messageCount: state.chatMessages?.length ?? 0,
         reactEventsInMessages: state.chatMessages?.map((m, idx) => ({
@@ -1832,7 +2204,7 @@ async function persistPanelState(storage: LocalStorageKeyValueStore, state: Main
     };
     
     // Log reactEvents status after creating snapshot
-    if (typeof console !== "undefined") {
+    if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
       console.log(`${LOG_PREFIX} persistPanelState.after-snapshot`, {
         messageCount: snapshot.chatMessages?.length ?? 0,
         reactEventsInMessages: snapshot.chatMessages?.map((m, idx) => ({
@@ -1914,6 +2286,7 @@ function startTokenRefreshTimer(
   internals: RuntimeInternals,
   creditsClient: CreditsClient,
   customLlmConfigStore: CustomLlmConfigStore,
+  llmModeStore: LlmModeStore,
   storage: LocalStorageKeyValueStore
 ): void {
   // 每分钟检查一次
@@ -1956,8 +2329,10 @@ function startTokenRefreshTimer(
             await fillSettingsState(
               internals.currentState,
               sessionStore,
+              authClient,
               creditsClient,
-              customLlmConfigStore
+              customLlmConfigStore,
+              llmModeStore
             );
             commitState(internals, internals.currentState, storage);
           }

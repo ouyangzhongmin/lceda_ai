@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -72,7 +71,6 @@ func (p *OpenAICompatibleProvider) Generate(req domainllm.GenerateRequest) (doma
 	if p.apiKey == "" {
 		return domainllm.CompletionResult{}, errors.New("llm api key is empty")
 	}
-	fmt.Printf("llm.Generate  endpoint:%s, apiKey:%s", p.endpoint, p.apiKey)
 	model := req.Model
 	if model == "" {
 		model = p.defaultModel
@@ -84,6 +82,8 @@ func (p *OpenAICompatibleProvider) Generate(req domainllm.GenerateRequest) (doma
 	reqBody := map[string]any{
 		"model":    model,
 		"messages": mapMessages(req.Messages),
+		"tools":    req.Tools,
+		"tool_choice": req.ToolChoice,
 		"stream":   false,
 	}
 	body, _ := json.Marshal(reqBody)
@@ -98,7 +98,9 @@ func (p *OpenAICompatibleProvider) Generate(req domainllm.GenerateRequest) (doma
 		Model   string `json:"model"`
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content          string      `json:"content"`
+				ReasoningContent string      `json:"reasoning_content"`
+				ToolCalls        interface{} `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
@@ -115,7 +117,8 @@ func (p *OpenAICompatibleProvider) Generate(req domainllm.GenerateRequest) (doma
 
 	return domainllm.CompletionResult{
 		Model:            firstNonEmpty(decoded.Model, model),
-		OutputText:       decoded.Choices[0].Message.Content,
+		OutputText:       firstNonEmpty(decoded.Choices[0].Message.Content, decoded.Choices[0].Message.ReasoningContent),
+		ToolCalls:        decoded.Choices[0].Message.ToolCalls,
 		PromptTokens:     decoded.Usage.PromptTokens,
 		CompletionTokens: decoded.Usage.CompletionTokens,
 	}, nil
@@ -124,6 +127,7 @@ func (p *OpenAICompatibleProvider) Generate(req domainllm.GenerateRequest) (doma
 func (p *OpenAICompatibleProvider) StreamGenerate(
 	req domainllm.GenerateRequest,
 	onDelta func(text string),
+	onReasoningDelta func(text string),
 ) (domainllm.CompletionResult, error) {
 	if p.endpoint == "" {
 		return domainllm.CompletionResult{}, errors.New("llm endpoint is empty")
@@ -143,6 +147,8 @@ func (p *OpenAICompatibleProvider) StreamGenerate(
 	reqBody := map[string]any{
 		"model":    model,
 		"messages": mapMessages(req.Messages),
+		"tools":    req.Tools,
+		"tool_choice": req.ToolChoice,
 		"stream":   true,
 	}
 	body, _ := json.Marshal(reqBody)
@@ -164,6 +170,7 @@ func (p *OpenAICompatibleProvider) StreamGenerate(
 
 	reader := bufio.NewReader(resp.Body)
 	var fullText strings.Builder
+	var reasoningText strings.Builder
 	result := domainllm.CompletionResult{Model: model}
 	for {
 		line, err := reader.ReadString('\n')
@@ -185,8 +192,13 @@ func (p *OpenAICompatibleProvider) StreamGenerate(
 			Model   string `json:"model"`
 			Choices []struct {
 				Delta struct {
-					Content string `json:"content"`
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        interface{} `json:"tool_calls"`
 				} `json:"delta"`
+				Message struct {
+					ToolCalls interface{} `json:"tool_calls"`
+				} `json:"message"`
 			} `json:"choices"`
 			Usage struct {
 				PromptTokens     int `json:"prompt_tokens"`
@@ -200,12 +212,24 @@ func (p *OpenAICompatibleProvider) StreamGenerate(
 			result.Model = chunk.Model
 		}
 		if len(chunk.Choices) > 0 {
+			reasoningDelta := chunk.Choices[0].Delta.ReasoningContent
+			if reasoningDelta != "" {
+				reasoningText.WriteString(reasoningDelta)
+				if onReasoningDelta != nil {
+					onReasoningDelta(reasoningDelta)
+				}
+			}
 			delta := chunk.Choices[0].Delta.Content
 			if delta != "" {
 				fullText.WriteString(delta)
 				if onDelta != nil {
 					onDelta(delta)
 				}
+			}
+			if chunk.Choices[0].Delta.ToolCalls != nil {
+				result.ToolCalls = mergeToolCalls(result.ToolCalls, chunk.Choices[0].Delta.ToolCalls)
+			} else if chunk.Choices[0].Message.ToolCalls != nil {
+				result.ToolCalls = mergeToolCalls(result.ToolCalls, chunk.Choices[0].Message.ToolCalls)
 			}
 		}
 		if chunk.Usage.PromptTokens > 0 {
@@ -215,8 +239,87 @@ func (p *OpenAICompatibleProvider) StreamGenerate(
 			result.CompletionTokens = chunk.Usage.CompletionTokens
 		}
 	}
-	result.OutputText = fullText.String()
+	result.OutputText = firstNonEmpty(fullText.String(), reasoningText.String())
 	return result, nil
+}
+
+func mergeToolCalls(current interface{}, incoming interface{}) interface{} {
+	var currentItems []map[string]interface{}
+	if current != nil {
+		raw, err := json.Marshal(current)
+		if err == nil {
+			_ = json.Unmarshal(raw, &currentItems)
+		}
+	}
+
+	var incomingItems []map[string]interface{}
+	if incoming != nil {
+		raw, err := json.Marshal(incoming)
+		if err == nil {
+			_ = json.Unmarshal(raw, &incomingItems)
+		}
+	}
+	if len(incomingItems) == 0 {
+		return current
+	}
+
+	if len(currentItems) == 0 {
+		currentItems = []map[string]interface{}{}
+	}
+
+	for i, item := range incomingItems {
+		target := i
+		if idx, ok := item["index"].(float64); ok {
+			target = int(idx)
+		}
+		for len(currentItems) <= target {
+			currentItems = append(currentItems, map[string]interface{}{})
+		}
+		prev := currentItems[target]
+		merged := map[string]interface{}{}
+		if v, ok := prev["id"]; ok {
+			merged["id"] = v
+		}
+		if v, ok := prev["type"]; ok {
+			merged["type"] = v
+		}
+		if v, ok := prev["function"].(map[string]interface{}); ok {
+			merged["function"] = map[string]interface{}{
+				"name":      v["name"],
+				"arguments": v["arguments"],
+			}
+		} else {
+			merged["function"] = map[string]interface{}{}
+		}
+		if v, ok := item["id"]; ok {
+			merged["id"] = v
+		}
+		if v, ok := item["type"]; ok {
+			merged["type"] = v
+		}
+		functionValue, _ := merged["function"].(map[string]interface{})
+		if functionValue == nil {
+			functionValue = map[string]interface{}{}
+		}
+		if fn, ok := item["function"].(map[string]interface{}); ok {
+			if name, ok := fn["name"].(string); ok && name != "" {
+				functionValue["name"] = name
+			}
+			if args, ok := fn["arguments"].(string); ok {
+				prevArgs, _ := functionValue["arguments"].(string)
+				functionValue["arguments"] = prevArgs + args
+			}
+		}
+		merged["function"] = functionValue
+		currentItems[target] = merged
+	}
+
+	out := make([]map[string]interface{}, 0, len(currentItems))
+	for _, item := range currentItems {
+		delete(item, "index")
+		out = append(out, item)
+	}
+	return out
 }
 
 func (p *OpenAICompatibleProvider) doWithRetry(method string, url string, body []byte) (*http.Response, error) {
@@ -233,8 +336,15 @@ func (p *OpenAICompatibleProvider) doWithRetry(method string, url string, body [
 			return resp, nil
 		}
 		if err == nil && resp != nil {
+			// Include provider error payload (best-effort, clipped) so callers can debug 4xx failures.
+			payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			_ = resp.Body.Close()
-			lastErr = errors.New("llm request failed: " + resp.Status)
+			detail := strings.TrimSpace(string(payload))
+			if detail != "" {
+				lastErr = errors.New("llm request failed: " + resp.Status + " " + detail)
+			} else {
+				lastErr = errors.New("llm request failed: " + resp.Status)
+			}
 		} else {
 			lastErr = err
 		}
@@ -264,7 +374,9 @@ func (p *DemoProvider) Generate(req domainllm.GenerateRequest) (domainllm.Comple
 	userPrompt := ""
 	for i := len(req.Messages) - 1; i >= 0; i-- {
 		if req.Messages[i].Role == "user" {
-			userPrompt = req.Messages[i].Content
+			if text, ok := req.Messages[i].Content.(string); ok {
+				userPrompt = text
+			}
 			break
 		}
 	}
@@ -280,6 +392,7 @@ func (p *DemoProvider) Generate(req domainllm.GenerateRequest) (domainllm.Comple
 func (p *DemoProvider) StreamGenerate(
 	req domainllm.GenerateRequest,
 	onDelta func(text string),
+	_ func(text string),
 ) (domainllm.CompletionResult, error) {
 	result, err := p.Generate(req)
 	if err != nil {
@@ -336,28 +449,38 @@ func (p *FallbackProvider) Generate(req domainllm.GenerateRequest) (domainllm.Co
 func (p *FallbackProvider) StreamGenerate(
 	req domainllm.GenerateRequest,
 	onDelta func(text string),
+	onReasoningDelta func(text string),
 ) (domainllm.CompletionResult, error) {
 	if p.primary != nil {
-		response, err := p.primary.StreamGenerate(req, onDelta)
+		response, err := p.primary.StreamGenerate(req, onDelta, onReasoningDelta)
 		if err == nil {
 			return response, nil
 		}
 	}
 
 	if p.fallback != nil {
-		return p.fallback.StreamGenerate(req, onDelta)
+		return p.fallback.StreamGenerate(req, onDelta, onReasoningDelta)
 	}
 
 	return domainllm.CompletionResult{}, errors.New("no available llm provider")
 }
 
-func mapMessages(messages []domainllm.Message) []map[string]string {
-	out := make([]map[string]string, 0, len(messages))
+func mapMessages(messages []domainllm.Message) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(messages))
 	for _, message := range messages {
-		out = append(out, map[string]string{
-			"role":    message.Role,
-			"content": message.Content,
-		})
+		payload := map[string]interface{}{
+			"role": message.Role,
+		}
+		if message.Content != nil {
+			payload["content"] = message.Content
+		}
+		if message.ToolCalls != nil {
+			payload["tool_calls"] = message.ToolCalls
+		}
+		if message.ToolCallID != "" {
+			payload["tool_call_id"] = message.ToolCallID
+		}
+		out = append(out, payload)
 	}
 	return out
 }

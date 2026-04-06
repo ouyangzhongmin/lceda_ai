@@ -34,6 +34,7 @@ func (p *fakeProvider) Generate(req domainllm.GenerateRequest) (domainllm.Comple
 func (p *fakeProvider) StreamGenerate(
 	req domainllm.GenerateRequest,
 	onDelta func(text string),
+	_ func(text string),
 ) (domainllm.CompletionResult, error) {
 	if onDelta != nil {
 		onDelta("o")

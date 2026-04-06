@@ -63,7 +63,7 @@ export class MCPClient {
   toTools(): AgentTool[] {
     return [
       {
-        name: "mcp.list_resources",
+        name: "mcp_list_resources",
         description: "List MCP resources available to the plugin agent",
         riskLevel: "low",
         execute: async () => ({
@@ -71,7 +71,7 @@ export class MCPClient {
         }),
       },
       {
-        name: "mcp.read_resource",
+        name: "mcp_read_resource",
         description: "Read a specific MCP resource document by URI",
         riskLevel: "low",
         execute: async (input: { uri: string }) => this.readResource(input.uri),
@@ -84,9 +84,10 @@ export class MCPClient {
       registry.register(tool);
     }
     for (const tool of tools) {
+      const safeName = String(tool.name || "").replace(/[^a-zA-Z0-9_-]+/g, "_");
       const wrapped: AgentTool = {
-        name: `mcp.${tool.name}`,
-        description: tool.description,
+        name: `mcp_${safeName}`,
+        description: tool.description ? `${tool.description} (source=${tool.name})` : `MCP tool (source=${tool.name})`,
         riskLevel: "low",
         execute: async (input: unknown) => tool.execute(input),
       };

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	redisv9 "github.com/redis/go-redis/v9"
 	"lceda_ai/server/internal/app"
 	domainauth "lceda_ai/server/internal/domain/auth"
 	domaincredits "lceda_ai/server/internal/domain/credits"
@@ -29,6 +27,9 @@ import (
 	knowledgeusecase "lceda_ai/server/internal/usecase/knowledge"
 	llmusecase "lceda_ai/server/internal/usecase/llm"
 	ragusecase "lceda_ai/server/internal/usecase/rag"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	redisv9 "github.com/redis/go-redis/v9"
 )
 
 type infra struct {
@@ -247,7 +248,7 @@ func resolveLLMProviders(cfg app.Config) (string, map[string]llmproviders.Provid
 	register("kimi", "Kimi", cfg.LLM.Kimi)
 	register("doubao", "Doubao", cfg.LLM.Doubao)
 	defaultID := cfg.LLM.Provider
-	if defaultID == "openai-compatible" {
+	if defaultID == "openai-compatible" || defaultID == "" {
 		defaultID = "openai"
 	}
 	if _, ok := providers[defaultID]; !ok {

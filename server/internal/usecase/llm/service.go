@@ -98,6 +98,8 @@ func (s *Service) Generate(req GenerateRequest) (CompletionResult, error) {
 		Provider:    providerID,
 		Model:       model,
 		Messages:    req.Messages,
+		Tools:       req.Tools,
+		ToolChoice:  req.ToolChoice,
 	})
 	latency := time.Since(startedAt)
 
@@ -123,6 +125,7 @@ func (s *Service) Generate(req GenerateRequest) (CompletionResult, error) {
 		RequestID:        requestID,
 		Model:            providerResponse.Model,
 		OutputText:       outputText,
+		ToolCalls:        providerResponse.ToolCalls,
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		CostCredits:      estimateCredits(promptTokens, completionTokens),
@@ -180,7 +183,11 @@ func (s *Service) Generate(req GenerateRequest) (CompletionResult, error) {
 	return result, err
 }
 
-func (s *Service) StreamGenerate(req GenerateRequest, onDelta func(text string)) (CompletionResult, error) {
+func (s *Service) StreamGenerate(
+	req GenerateRequest,
+	onDelta func(text string),
+	onReasoningDelta func(text string),
+) (CompletionResult, error) {
 	model := req.Model
 	scene := req.Scene
 	if scene == "" {
@@ -207,7 +214,9 @@ func (s *Service) StreamGenerate(req GenerateRequest, onDelta func(text string))
 		Provider:    providerID,
 		Model:       model,
 		Messages:    req.Messages,
-	}, onDelta)
+		Tools:       req.Tools,
+		ToolChoice:  req.ToolChoice,
+	}, onDelta, onReasoningDelta)
 	latency := time.Since(startedAt)
 
 	status := "success"
@@ -232,6 +241,7 @@ func (s *Service) StreamGenerate(req GenerateRequest, onDelta func(text string))
 		RequestID:        requestID,
 		Model:            providerResponse.Model,
 		OutputText:       outputText,
+		ToolCalls:        providerResponse.ToolCalls,
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		CostCredits:      estimateCredits(promptTokens, completionTokens),

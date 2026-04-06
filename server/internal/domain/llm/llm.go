@@ -3,8 +3,10 @@ package llm
 import "time"
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content,omitempty"`
+	ToolCalls  interface{} `json:"tool_calls,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
 }
 
 type GenerateRequest struct {
@@ -14,12 +16,15 @@ type GenerateRequest struct {
 	Provider    string
 	Model       string
 	Messages    []Message
+	Tools       interface{}
+	ToolChoice  interface{}
 }
 
 type CompletionResult struct {
 	RequestID        string `json:"request_id"`
 	Model            string `json:"model"`
 	OutputText       string `json:"output_text"`
+	ToolCalls        interface{} `json:"tool_calls,omitempty"`
 	PromptTokens     int    `json:"prompt_tokens"`
 	CompletionTokens int    `json:"completion_tokens"`
 	CostCredits      int64  `json:"cost_credits"`
@@ -45,7 +50,11 @@ type RequestLog struct {
 
 type Provider interface {
 	Generate(req GenerateRequest) (CompletionResult, error)
-	StreamGenerate(req GenerateRequest, onDelta func(text string)) (CompletionResult, error)
+	StreamGenerate(
+		req GenerateRequest,
+		onDelta func(text string),
+		onReasoningDelta func(text string),
+	) (CompletionResult, error)
 	Name() string
 }
 

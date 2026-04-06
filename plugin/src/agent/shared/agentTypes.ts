@@ -98,6 +98,7 @@ export interface AgentEvidenceItem {
 
 export interface AgentResult {
   summary: string;
+  analysisMarkdown?: string;
   analysisReport?: {
     schematicInfo?: {
       pageName?: string;
@@ -108,6 +109,20 @@ export interface AgentResult {
       netCount?: number;
       selectionCount?: number;
     };
+    issueGroups?: Array<{
+      severity: "low" | "medium" | "high";
+      title: string;
+      count: number;
+      examples: string[];
+      suggestion?: string;
+    }>;
+    issueSamples?: Array<{
+      severity: "low" | "medium" | "high";
+      title: string;
+      label: string;
+      message: string;
+      suggestion?: string;
+    }>;
     overview: string;
     executiveSummary?: string;
     ercSummary?: string[];
@@ -117,6 +132,7 @@ export interface AgentResult {
     powerPaths?: string[];
     signalPaths?: string[];
     controlPaths?: string[];
+    connectivityChecks?: string[];
     keyComponents?: string[];
     riskGroups?: {
       high: string[];

@@ -2,12 +2,40 @@ import type { SchematicContext } from "../../types/schematic";
 import type { RuleIssue } from "../models/issue";
 
 export function runFloatingPinsCheck(context: SchematicContext): RuleIssue[] {
-  const hasReliableNetMapping = context.nets.some((net) => net.nodeIds.length > 0);
-  if (!hasReliableNetMapping) {
+  const pinById = new Map(context.pins.map((pin) => [pin.id, pin]));
+  let totalNodeIds = 0;
+  let matchedNodeIds = 0;
+  context.nets.forEach((net) => {
+    totalNodeIds += net.nodeIds.length;
+    net.nodeIds.forEach((id) => {
+      if (pinById.has(id)) {
+        matchedNodeIds += 1;
+      }
+    });
+  });
+  const nodeIdMappingReliable = totalNodeIds > 0 && matchedNodeIds / totalNodeIds >= 0.3;
+  const hasNetNameMapping = context.pins.some((pin) => Boolean(String(pin.netName || "").trim()));
+  if (!nodeIdMappingReliable && !hasNetNameMapping) {
     return [];
   }
 
-  const connectedPinIds = new Set(context.nets.flatMap((net) => net.nodeIds));
+  const connectedPinIds = new Set<string>();
+  if (nodeIdMappingReliable) {
+    context.nets.forEach((net) => {
+      net.nodeIds.forEach((id) => {
+        if (pinById.has(id)) {
+          connectedPinIds.add(id);
+        }
+      });
+    });
+  } else {
+    // Fallback: some host adapters don't map net.nodeIds to pin.id, but do provide pin.netName.
+    context.pins.forEach((pin) => {
+      if (String(pin.netName || "").trim()) {
+        connectedPinIds.add(pin.id);
+      }
+    });
+  }
 
   return context.pins
     .filter((pin) => !pin.noConnected && !connectedPinIds.has(pin.id))

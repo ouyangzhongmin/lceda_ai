@@ -6,12 +6,49 @@ import type { ToolRegistry } from "./toolRegistry";
 export function createIssueTools(tools: ToolRegistry): AgentTool[] {
   return [
     {
-      name: "issues.locate_first",
+      name: "issues_locate_first",
       description: "定位第一个可映射到编辑器对象的问题",
+      parameters: {
+        type: "object",
+        properties: {
+          issues: {
+            type: "array",
+            description: "待定位的问题列表，通常来自 rules_run_schematic_checks 的 issues。",
+            items: { type: "object" },
+          },
+        },
+        required: ["issues"],
+        additionalProperties: false,
+      },
       execute: async (input: { issues: RuleIssue[]; context?: SchematicContext }) => {
-        const firstLocatable = input.issues.find(
-          (issue) => issue.objectId && issue.objectType
-        );
+        const severityRank = (value: string | undefined): number =>
+          value === "high" ? 3 : value === "medium" ? 2 : value === "low" ? 1 : 0;
+        const titleRank = (title: string | undefined): number => {
+          const t = String(title || "").trim();
+          if (!t) return 0;
+          // Prefer issues that are concrete and immediately actionable in schematic editing.
+          if (t.includes("短路")) return 100;
+          if (t.includes("电源") && t.includes("冲突")) return 95;
+          if (t.includes("引脚悬空")) return 90;
+          if (t.includes("器件缺少封装")) return 85;
+          if (t.includes("器件缺少数值")) return 80;
+          if (t.includes("按键") && t.includes("上拉")) return 70;
+          if (t.includes("未连接 GPIO")) return 10; // useful, but often less urgent than BOM/PCB blockers
+          return 50;
+        };
+
+        const firstLocatable = (input.issues || [])
+          .filter((issue) => issue && issue.objectId && issue.objectType)
+          .slice()
+          .sort((a, b) => {
+            const sa = severityRank(a.severity);
+            const sb = severityRank(b.severity);
+            if (sb !== sa) return sb - sa;
+            const ta = titleRank(a.title);
+            const tb = titleRank(b.title);
+            if (tb !== ta) return tb - ta;
+            return 0;
+          })[0];
 
         if (!firstLocatable || !firstLocatable.objectId || !firstLocatable.objectType) {
           return {
@@ -20,7 +57,7 @@ export function createIssueTools(tools: ToolRegistry): AgentTool[] {
           };
         }
 
-        await tools.invoke<LocateTarget, void>("editor.locate", {
+        await tools.invoke<LocateTarget, void>("editor_locate", {
           objectId: firstLocatable.objectId,
           objectType: firstLocatable.objectType,
         });
@@ -28,13 +65,13 @@ export function createIssueTools(tools: ToolRegistry): AgentTool[] {
         let objectLabel: string | undefined;
         try {
           const described = await tools.invoke<{ objectId: string; objectType: "component" | "pin" | "net" }, { summary?: string }>(
-            "editor.describe_object",
+            "editor_describe_object",
             {
               objectId: firstLocatable.objectId,
               objectType: firstLocatable.objectType,
             }
           );
-          objectLabel = described.summary;
+          objectLabel = sanitizeDescribeSummary(described.summary);
         } catch {
           // best effort
         }
@@ -97,4 +134,18 @@ function cleanText(value: string | undefined): string | undefined {
   if (text.includes("={Manufacturer Part}")) return undefined;
   if (/^[0-9a-f]{12,}$/i.test(text)) return undefined;
   return text;
+}
+
+function sanitizeDescribeSummary(summary: string | undefined): string | undefined {
+  const raw = String(summary || "").trim();
+  if (!raw) return undefined;
+
+  // Some editor implementations return comma-separated property placeholders
+  // such as "esp32，={Manufacturer Part}，...". Keep the meaningful segments.
+  const parts = raw
+    .split(/[，,]/g)
+    .map((item) => cleanText(item))
+    .filter(Boolean) as string[];
+  const joined = parts.join(" / ").trim();
+  return joined || undefined;
 }

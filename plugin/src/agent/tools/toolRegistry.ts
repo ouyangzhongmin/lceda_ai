@@ -1,6 +1,7 @@
 export interface AgentTool<Input = unknown, Output = unknown> {
   name: string;
   description: string;
+  parameters?: unknown;
   riskLevel?: "low" | "medium" | "high";
   requiresConfirmation?: boolean;
   execute(input: Input): Promise<Output>;

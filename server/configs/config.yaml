@@ -33,7 +33,7 @@ memory:
   enable_fallback: true
 
 llm:
-  provider: "openai"
+  provider: "deepseek"
   amap_api_key: "6aea7e118c9f978bff92d3cadbd9bcd6"
   enable_fallback: false
   request_timeout_ms: 25000
@@ -46,7 +46,7 @@ llm:
   deepseek:
     endpoint: "https://api.deepseek.com/v1"
     apikey: "sk-c3bb8cb8e90140c288a55daa3df6a1e4"
-    model: "deepseek-chat"
+    model: "deepseek-reasoner"
   kimi:
     endpoint: "https://api.moonshot.cn/v1"
     apikey: "sk-HhbltRR7JJiJxJ0rJzJuE4OQTt9tR9N0KOb6JxkMZh9D0o6v"

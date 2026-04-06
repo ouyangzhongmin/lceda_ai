@@ -27,6 +27,7 @@ export interface ReactAgentDeps {
     detail: string;
     textDelta?: string;
     text?: string;
+    reasoningDelta?: string;
     reactEvents: AgentReactEvent[];
     stepStates: AgentStepState[];
     workingMemory: AgentWorkingMemory;

@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     console.log("draft error", agentError ?? "unknown");
     return;
   }
-  const applyPreview = await tools.invoke<{ plan: DraftPlan }, DraftPreview>("editor.preview_apply_plan", {
+  const applyPreview = await tools.invoke<{ plan: DraftPlan }, DraftPreview>("editor_preview_apply_plan", {
     plan: result.draftPlan as DraftPlan,
   });
   const applyResult = await tools.invoke<
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       transactionId?: string;
       rollbackSupported?: boolean;
     }
-  >("editor.apply_plan", {
+  >("editor_apply_plan", {
     plan: result.draftPlan as DraftPlan,
   });
   const rollbackResult =
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
       ? await tools.invoke<
           { transactionId: string },
           { rolledBack: boolean; transactionId: string }
-        >("editor.rollback_apply_plan", {
+        >("editor_rollback_apply_plan", {
           transactionId: applyResult.transactionId,
         })
       : undefined;

@@ -6,59 +6,124 @@ import type { AgentTool } from "./toolRegistry";
 export function createEditorTools(adapter: EditorAdapter): AgentTool[] {
   return [
     {
-      name: "editor.get_current_context",
+      name: "editor_get_current_context",
       description: "读取当前编辑器中的原理图上下文",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
       riskLevel: "low",
       execute: async (): Promise<SchematicContext> => adapter.getCurrentContext(),
     },
     {
-      name: "editor.get_selection",
+      name: "editor_get_selection",
       description: "读取当前编辑器中的选中对象",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
       riskLevel: "low",
       execute: async () => adapter.getSelection(),
     },
     {
-      name: "editor.describe_selection",
+      name: "editor_describe_selection",
       description: "结合上下文描述当前选中的原理图对象",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+        description: "无需参数，直接描述当前选区。",
+      },
       riskLevel: "low",
       execute: async () => describeSelection(await adapter.getCurrentContext(), await adapter.getSelection()),
     },
     {
-      name: "editor.describe_object",
+      name: "editor_describe_object",
       description: "结合当前上下文按对象类型和对象 ID 描述原理图对象",
+      parameters: {
+        type: "object",
+        properties: {
+          objectId: { type: "string", description: "原理图对象 ID" },
+          objectType: { type: "string", enum: ["component", "pin", "net"], description: "对象类型" },
+        },
+        required: ["objectId", "objectType"],
+        additionalProperties: false,
+      },
       riskLevel: "low",
       execute: async (input: { objectId: string; objectType: "component" | "pin" | "net" }) =>
         describeObject(await adapter.getCurrentContext(), input.objectId, input.objectType),
     },
     {
-      name: "editor.find_object",
+      name: "editor_find_object",
       description: "基于当前上下文按位号、引脚名、网络名或对象 ID 查找原理图对象",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "要搜索的位号、引脚名、网络名或问题描述" },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
       riskLevel: "low",
       execute: async (input: { query: string }) => findObject(await adapter.getCurrentContext(), input.query),
     },
     {
-      name: "editor.locate",
+      name: "editor_locate",
       description: "在编辑器中定位指定原理图对象",
+      parameters: {
+        type: "object",
+        properties: {
+          objectId: { type: "string", description: "原理图对象 ID" },
+          objectType: { type: "string", enum: ["component", "pin", "net"], description: "对象类型" },
+        },
+        required: ["objectId", "objectType"],
+        additionalProperties: false,
+      },
       riskLevel: "low",
       execute: async (input: { objectId: string; objectType: "component" | "pin" | "net" }) =>
         adapter.locate(input),
     },
     {
-      name: "editor.preview_apply_plan",
+      name: "editor_preview_apply_plan",
       description: "在编辑器中预览应用草案计划后的结果",
+      parameters: {
+        type: "object",
+        properties: {
+          plan: { type: "object", description: "草案计划。若省略，宿主会复用最近生成的 draft plan。" },
+        },
+        additionalProperties: true,
+      },
       riskLevel: "medium",
       execute: async (input: { plan: DraftPlan }) => adapter.previewApplyPlan(input.plan),
     },
     {
-      name: "editor.apply_plan",
+      name: "editor_apply_plan",
       description: "将确认后的草案计划应用到编辑器中",
+      parameters: {
+        type: "object",
+        properties: {
+          plan: { type: "object", description: "已确认的草案计划" },
+        },
+        required: ["plan"],
+        additionalProperties: false,
+      },
       riskLevel: "high",
       requiresConfirmation: true,
       execute: async (input: { plan: DraftPlan }) => adapter.applyPlan(input.plan),
     },
     {
-      name: "editor.rollback_apply_plan",
+      name: "editor_rollback_apply_plan",
       description: "按事务 ID 回滚之前的 apply_plan 操作",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "string", description: "事务 ID" },
+        },
+        required: ["transactionId"],
+        additionalProperties: false,
+      },
       riskLevel: "high",
       requiresConfirmation: true,
       execute: async (input: { transactionId: string }) => adapter.rollbackApplyPlan(input.transactionId),

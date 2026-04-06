@@ -269,6 +269,9 @@ function normalizeSchematicContext(raw: unknown, channel: PluginChannel): Schema
     return undefined;
   }
 
+  // Some hosts provide net names on pins but omit/obfuscate net.nodeIds. Rehydrate nodeIds from pin.netName.
+  rehydrateNetNodeIds(normalizedNets, normalizedPins);
+
   return {
     project: {
       channel,
@@ -281,6 +284,62 @@ function normalizeSchematicContext(raw: unknown, channel: PluginChannel): Schema
     nets: normalizedNets,
     selection,
   };
+}
+
+function rehydrateNetNodeIds(
+  nets: SchematicContext["nets"],
+  pins: SchematicContext["pins"]
+): void {
+  if (!nets.length || !pins.length) return;
+
+  const pinById = new Map(pins.map((pin) => [pin.id, pin]));
+  const pinIdsByNetName = new Map<string, Set<string>>();
+  for (const pin of pins) {
+    const name = String(pin.netName || "").trim();
+    if (!name) continue;
+    const bucket = pinIdsByNetName.get(name) ?? new Set<string>();
+    bucket.add(pin.id);
+    pinIdsByNetName.set(name, bucket);
+  }
+  if (pinIdsByNetName.size === 0) return;
+
+  let totalNodeIds = 0;
+  let matchedNodeIds = 0;
+  for (const net of nets) {
+    totalNodeIds += net.nodeIds.length;
+    for (const id of net.nodeIds) {
+      if (pinById.has(id)) matchedNodeIds += 1;
+    }
+  }
+  const mappingWeak = totalNodeIds === 0 || matchedNodeIds / Math.max(1, totalNodeIds) < 0.3;
+  if (!mappingWeak) return;
+
+  for (const net of nets) {
+    const nameFromNet = String(net.name || "").trim();
+    const nameFromId = String(net.id || "").trim();
+    const candidateNames = [nameFromNet, nameFromId].filter(Boolean);
+    if (candidateNames.length === 0) continue;
+
+    // Pick the name that matches the most pins.
+    let best: string | undefined;
+    let bestCount = 0;
+    for (const candidate of candidateNames) {
+      const count = (pinIdsByNetName.get(candidate)?.size ?? 0);
+      if (count > bestCount) {
+        best = candidate;
+        bestCount = count;
+      }
+    }
+    if (!best || bestCount === 0) continue;
+    const nodeIds = Array.from(pinIdsByNetName.get(best) ?? []);
+    if (nodeIds.length === 0) continue;
+
+    const shouldReplace =
+      net.nodeIds.length === 0 || net.nodeIds.every((id) => !pinById.has(id));
+    if (shouldReplace) {
+      net.nodeIds = nodeIds;
+    }
+  }
 }
 
 function buildCapabilityReport(
@@ -326,12 +385,17 @@ function normalizePin(item: unknown, index: number): SchematicContext["pins"][nu
   const id = readString(value, ["id", "uuid", "uid", "gId", "gid"]) ?? `pin_auto_${index}`;
   const componentId =
     readString(value, ["componentId", "component_id", "ownerId", "symbolId"]) ?? "cmp_unknown";
+  const properties = normalizeProperties(value.properties);
   return {
     id,
     componentId,
     pinNumber: readString(value, ["pinNumber", "num", "number"]),
     pinName: readString(value, ["pinName", "name", "label"]),
     electricalType: readString(value, ["electricalType", "type"]),
+    noConnected: readBoolean(value, ["noConnected", "no_connect", "nc"]) ?? false,
+    netName:
+      readString(value, ["netName", "net", "Net", "NET", "网络"]) ??
+      readString(properties as unknown as Record<string, unknown>, ["Net", "NET", "net", "网络"]),
   };
 }
 

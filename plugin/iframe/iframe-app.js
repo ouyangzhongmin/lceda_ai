@@ -2126,16 +2126,16 @@ var edaEsbuildExportName = (() => {
       name: "natural-chat-skill",
       description: "Handle natural conversation and requirement clarification",
       allowedTools: [
-        "llm.generate",
-        "editor.get_current_context",
-        "editor.get_selection",
-        "editor.describe_selection",
-        "editor.describe_object",
-        "editor.find_object",
-        "rag.search",
-        "rag.build_citations",
-        "library.search_devices",
-        "library.get_device"
+        "llm_generate",
+        "editor_get_current_context",
+        "editor_get_selection",
+        "editor_describe_selection",
+        "editor_describe_object",
+        "editor_find_object",
+        "rag_search",
+        "rag_build_citations",
+        "library_search_devices",
+        "library_get_device"
       ],
       outputMode: "chat_result",
       promptKey: "chat"
@@ -2144,24 +2144,24 @@ var edaEsbuildExportName = (() => {
       name: "schematic-analysis-skill",
       description: "Analyze schematic issues with evidence",
       allowedTools: [
-        "editor.get_current_context",
-        "schematic.summarize_bom",
-        "schematic.identify_key_components",
-        "schematic.identify_functional_blocks",
-        "schematic.identify_power_domains",
-        "schematic.summarize_connectivity",
-        "schematic.trace_power_paths",
-        "schematic.trace_signal_paths",
-        "schematic.trace_control_paths",
-        "rules.run_schematic_checks",
-        "issues.locate_first",
-        "library.search_devices",
-        "library.get_device",
-        "mcp.list_resources",
-        "mcp.read_resource",
-        "rag.search",
-        "rag.build_citations",
-        "llm.generate"
+        "editor_get_current_context",
+        "schematic_summarize_bom",
+        "schematic_identify_key_components",
+        "schematic_identify_functional_blocks",
+        "schematic_identify_power_domains",
+        "schematic_summarize_connectivity",
+        "schematic_trace_power_paths",
+        "schematic_trace_signal_paths",
+        "schematic_trace_control_paths",
+        "rules_run_schematic_checks",
+        "issues_locate_first",
+        "library_search_devices",
+        "library_get_device",
+        "mcp_list_resources",
+        "mcp_read_resource",
+        "rag_search",
+        "rag_build_citations",
+        "llm_generate"
       ],
       outputMode: "analysis_result",
       promptKey: "analysis"
@@ -2169,14 +2169,14 @@ var edaEsbuildExportName = (() => {
     "component-explain-skill": {
       name: "component-explain-skill",
       description: "Explain selected components with RAG evidence",
-      allowedTools: ["editor.get_selection", "mcp.list_resources", "mcp.read_resource", "rag.search", "rag.build_citations", "llm.generate"],
+      allowedTools: ["editor_get_selection", "mcp_list_resources", "mcp_read_resource", "rag_search", "rag_build_citations", "llm_generate"],
       outputMode: "analysis_result",
       promptKey: "analysis"
     },
     "wiring-standards-check-skill": {
       name: "wiring-standards-check-skill",
       description: "Run wiring standards checks and explain risks",
-      allowedTools: ["editor.get_current_context", "rules.run_schematic_checks", "issues.locate_first", "mcp.list_resources", "mcp.read_resource", "rag.search"],
+      allowedTools: ["editor_get_current_context", "rules_run_schematic_checks", "issues_locate_first", "mcp_list_resources", "mcp_read_resource", "rag_search"],
       outputMode: "analysis_result",
       promptKey: "analysis"
     },
@@ -2184,19 +2184,19 @@ var edaEsbuildExportName = (() => {
       name: "power-module-draft-skill",
       description: "Generate power-related draft with citations and validation",
       allowedTools: [
-        "editor.get_current_context",
-        "rag.search",
-        "rag.build_citations",
-        "llm.generate",
-        "mcp.list_resources",
-        "mcp.read_resource",
-        "library.search_devices",
-        "library.get_device",
-        "library.get_devices_by_lcsc_ids",
-        "draft.generate_plan",
-        "draft.preview_plan",
-        "rules.validate_draft",
-        "editor.preview_apply_plan"
+        "editor_get_current_context",
+        "rag_search",
+        "rag_build_citations",
+        "llm_generate",
+        "mcp_list_resources",
+        "mcp_read_resource",
+        "library_search_devices",
+        "library_get_device",
+        "library_get_devices_by_lcsc_ids",
+        "draft_generate_plan",
+        "draft_preview_plan",
+        "rules_validate_draft",
+        "editor_preview_apply_plan"
       ],
       outputMode: "draft_result",
       promptKey: "draft"
@@ -2205,16 +2205,16 @@ var edaEsbuildExportName = (() => {
       name: "generic-schematic-draft-skill",
       description: "Generate generic schematic draft and validate before apply",
       allowedTools: [
-        "editor.get_current_context",
-        "mcp.list_resources",
-        "mcp.read_resource",
-        "library.search_devices",
-        "library.get_device",
-        "library.get_devices_by_lcsc_ids",
-        "draft.generate_plan",
-        "draft.preview_plan",
-        "rules.validate_draft",
-        "editor.preview_apply_plan"
+        "editor_get_current_context",
+        "mcp_list_resources",
+        "mcp_read_resource",
+        "library_search_devices",
+        "library_get_device",
+        "library_get_devices_by_lcsc_ids",
+        "draft_generate_plan",
+        "draft_preview_plan",
+        "rules_validate_draft",
+        "editor_preview_apply_plan"
       ],
       outputMode: "draft_result",
       promptKey: "draft"
@@ -2270,56 +2270,56 @@ var edaEsbuildExportName = (() => {
   function createEditorTools(adapter) {
     return [
       {
-        name: "editor.get_current_context",
+        name: "editor_get_current_context",
         description: "Read the current schematic context from editor",
         riskLevel: "low",
         execute: async () => adapter.getCurrentContext()
       },
       {
-        name: "editor.get_selection",
+        name: "editor_get_selection",
         description: "Read the current selection from editor",
         riskLevel: "low",
         execute: async () => adapter.getSelection()
       },
       {
-        name: "editor.describe_selection",
+        name: "editor_describe_selection",
         description: "Describe the currently selected schematic objects with contextual details",
         riskLevel: "low",
         execute: async () => describeSelection(await adapter.getCurrentContext(), await adapter.getSelection())
       },
       {
-        name: "editor.describe_object",
+        name: "editor_describe_object",
         description: "Describe a schematic object by objectId and objectType using current context",
         riskLevel: "low",
         execute: async (input) => describeObject(await adapter.getCurrentContext(), input.objectId, input.objectType)
       },
       {
-        name: "editor.find_object",
+        name: "editor_find_object",
         description: "Find a schematic object by ref, pin label, net name, or object id using current context",
         riskLevel: "low",
         execute: async (input) => findObject(await adapter.getCurrentContext(), input.query)
       },
       {
-        name: "editor.locate",
+        name: "editor_locate",
         description: "Locate a schematic object in editor",
         riskLevel: "low",
         execute: async (input) => adapter.locate(input)
       },
       {
-        name: "editor.preview_apply_plan",
+        name: "editor_preview_apply_plan",
         description: "Preview the result of applying a draft plan into the editor",
         riskLevel: "medium",
         execute: async (input) => adapter.previewApplyPlan(input.plan)
       },
       {
-        name: "editor.apply_plan",
+        name: "editor_apply_plan",
         description: "Apply a confirmed draft plan into the editor",
         riskLevel: "high",
         requiresConfirmation: true,
         execute: async (input) => adapter.applyPlan(input.plan)
       },
       {
-        name: "editor.rollback_apply_plan",
+        name: "editor_rollback_apply_plan",
         description: "Rollback a previous apply_plan transaction by transactionId",
         riskLevel: "high",
         requiresConfirmation: true,
@@ -2522,7 +2522,7 @@ var edaEsbuildExportName = (() => {
   function createIssueTools(tools) {
     return [
       {
-        name: "issues.locate_first",
+        name: "issues_locate_first",
         description: "Locate the first issue that can be mapped to an editor object",
         execute: async (input) => {
           const firstLocatable = input.issues.find(
@@ -2534,7 +2534,7 @@ var edaEsbuildExportName = (() => {
               issueId: void 0
             };
           }
-          await tools.invoke("editor.locate", {
+          await tools.invoke("editor_locate", {
             objectId: firstLocatable.objectId,
             objectType: firstLocatable.objectType
           });
@@ -2553,7 +2553,7 @@ var edaEsbuildExportName = (() => {
   function createLibraryTools(bridge) {
     return [
       {
-        name: "library.search_devices",
+        name: "library_search_devices",
         description: "Search component devices from JLCEDA professional integrated libraries",
         riskLevel: "low",
         execute: async (input) => {
@@ -2564,7 +2564,7 @@ var edaEsbuildExportName = (() => {
         }
       },
       {
-        name: "library.get_device",
+        name: "library_get_device",
         description: "Get detailed component device info from JLCEDA professional integrated libraries",
         riskLevel: "low",
         execute: async (input) => {
@@ -2575,7 +2575,7 @@ var edaEsbuildExportName = (() => {
         }
       },
       {
-        name: "library.get_devices_by_lcsc_ids",
+        name: "library_get_devices_by_lcsc_ids",
         description: "Find component devices by LCSC ids from JLCEDA professional integrated libraries",
         riskLevel: "low",
         execute: async (input) => {
@@ -2744,14 +2744,14 @@ var edaEsbuildExportName = (() => {
   function createDraftTools() {
     return [
       {
-        name: "draft.generate_plan",
+        name: "draft_generate_plan",
         description: "Generate a minimal schematic draft plan from the user's prompt",
         execute: async (input) => generateDraftPlanFromPrompt(input.userQuery, {
           selectedDevices: input.selectedDevices
         })
       },
       {
-        name: "draft.preview_plan",
+        name: "draft_preview_plan",
         description: "Build a preview summary from a draft plan",
         execute: async (input) => previewDraftPlan(input.plan)
       }
@@ -3050,13 +3050,13 @@ var edaEsbuildExportName = (() => {
   function createRuleTools() {
     return [
       {
-        name: "rules.run_schematic_checks",
+        name: "rules_run_schematic_checks",
         description: "Run local schematic rule checks for wiring and attribute issues",
         riskLevel: "low",
         execute: async (input) => runSchematicChecks(input.context)
       },
       {
-        name: "rules.validate_draft",
+        name: "rules_validate_draft",
         description: "Validate a generated schematic draft before apply",
         riskLevel: "high",
         execute: async (input) => validateDraft(input.draft)
@@ -3068,49 +3068,49 @@ var edaEsbuildExportName = (() => {
   function createSchematicSummaryTools() {
     return [
       {
-        name: "schematic.summarize_bom",
+        name: "schematic_summarize_bom",
         description: "Summarize schematic BOM categories from current context",
         riskLevel: "low",
         execute: async (input) => summarizeBom(input.context)
       },
       {
-        name: "schematic.identify_key_components",
+        name: "schematic_identify_key_components",
         description: "Identify key components such as MCU, power IC, interface IC, and sensor",
         riskLevel: "low",
         execute: async (input) => identifyKeyComponentsSummary(input.context)
       },
       {
-        name: "schematic.identify_functional_blocks",
+        name: "schematic_identify_functional_blocks",
         description: "Identify functional blocks and representative evidence from schematic context",
         riskLevel: "low",
         execute: async (input) => identifyFunctionalBlocksSummary(input.context)
       },
       {
-        name: "schematic.identify_power_domains",
+        name: "schematic_identify_power_domains",
         description: "Identify major power domains and attached components from schematic context",
         riskLevel: "low",
         execute: async (input) => identifyPowerDomainsSummary(input.context)
       },
       {
-        name: "schematic.summarize_connectivity",
+        name: "schematic_summarize_connectivity",
         description: "Summarize connectivity and network distribution of the whole schematic",
         riskLevel: "low",
         execute: async (input) => summarizeConnectivity(input.context)
       },
       {
-        name: "schematic.trace_power_paths",
+        name: "schematic_trace_power_paths",
         description: "Trace major power paths from power nets to critical components",
         riskLevel: "low",
         execute: async (input) => tracePowerPaths(input.context)
       },
       {
-        name: "schematic.trace_signal_paths",
+        name: "schematic_trace_signal_paths",
         description: "Trace representative signal paths for key functional blocks",
         riskLevel: "low",
         execute: async (input) => traceSignalPaths(input.context)
       },
       {
-        name: "schematic.trace_control_paths",
+        name: "schematic_trace_control_paths",
         description: "Trace controller-centric paths from main MCU/SoC to major peripherals",
         riskLevel: "low",
         execute: async (input) => traceControlPaths(input.context)
@@ -3441,17 +3441,17 @@ var edaEsbuildExportName = (() => {
   function createServerTools(ragClient, llmClient, sessionStore) {
     return [
       {
-        name: "rag.search",
+        name: "rag_search",
         description: "Search knowledge evidence from the Go server",
         execute: async (input) => ragClient.search(input.query, input.topK ?? 3)
       },
       {
-        name: "rag.build_citations",
+        name: "rag_build_citations",
         description: "Build a standard citation package from the Go server",
         execute: async (input) => ragClient.buildCitations(input.query, input.topK ?? 3)
       },
       {
-        name: "llm.generate",
+        name: "llm_generate",
         description: "Generate an AI answer from the Go server LLM proxy",
         execute: async (input) => {
           const session = await sessionStore.get();
@@ -3637,78 +3637,78 @@ ${mcpHints.join("\n")}` : "",
       llm: pushTask(state, "llm", "\u6574\u7406\u68C0\u67E5\u7ED3\u679C\u5E76\u751F\u6210\u95EE\u9898\u62A5\u544A")
     };
     emitProgress(deps, state, "\u5F00\u59CB\u5206\u6790\u539F\u7406\u56FE");
-    if (canUse(deps, "schematic.summarize_bom") || canUse(deps, "schematic.identify_key_components") || canUse(deps, "schematic.identify_functional_blocks") || canUse(deps, "schematic.identify_power_domains") || canUse(deps, "schematic.summarize_connectivity") || canUse(deps, "schematic.trace_power_paths") || canUse(deps, "schematic.trace_signal_paths") || canUse(deps, "schematic.trace_control_paths")) {
+    if (canUse(deps, "schematic_summarize_bom") || canUse(deps, "schematic_identify_key_components") || canUse(deps, "schematic_identify_functional_blocks") || canUse(deps, "schematic_identify_power_domains") || canUse(deps, "schematic_summarize_connectivity") || canUse(deps, "schematic_trace_power_paths") || canUse(deps, "schematic_trace_signal_paths") || canUse(deps, "schematic_trace_control_paths")) {
       updateTask(state, tasks.mcp, "running");
       thought(state, "Overview", "\u5148\u6309\u5668\u4EF6\u5206\u7C7B\u3001\u5173\u952E\u5668\u4EF6\u3001\u529F\u80FD\u6A21\u5757\u548C\u7535\u6E90\u57DF\u62C6\u5206\u63D0\u53D6\u6574\u56FE\u89C2\u6D4B\u8BC1\u636E\u3002", "mcp");
       emitProgress(deps, state, "\u6B63\u5728\u63D0\u53D6\u6574\u56FE\u7406\u89E3\u4E0E\u77E5\u8BC6\u8BC1\u636E");
-      if (canUse(deps, "schematic.summarize_bom")) {
+      if (canUse(deps, "schematic_summarize_bom")) {
         bomSummary = await invokeObserved(
           deps,
           state,
-          "schematic.summarize_bom",
+          "schematic_summarize_bom",
           { context: liveContext },
           "\u63D0\u53D6 BOM \u5206\u7C7B\u6982\u89C8"
         );
       }
-      if (canUse(deps, "schematic.identify_key_components")) {
+      if (canUse(deps, "schematic_identify_key_components")) {
         keyComponentsSummary = await invokeObserved(
           deps,
           state,
-          "schematic.identify_key_components",
+          "schematic_identify_key_components",
           { context: liveContext },
           "\u8BC6\u522B\u5173\u952E\u5668\u4EF6"
         );
       }
-      if (canUse(deps, "schematic.identify_functional_blocks")) {
+      if (canUse(deps, "schematic_identify_functional_blocks")) {
         functionalBlocksSummary = await invokeObserved(
           deps,
           state,
-          "schematic.identify_functional_blocks",
+          "schematic_identify_functional_blocks",
           { context: liveContext },
           "\u8BC6\u522B\u529F\u80FD\u6A21\u5757"
         );
       }
-      if (canUse(deps, "schematic.identify_power_domains")) {
+      if (canUse(deps, "schematic_identify_power_domains")) {
         powerDomainsSummary = await invokeObserved(
           deps,
           state,
-          "schematic.identify_power_domains",
+          "schematic_identify_power_domains",
           { context: liveContext },
           "\u8BC6\u522B\u7535\u6E90\u57DF"
         );
       }
-      if (canUse(deps, "schematic.summarize_connectivity")) {
+      if (canUse(deps, "schematic_summarize_connectivity")) {
         connectivitySummary = await invokeObserved(
           deps,
           state,
-          "schematic.summarize_connectivity",
+          "schematic_summarize_connectivity",
           { context: liveContext },
           "\u63D0\u53D6\u8FDE\u63A5\u6027\u6458\u8981"
         );
       }
-      if (canUse(deps, "schematic.trace_power_paths")) {
+      if (canUse(deps, "schematic_trace_power_paths")) {
         powerPathSummary = await invokeObserved(
           deps,
           state,
-          "schematic.trace_power_paths",
+          "schematic_trace_power_paths",
           { context: liveContext },
           "\u8FFD\u8E2A\u5173\u952E\u7535\u6E90\u8DEF\u5F84"
         );
       }
-      if (canUse(deps, "schematic.trace_signal_paths")) {
+      if (canUse(deps, "schematic_trace_signal_paths")) {
         signalPathSummary = await invokeObserved(
           deps,
           state,
-          "schematic.trace_signal_paths",
+          "schematic_trace_signal_paths",
           { context: liveContext },
           "\u8FFD\u8E2A\u4E3B\u8981\u4FE1\u53F7\u8DEF\u5F84"
         );
       }
-      if (canUse(deps, "schematic.trace_control_paths")) {
+      if (canUse(deps, "schematic_trace_control_paths")) {
         controlPathSummary = await invokeObserved(
           deps,
           state,
-          "schematic.trace_control_paths",
+          "schematic_trace_control_paths",
           { context: liveContext },
           "\u8FFD\u8E2A\u4E3B\u63A7\u4E2D\u5FC3\u94FE\u8DEF"
         );
@@ -3737,19 +3737,19 @@ ${mcpHints.join("\n")}` : "",
       updateTask(state, tasks.mcp, "done", "\u6574\u56FE\u6458\u8981\u5DF2\u5C31\u7EEA");
       emitProgress(deps, state, "\u6574\u56FE\u7406\u89E3\u4E0E\u77E5\u8BC6\u8BC1\u636E\u5DF2\u5C31\u7EEA");
     }
-    if (canUse(deps, "mcp.list_resources")) {
+    if (canUse(deps, "mcp_list_resources")) {
       thought(state, "Knowledge", "\u5148\u8BFB\u53D6\u5DE5\u7A0B\u77E5\u8BC6\u548C\u89C4\u8303\u6458\u8981\uFF0C\u907F\u514D\u53EA\u770B\u5C40\u90E8\u8FDE\u63A5\u3002", "mcp");
-      const resources = await invokeObserved(deps, state, "mcp.list_resources", void 0, "\u5217\u51FA\u77E5\u8BC6\u8D44\u6E90");
+      const resources = await invokeObserved(deps, state, "mcp_list_resources", void 0, "\u5217\u51FA\u77E5\u8BC6\u8D44\u6E90");
       resources.resources.forEach((item) => mcpResources.push(item));
       markStep(state, "mcp", mcpResources.length > 0 ? "done" : "skipped", `\u77E5\u8BC6\u8D44\u6E90 ${mcpResources.length} \u6761`);
       state.workingMemory.mcpReady = mcpResources.length > 0;
-      if (canUse(deps, "mcp.read_resource")) {
+      if (canUse(deps, "mcp_read_resource")) {
         for (const resource of mcpResources.slice(0, 2)) {
           try {
             const read = await invokeObserved(
               deps,
               state,
-              "mcp.read_resource",
+              "mcp_read_resource",
               { uri: resource.uri },
               `\u8BFB\u53D6\u77E5\u8BC6\u8D44\u6E90 ${resource.uri}`
             );
@@ -3766,11 +3766,11 @@ ${mcpHints.join("\n")}` : "",
     updateTask(state, tasks.context, "running");
     thought(state, "Context", "\u540C\u6B65\u7F16\u8F91\u5668\u91CC\u7684\u6700\u65B0\u539F\u7406\u56FE\u4E0A\u4E0B\u6587\uFF0C\u786E\u4FDD\u68C0\u67E5\u57FA\u4E8E\u5F53\u524D\u753B\u5E03\u3002", "context");
     emitProgress(deps, state, "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587");
-    if (canUse(deps, "editor.get_current_context")) {
+    if (canUse(deps, "editor_get_current_context")) {
       liveContext = await invokeObserved(
         deps,
         state,
-        "editor.get_current_context",
+        "editor_get_current_context",
         void 0,
         "\u83B7\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587"
       );
@@ -3786,18 +3786,18 @@ ${mcpHints.join("\n")}` : "",
     checkResult = await invokeObserved(
       deps,
       state,
-      "rules.run_schematic_checks",
+      "rules_run_schematic_checks",
       { context: liveContext },
       "\u6267\u884C\u539F\u7406\u56FE\u89C4\u5219\u68C0\u67E5"
     );
     state.workingMemory.rulesReady = true;
     state.workingMemory.lastObservation = checkResult?.summary || `\u53D1\u73B0 ${checkResult?.issues.length ?? 0} \u4E2A\u95EE\u9898`;
-    if (checkResult && checkResult.issues.length > 0 && canUse(deps, "issues.locate_first")) {
+    if (checkResult && checkResult.issues.length > 0 && canUse(deps, "issues_locate_first")) {
       thought(state, "Locate", `\u5DF2\u53D1\u73B0 ${checkResult.issues.length} \u4E2A\u95EE\u9898\uFF0C\u7EE7\u7EED\u5B9A\u4F4D\u9996\u4E2A\u53EF\u64CD\u4F5C\u95EE\u9898\u3002`, "rules");
       locateResult = await invokeObserved(
         deps,
         state,
-        "issues.locate_first",
+        "issues_locate_first",
         { issues: checkResult.issues },
         "\u5B9A\u4F4D\u9996\u4E2A\u95EE\u9898\u5BF9\u8C61"
       );
@@ -3819,7 +3819,7 @@ ${mcpHints.join("\n")}` : "",
       "done",
       `\u89C4\u5219\u68C0\u67E5\u5B8C\u6210\uFF0C\u95EE\u9898 ${checkResult?.issues.length ?? 0} \u4E2A${locateResult?.located ? "\uFF0C\u5DF2\u5B9A\u4F4D\u9996\u4E2A\u95EE\u9898" : ""}`
     );
-    if (canUse(deps, "library.search_devices")) {
+    if (canUse(deps, "library_search_devices")) {
       updateTask(state, tasks.library, "running");
       thought(state, "Library", "\u56F4\u7ED5\u547D\u4E2D\u7684\u9AD8\u98CE\u9669\u5668\u4EF6\u8865\u5145\u5143\u4EF6\u5E93\u4E8B\u5B9E\uFF0C\u907F\u514D\u53EA\u51ED\u89C4\u5219\u6458\u8981\u4E0B\u5224\u65AD\u3002", "library");
       emitProgress(deps, state, "\u6B63\u5728\u8865\u5145\u5668\u4EF6\u5E93\u4E0E\u5C01\u88C5\u4FE1\u606F");
@@ -3829,7 +3829,7 @@ ${mcpHints.join("\n")}` : "",
           const results = await invokeObserved(
             deps,
             state,
-            "library.search_devices",
+            "library_search_devices",
             { query, scope: "system", pageSize: 8, page: 1 },
             `\u67E5\u8BE2\u5143\u4EF6\u5E93\uFF1A${query}`
           );
@@ -3838,12 +3838,12 @@ ${mcpHints.join("\n")}` : "",
           }
           const top = results[0];
           let summary = [top.name, top.manufacturer, top.footprintName ? `\u5C01\u88C5 ${top.footprintName}` : ""].filter(Boolean).join("\uFF0C");
-          if (canUse(deps, "library.get_device") && top.uuid) {
+          if (canUse(deps, "library_get_device") && top.uuid) {
             try {
               const detail = await invokeObserved(
                 deps,
                 state,
-                "library.get_device",
+                "library_get_device",
                 { deviceUuid: top.uuid, libraryUuid: top.libraryUuid, scope: "system" },
                 `\u8BFB\u53D6\u5668\u4EF6\u8BE6\u60C5\uFF1A${top.name}`
               );
@@ -3882,14 +3882,14 @@ ${mcpHints.join("\n")}` : "",
       updateTask(state, tasks.library, "skipped", "\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B\u5143\u4EF6\u641C\u7D22\u80FD\u529B");
       markStep(state, "library", "skipped", "\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B\u5143\u4EF6\u641C\u7D22\u80FD\u529B");
     }
-    updateTask(state, tasks.llm, canUse(deps, "llm.generate") ? "running" : "skipped");
-    if (canUse(deps, "llm.generate")) {
+    updateTask(state, tasks.llm, canUse(deps, "llm_generate") ? "running" : "skipped");
+    if (canUse(deps, "llm_generate")) {
       thought(state, "LLM", "\u57FA\u4E8E\u68C0\u67E5\u7ED3\u679C\u548C\u77E5\u8BC6\u6458\u8981\uFF0C\u6574\u7406\u6210\u7528\u6237\u53EF\u8BFB\u7684\u95EE\u9898\u62A5\u544A\u3002", "llm");
       emitProgress(deps, state, "\u6B63\u5728\u751F\u6210\u5206\u6790\u62A5\u544A");
       const llmResult = await invokeObserved(
         deps,
         state,
-        "llm.generate",
+        "llm_generate",
         {
           stream: true,
           onEvent: (event) => {
@@ -4195,86 +4195,86 @@ ${mcpHints.join("\n")}` : "",
     return queries.slice(0, 3);
   }
   function summarizeToolInput(toolName, input) {
-    if (toolName === "rules.run_schematic_checks" && input && typeof input === "object") {
+    if (toolName === "rules_run_schematic_checks" && input && typeof input === "object") {
       const context = input.context;
       return context ? buildAnalysisSummaryPrompt(context) : "\u4F7F\u7528\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587";
     }
-    if (toolName === "library.search_devices" && input && typeof input === "object") {
+    if (toolName === "library_search_devices" && input && typeof input === "object") {
       return `query=${String(input.query || "")}`;
     }
-    if (toolName === "mcp.read_resource" && input && typeof input === "object") {
+    if (toolName === "mcp_read_resource" && input && typeof input === "object") {
       return `uri=${String(input.uri || "")}`;
     }
-    if (toolName === "issues.locate_first" && input && typeof input === "object") {
+    if (toolName === "issues_locate_first" && input && typeof input === "object") {
       return `issues=${(input.issues || []).length}`;
     }
-    if (toolName.startsWith("schematic.") && input && typeof input === "object") {
+    if (toolName.startsWith("schematic_") && input && typeof input === "object") {
       return "\u4F7F\u7528\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587\u751F\u6210\u6574\u56FE\u6458\u8981";
     }
-    if (toolName === "llm.generate" && input && typeof input === "object") {
+    if (toolName === "llm_generate" && input && typeof input === "object") {
       return `messages=${(input.messages || []).length}`;
     }
     return "";
   }
   function summarizeToolOutput(toolName, output) {
-    if (toolName === "library.search_devices" && Array.isArray(output)) {
+    if (toolName === "library_search_devices" && Array.isArray(output)) {
       if (output.length === 0) return "\u672A\u627E\u5230\u5339\u914D\u5668\u4EF6";
       const first = output[0];
       return [`\u627E\u5230 ${output.length} \u4E2A\u5019\u9009`, first?.name ? `\u9996\u9879 ${first.name}` : "", first?.manufacturer || "", first?.footprintName ? `\u5C01\u88C5 ${first.footprintName}` : ""].filter(Boolean).join("\uFF0C");
     }
-    if (toolName === "library.get_device" && output && typeof output === "object") {
+    if (toolName === "library_get_device" && output && typeof output === "object") {
       const detail = output;
       return [detail.name ?? "", detail.lcscId ? `LCSC ${detail.lcscId}` : "", detail.footprint?.name ? `\u5C01\u88C5 ${detail.footprint.name}` : "", detail.description ? detail.description.slice(0, 48) : ""].filter(Boolean).join("\uFF0C");
     }
-    if (toolName === "rules.run_schematic_checks" && output && typeof output === "object") {
+    if (toolName === "rules_run_schematic_checks" && output && typeof output === "object") {
       const result = output;
       return result.summary || `\u53D1\u73B0 ${result.issues?.length ?? 0} \u4E2A\u95EE\u9898`;
     }
-    if (toolName === "issues.locate_first" && output && typeof output === "object") {
+    if (toolName === "issues_locate_first" && output && typeof output === "object") {
       const locate = output;
       return locate.located ? `\u5DF2\u5B9A\u4F4D ${formatLocateLabel(locate.objectType, locate.objectId)}` : "\u672A\u627E\u5230\u53EF\u5B9A\u4F4D\u5BF9\u8C61";
     }
-    if (toolName === "schematic.summarize_bom" && output && typeof output === "object") {
+    if (toolName === "schematic_summarize_bom" && output && typeof output === "object") {
       const result = output;
       return `BOM \u6458\u8981\uFF1A\u5668\u4EF6 ${result.componentCount} \u4E2A\uFF0C\u7C7B\u522B ${result.categories.length} \u7C7B`;
     }
-    if (toolName === "schematic.identify_key_components" && output && typeof output === "object") {
+    if (toolName === "schematic_identify_key_components" && output && typeof output === "object") {
       const result = output;
       return `\u5173\u952E\u5668\u4EF6 ${result.keyComponents.length} \u4E2A`;
     }
-    if (toolName === "schematic.identify_functional_blocks" && output && typeof output === "object") {
+    if (toolName === "schematic_identify_functional_blocks" && output && typeof output === "object") {
       const result = output;
       return `\u529F\u80FD\u6A21\u5757 ${result.functionalBlocks.length} \u4E2A`;
     }
-    if (toolName === "schematic.identify_power_domains" && output && typeof output === "object") {
+    if (toolName === "schematic_identify_power_domains" && output && typeof output === "object") {
       const result = output;
       return `\u7535\u6E90\u57DF ${result.powerDomains.length} \u4E2A`;
     }
-    if (toolName === "schematic.summarize_connectivity" && output && typeof output === "object") {
+    if (toolName === "schematic_summarize_connectivity" && output && typeof output === "object") {
       const result = output;
       return `\u8FDE\u63A5\u6027\u6458\u8981\uFF1A\u7F51\u7EDC ${result.netCount} \u6761`;
     }
-    if (toolName === "schematic.trace_power_paths" && output && typeof output === "object") {
+    if (toolName === "schematic_trace_power_paths" && output && typeof output === "object") {
       const result = output;
       return `\u5173\u952E\u7535\u6E90\u8DEF\u5F84 ${result.paths.length} \u6761`;
     }
-    if (toolName === "schematic.trace_signal_paths" && output && typeof output === "object") {
+    if (toolName === "schematic_trace_signal_paths" && output && typeof output === "object") {
       const result = output;
       return `\u4E3B\u8981\u4FE1\u53F7\u8DEF\u5F84 ${result.paths.length} \u6761`;
     }
-    if (toolName === "schematic.trace_control_paths" && output && typeof output === "object") {
+    if (toolName === "schematic_trace_control_paths" && output && typeof output === "object") {
       const result = output;
       return `\u4E3B\u63A7\u94FE\u8DEF ${result.paths.length} \u6761`;
     }
-    if (toolName === "mcp.list_resources" && output && typeof output === "object") {
+    if (toolName === "mcp_list_resources" && output && typeof output === "object") {
       const result = output;
       return `\u5DF2\u52A0\u8F7D ${result.resources?.length ?? 0} \u6761\u77E5\u8BC6\u8D44\u6E90`;
     }
-    if (toolName === "mcp.read_resource" && output && typeof output === "object") {
+    if (toolName === "mcp_read_resource" && output && typeof output === "object") {
       const result = output;
       return [result.title, result.summary].filter(Boolean).join("\uFF1A");
     }
-    if (toolName === "llm.generate" && output && typeof output === "object") {
+    if (toolName === "llm_generate" && output && typeof output === "object") {
       const result = output;
       return result.output_text ? `\u5DF2\u751F\u6210 ${result.output_text.length} \u5B57\u5206\u6790\u62A5\u544A` : "\u5DF2\u751F\u6210\u5206\u6790\u62A5\u544A";
     }
@@ -4282,22 +4282,22 @@ ${mcpHints.join("\n")}` : "",
   }
   function mapToolNameToLabel(toolName) {
     const map = {
-      "editor.get_current_context": "jlceda_get_schematic_context",
-      "schematic.summarize_bom": "jlceda_summarize_bom",
-      "schematic.identify_key_components": "jlceda_identify_key_components",
-      "schematic.identify_functional_blocks": "jlceda_identify_functional_blocks",
-      "schematic.identify_power_domains": "jlceda_identify_power_domains",
-      "schematic.summarize_connectivity": "jlceda_summarize_connectivity",
-      "schematic.trace_power_paths": "jlceda_trace_power_paths",
-      "schematic.trace_signal_paths": "jlceda_trace_signal_paths",
-      "schematic.trace_control_paths": "jlceda_trace_control_paths",
-      "library.search_devices": "jlceda_search_component_library",
-      "library.get_device": "jlceda_get_component_detail",
-      "mcp.list_resources": "jlceda_list_knowledge_resources",
-      "mcp.read_resource": "jlceda_read_knowledge_resource",
-      "rules.run_schematic_checks": "jlceda_schematic_check",
-      "issues.locate_first": "jlceda_locate_issue",
-      "llm.generate": "llm_generate_report"
+      "editor_get_current_context": "jlceda_get_schematic_context",
+      "schematic_summarize_bom": "jlceda_summarize_bom",
+      "schematic_identify_key_components": "jlceda_identify_key_components",
+      "schematic_identify_functional_blocks": "jlceda_identify_functional_blocks",
+      "schematic_identify_power_domains": "jlceda_identify_power_domains",
+      "schematic_summarize_connectivity": "jlceda_summarize_connectivity",
+      "schematic_trace_power_paths": "jlceda_trace_power_paths",
+      "schematic_trace_signal_paths": "jlceda_trace_signal_paths",
+      "schematic_trace_control_paths": "jlceda_trace_control_paths",
+      "library_search_devices": "jlceda_search_component_library",
+      "library_get_device": "jlceda_get_component_detail",
+      "mcp_list_resources": "jlceda_list_knowledge_resources",
+      "mcp_read_resource": "jlceda_read_knowledge_resource",
+      "rules_run_schematic_checks": "jlceda_schematic_check",
+      "issues_locate_first": "jlceda_locate_issue",
+      "llm_generate": "llm_generate_report"
     };
     return map[toolName] ?? toolName;
   }
@@ -4401,12 +4401,12 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
     const objectSummary = [];
     let objectKnowledgeQuery = "";
     const policy = decideChatToolPolicy(deps.task.userQuery);
-    if (policy.useEditorContext && canUse2(deps, "editor.get_current_context")) {
+    if (policy.useEditorContext && canUse2(deps, "editor_get_current_context")) {
       thought2(state, "Context", "\u7528\u6237\u95EE\u9898\u6D89\u53CA\u5F53\u524D\u539F\u7406\u56FE\u6216\u5F53\u524D\u9875\u9762\uFF0C\u5148\u8865\u5145\u7F16\u8F91\u5668\u4E0A\u4E0B\u6587\u3002", "context");
       const context = await invokeObserved2(
         deps,
         state,
-        "editor.get_current_context",
+        "editor_get_current_context",
         void 0,
         "\u8BFB\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587"
       );
@@ -4420,24 +4420,24 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
       markStep2(state, "context", "done", "\u5DF2\u8BFB\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587");
       state.workingMemory.lastObservation = "\u5DF2\u8BFB\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587";
     }
-    if (policy.useSelection && canUse2(deps, "editor.describe_selection")) {
+    if (policy.useSelection && canUse2(deps, "editor_describe_selection")) {
       thought2(state, "Selection", "\u7528\u6237\u63D0\u5230\u4E86\u5F53\u524D\u9009\u4E2D\u5BF9\u8C61\uFF0C\u5148\u8BFB\u53D6\u9009\u533A\u3002", "context");
       const selection = await invokeObserved2(
         deps,
         state,
-        "editor.describe_selection",
+        "editor_describe_selection",
         void 0,
         "\u89E3\u91CA\u5F53\u524D\u9009\u533A"
       );
       selectionSummary = selection.summary;
     }
     const objectQuery = policy.objectQuery;
-    if (objectQuery && canUse2(deps, "editor.find_object")) {
+    if (objectQuery && canUse2(deps, "editor_find_object")) {
       thought2(state, "Object", "\u7528\u6237\u76F4\u63A5\u63D0\u5230\u4E86\u5668\u4EF6\u3001\u5F15\u811A\u6216\u7F51\u7EDC\u6807\u8BC6\uFF0C\u5148\u5728\u5F53\u524D\u539F\u7406\u56FE\u91CC\u67E5\u5BF9\u8C61\u3002", "context");
       const found = await invokeObserved2(
         deps,
         state,
-        "editor.find_object",
+        "editor_find_object",
         { query: objectQuery },
         `\u67E5\u627E\u539F\u7406\u56FE\u5BF9\u8C61\uFF1A${objectQuery}`
       );
@@ -4453,12 +4453,12 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
           objectKnowledgeQuery,
           ragSummaryCount: ragSummary.length
         });
-        if (followupPolicy.enrichComponentLibrary && canUse2(deps, "library.search_devices")) {
+        if (followupPolicy.enrichComponentLibrary && canUse2(deps, "library_search_devices")) {
           thought2(state, "Library", "\u5DF2\u5B9A\u4F4D\u5230\u56FE\u4E2D\u5668\u4EF6\uFF0C\u7EE7\u7EED\u8865\u5145\u5143\u4EF6\u5E93\u4E8B\u5B9E\u3002", "library");
           const libraryResults = await invokeObserved2(
             deps,
             state,
-            "library.search_devices",
+            "library_search_devices",
             { query: objectQuery, scope: "system", pageSize: 5, page: 1 },
             `\u6309\u5BF9\u8C61\u68C0\u7D22\u5143\u4EF6\u5E93\uFF1A${objectQuery}`
           );
@@ -4470,12 +4470,12 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
               top.footprintName ? `\u5C01\u88C5 ${top.footprintName}` : "",
               top.description || ""
             ].filter(Boolean).join("\uFF0C");
-            if (canUse2(deps, "library.get_device")) {
+            if (canUse2(deps, "library_get_device")) {
               try {
                 const detail = await invokeObserved2(
                   deps,
                   state,
-                  "library.get_device",
+                  "library_get_device",
                   { deviceUuid: top.uuid, libraryUuid: top.libraryUuid, scope: "system" },
                   `\u8BFB\u53D6\u5143\u4EF6\u5E93\u8BE6\u60C5\uFF1A${top.name}`
                 );
@@ -4498,13 +4498,13 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
         }
       }
     }
-    if (policy.useLibrary && canUse2(deps, "library.search_devices")) {
+    if (policy.useLibrary && canUse2(deps, "library_search_devices")) {
       thought2(state, "Library", "\u7528\u6237\u95EE\u9898\u50CF\u662F\u5728\u95EE\u5143\u4EF6\u6216\u5C01\u88C5\u4FE1\u606F\uFF0C\u5148\u67E5\u5143\u4EF6\u5E93\u4E8B\u5B9E\u3002", "library");
       const query = buildLibraryQuery(deps.task.userQuery);
       const results = await invokeObserved2(
         deps,
         state,
-        "library.search_devices",
+        "library_search_devices",
         { query, scope: "system", pageSize: 6, page: 1 },
         `\u67E5\u8BE2\u5143\u4EF6\u5E93\uFF1A${query}`
       );
@@ -4519,12 +4519,12 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
         state.workingMemory.lastObservation = `\u5143\u4EF6\u5E93\u8FD4\u56DE ${librarySummary.length} \u6761\u6458\u8981`;
       }
     }
-    if (policy.useRag && canUse2(deps, "rag.search")) {
+    if (policy.useRag && canUse2(deps, "rag_search")) {
       thought2(state, "RAG", "\u7528\u6237\u95EE\u9898\u50CF\u662F\u5728\u95EE\u539F\u7406\u6216\u89C4\u8303\uFF0C\u5148\u67E5\u77E5\u8BC6\u8BC1\u636E\u3002", "mcp");
       const rag = await invokeObserved2(
         deps,
         state,
-        "rag.search",
+        "rag_search",
         { query: deps.task.userQuery, topK: 3 },
         "\u67E5\u8BE2\u77E5\u8BC6\u8BC1\u636E"
       );
@@ -4544,12 +4544,12 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
       objectKnowledgeQuery,
       ragSummaryCount: ragSummary.length
     });
-    if (objectFollowupPolicy.enrichObjectKnowledge && canUse2(deps, "rag.search")) {
+    if (objectFollowupPolicy.enrichObjectKnowledge && canUse2(deps, "rag_search")) {
       thought2(state, "RAG", "\u5DF2\u8BC6\u522B\u5230\u5177\u4F53\u5668\u4EF6\uFF0C\u7EE7\u7EED\u8865\u5145\u8FD9\u7C7B\u5668\u4EF6\u7684\u7528\u9014\u548C\u8BBE\u8BA1\u6CE8\u610F\u4E8B\u9879\u3002", "mcp");
       const rag = await invokeObserved2(
         deps,
         state,
-        "rag.search",
+        "rag_search",
         { query: `${objectKnowledgeQuery} \u5668\u4EF6\u7528\u9014 \u4F7F\u7528\u6CE8\u610F\u4E8B\u9879 \u5178\u578B\u63A5\u6CD5`, topK: 3 },
         `\u67E5\u8BE2\u5668\u4EF6\u77E5\u8BC6\u8BF4\u660E\uFF1A${objectQuery}`
       );
@@ -4591,7 +4591,7 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
     const result = await invokeObserved2(
       deps,
       state,
-      "llm.generate",
+      "llm_generate",
       {
         stream: true,
         onEvent: (event) => {
@@ -4687,47 +4687,47 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
     }
   }
   function summarizeToolInput2(toolName, input) {
-    if ((toolName === "llm.generate" || toolName === "rag.search") && input && typeof input === "object") {
-      if (toolName === "llm.generate") return `messages=${(input.messages || []).length}`;
+    if ((toolName === "llm_generate" || toolName === "rag_search") && input && typeof input === "object") {
+      if (toolName === "llm_generate") return `messages=${(input.messages || []).length}`;
       return `query=${String(input.query || "")}`;
     }
-    if (toolName === "library.search_devices" && input && typeof input === "object") {
+    if (toolName === "library_search_devices" && input && typeof input === "object") {
       return `query=${String(input.query || "")}`;
     }
     return "";
   }
   function summarizeToolOutput2(toolName, output) {
-    if (toolName === "llm.generate" && output && typeof output === "object") {
+    if (toolName === "llm_generate" && output && typeof output === "object") {
       const text = output.output_text || "";
       return text ? `\u5DF2\u751F\u6210 ${text.length} \u5B57\u56DE\u590D` : "\u5DF2\u751F\u6210\u56DE\u590D";
     }
-    if (toolName === "editor.get_current_context" && output && typeof output === "object") {
+    if (toolName === "editor_get_current_context" && output && typeof output === "object") {
       const context = output;
       return `\u4E0A\u4E0B\u6587\uFF1A\u5668\u4EF6 ${context.components?.length ?? 0} \u4E2A\uFF0C\u7F51\u7EDC ${context.nets?.length ?? 0} \u6761\uFF0C\u9009\u533A ${(context.selection?.objectIds || []).length} \u4E2A`;
     }
-    if (toolName === "editor.get_selection" && output && typeof output === "object") {
+    if (toolName === "editor_get_selection" && output && typeof output === "object") {
       const selection = output;
       return selection.objectIds?.length ? `\u9009\u4E2D ${selection.objectIds.length} \u4E2A\u5BF9\u8C61${selection.objectType ? `\uFF0C\u7C7B\u578B ${selection.objectType}` : ""}` : "\u5F53\u524D\u6CA1\u6709\u9009\u4E2D\u5BF9\u8C61";
     }
-    if (toolName === "editor.describe_selection" && output && typeof output === "object") {
+    if (toolName === "editor_describe_selection" && output && typeof output === "object") {
       return output.summary || "\u5DF2\u89E3\u91CA\u5F53\u524D\u9009\u533A";
     }
-    if (toolName === "editor.find_object" && output && typeof output === "object") {
+    if (toolName === "editor_find_object" && output && typeof output === "object") {
       const result = output;
       if ((result.matches ?? []).length > 1) {
         return `${result.summary}\uFF1B\u5019\u9009 ${(result.matches ?? []).length} \u4E2A`;
       }
       return result.summary || "\u5DF2\u627E\u5230\u76F8\u5173\u5BF9\u8C61";
     }
-    if (toolName === "rag.search" && output && typeof output === "object") {
+    if (toolName === "rag_search" && output && typeof output === "object") {
       return `\u77E5\u8BC6\u8BC1\u636E ${(output.results || []).length} \u6761`;
     }
-    if (toolName === "library.search_devices" && Array.isArray(output)) {
+    if (toolName === "library_search_devices" && Array.isArray(output)) {
       if (output.length === 0) return "\u672A\u627E\u5230\u5339\u914D\u5143\u4EF6";
       const first = output[0];
       return [`\u627E\u5230 ${output.length} \u4E2A\u5019\u9009`, first.name ? `\u9996\u9879 ${first.name}` : "", first.manufacturer || "", first.footprintName ? `\u5C01\u88C5 ${first.footprintName}` : ""].filter(Boolean).join("\uFF0C");
     }
-    if (toolName === "library.get_device" && output && typeof output === "object") {
+    if (toolName === "library_get_device" && output && typeof output === "object") {
       const detail = output;
       return [
         detail.name || "",
@@ -4741,15 +4741,15 @@ ${input.ragSummary.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : 
   }
   function mapToolNameToLabel2(toolName) {
     const map = {
-      "llm.generate": "llm_generate_reply",
-      "editor.get_current_context": "jlceda_get_schematic_context",
-      "editor.get_selection": "jlceda_get_selection",
-      "editor.describe_selection": "jlceda_describe_selection",
-      "editor.describe_object": "jlceda_describe_object",
-      "editor.find_object": "jlceda_find_object",
-      "rag.search": "rag_search",
-      "library.search_devices": "jlceda_search_component_library",
-      "library.get_device": "jlceda_get_component_detail"
+      "llm_generate": "llm_generate_reply",
+      "editor_get_current_context": "jlceda_get_schematic_context",
+      "editor_get_selection": "jlceda_get_selection",
+      "editor_describe_selection": "jlceda_describe_selection",
+      "editor_describe_object": "jlceda_describe_object",
+      "editor_find_object": "jlceda_find_object",
+      "rag_search": "rag_search",
+      "library_search_devices": "jlceda_search_component_library",
+      "library_get_device": "jlceda_get_component_detail"
     };
     return map[toolName] ?? toolName;
   }
@@ -4796,17 +4796,17 @@ ${libraryHint}` : userQuery;
       rules: pushTask3(state, "rules", "\u6821\u9A8C\u8349\u6848\u7EA6\u675F\u4E0E\u98CE\u9669")
     };
     emitProgress2(deps, state, "\u5F00\u59CB\u751F\u6210\u8349\u6848");
-    if (canUse3(deps, "mcp.list_resources")) {
+    if (canUse3(deps, "mcp_list_resources")) {
       thought3(state, "Knowledge", "\u5148\u8865\u5145\u5DE5\u7A0B\u77E5\u8BC6\u4E0E\u8BBE\u8BA1\u7EA6\u675F\uFF0C\u518D\u8FDB\u5165\u8349\u6848\u89C4\u5212\u3002", "mcp");
       emitProgress2(deps, state, "\u6B63\u5728\u8BFB\u53D6\u77E5\u8BC6\u4E0E\u8BBE\u8BA1\u7EA6\u675F");
-      const resources = await invokeObserved3(deps, state, "mcp.list_resources", void 0, "\u5217\u51FA\u77E5\u8BC6\u8D44\u6E90");
+      const resources = await invokeObserved3(deps, state, "mcp_list_resources", void 0, "\u5217\u51FA\u77E5\u8BC6\u8D44\u6E90");
       resources.resources.forEach((item) => mcpResources.push(item));
       markStep3(state, "mcp", mcpResources.length > 0 ? "done" : "skipped", `\u77E5\u8BC6\u8D44\u6E90 ${mcpResources.length} \u6761`);
       state.workingMemory.mcpReady = mcpResources.length > 0;
-      if (canUse3(deps, "mcp.read_resource")) {
+      if (canUse3(deps, "mcp_read_resource")) {
         for (const resource of mcpResources.slice(0, 2)) {
           try {
-            const read = await invokeObserved3(deps, state, "mcp.read_resource", { uri: resource.uri }, `\u8BFB\u53D6\u77E5\u8BC6\u8D44\u6E90 ${resource.uri}`);
+            const read = await invokeObserved3(deps, state, "mcp_read_resource", { uri: resource.uri }, `\u8BFB\u53D6\u77E5\u8BC6\u8D44\u6E90 ${resource.uri}`);
             mcpResourceReads.push({ uri: read.uri, title: read.title, summary: read.summary });
           } catch {
           }
@@ -4821,22 +4821,22 @@ ${libraryHint}` : userQuery;
     updateTask3(state, tasks.context, "running");
     thought3(state, "Context", "\u540C\u6B65\u7F16\u8F91\u5668\u91CC\u7684\u6700\u65B0\u4E0A\u4E0B\u6587\uFF0C\u786E\u4FDD\u8349\u6848\u57FA\u4E8E\u5F53\u524D\u753B\u5E03\u72B6\u6001\u3002", "context");
     emitProgress2(deps, state, "\u6B63\u5728\u540C\u6B65\u539F\u7406\u56FE\u4E0A\u4E0B\u6587");
-    if (canUse3(deps, "editor.get_current_context")) {
-      liveContext = await invokeObserved3(deps, state, "editor.get_current_context", void 0, "\u83B7\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587");
+    if (canUse3(deps, "editor_get_current_context")) {
+      liveContext = await invokeObserved3(deps, state, "editor_get_current_context", void 0, "\u83B7\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587");
     }
     updateTask3(state, tasks.context, "done", "\u8349\u6848\u4E0A\u4E0B\u6587\u5DF2\u5C31\u7EEA");
     emitProgress2(deps, state, "\u8349\u6848\u4E0A\u4E0B\u6587\u5DF2\u5C31\u7EEA");
     markStep3(state, "context", "done", "\u8349\u6848\u4E0A\u4E0B\u6587\u5DF2\u5C31\u7EEA");
     state.workingMemory.hasContext = true;
     state.workingMemory.lastObservation = "\u8349\u6848\u4E0A\u4E0B\u6587\u5DF2\u5C31\u7EEA";
-    if (canUse3(deps, "library.search_devices")) {
+    if (canUse3(deps, "library_search_devices")) {
       updateTask3(state, tasks.library, "running");
       thought3(state, "Library", "\u5148\u627E\u5019\u9009\u5668\u4EF6\u4E0E\u5C01\u88C5\uFF0C\u518D\u8BA9\u6A21\u578B\u7ED9\u51FA\u66F4\u5177\u4F53\u7684\u62D3\u6251\u5EFA\u8BAE\u3002", "library");
       emitProgress2(deps, state, "\u6B63\u5728\u67E5\u8BE2\u5019\u9009\u5143\u4EF6\u4E0E\u5C01\u88C5");
       const libraryResults = await invokeObserved3(
         deps,
         state,
-        "library.search_devices",
+        "library_search_devices",
         { query: deps.task.userQuery, scope: "system", pageSize: 12, page: 1 },
         "\u67E5\u8BE2\u5019\u9009\u5143\u4EF6"
       );
@@ -4848,7 +4848,7 @@ ${libraryHint}` : userQuery;
             const capacitorResults = await invokeObserved3(
               deps,
               state,
-              "library.search_devices",
+              "library_search_devices",
               { query: "10uF capacitor 0603", scope: "system", pageSize: 12, page: 1 },
               "\u67E5\u8BE2\u8F93\u5165\u8F93\u51FA\u7535\u5BB9"
             );
@@ -4882,14 +4882,14 @@ ${libraryHint}` : userQuery;
       updateTask3(state, tasks.library, "skipped", "\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B\u5143\u4EF6\u641C\u7D22\u80FD\u529B");
       markStep3(state, "library", "skipped", "\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B\u5143\u4EF6\u641C\u7D22\u80FD\u529B");
     }
-    updateTask3(state, tasks.llm, canUse3(deps, "llm.generate") ? "running" : "skipped");
-    if (canUse3(deps, "llm.generate")) {
+    updateTask3(state, tasks.llm, canUse3(deps, "llm_generate") ? "running" : "skipped");
+    if (canUse3(deps, "llm_generate")) {
       thought3(state, "LLM", "\u5148\u8BA9\u6A21\u578B\u7ED9\u51FA\u8349\u6848\u62D3\u6251\u63D0\u793A\uFF0C\u518D\u8FDB\u5165\u7ED3\u6784\u5316\u843D\u56FE\u8BA1\u5212\u3002", "llm");
       emitProgress2(deps, state, "\u6B63\u5728\u751F\u6210\u8349\u6848\u62D3\u6251\u63D0\u793A");
       const llmResult = await invokeObserved3(
         deps,
         state,
-        "llm.generate",
+        "llm_generate",
         {
           stream: true,
           onEvent: (event) => {
@@ -4922,7 +4922,7 @@ ${libraryHint}` : userQuery;
     draftPlan = await invokeObserved3(
       deps,
       state,
-      "draft.generate_plan",
+      "draft_generate_plan",
       { userQuery: llmDraftHint ? `${deps.task.userQuery}
 ${llmDraftHint}` : deps.task.userQuery, selectedDevices },
       "\u751F\u6210\u7ED3\u6784\u5316\u8349\u6848\u8BA1\u5212"
@@ -4930,7 +4930,7 @@ ${llmDraftHint}` : deps.task.userQuery, selectedDevices },
     draftPreview = await invokeObserved3(
       deps,
       state,
-      "draft.preview_plan",
+      "draft_preview_plan",
       { plan: draftPlan },
       "\u6784\u5EFA\u8349\u6848\u9884\u89C8"
     );
@@ -4945,13 +4945,13 @@ ${llmDraftHint}` : deps.task.userQuery, selectedDevices },
     draftValidation = await invokeObserved3(
       deps,
       state,
-      "rules.validate_draft",
+      "rules_validate_draft",
       { draft: { components: draftPlan.components, pins: draftPlan.pins, nets: draftPlan.nets } },
       "\u6821\u9A8C\u8349\u6848\u7EA6\u675F"
     );
     draftRisk = evaluateDraftRisk(draftValidation);
-    if (canUse3(deps, "editor.preview_apply_plan")) {
-      await invokeObserved3(deps, state, "editor.preview_apply_plan", { plan: draftPlan }, "\u6E32\u67D3\u8349\u6848\u9884\u89C8");
+    if (canUse3(deps, "editor_preview_apply_plan")) {
+      await invokeObserved3(deps, state, "editor_preview_apply_plan", { plan: draftPlan }, "\u6E32\u67D3\u8349\u6848\u9884\u89C8");
     }
     updateTask3(state, tasks.rules, draftRisk.level === "blocked" ? "failed" : "done", draftRisk.message);
     markStep3(state, "rules", "done", draftValidation?.summary ?? draftRisk.message);
@@ -5116,39 +5116,39 @@ ${llmDraftHint}` : deps.task.userQuery, selectedDevices },
     return [{ label: "\u7EE7\u7EED\u4F18\u5316\u8349\u6848", actionType: "ask_followup", prompt: "\u8BF7\u7EE7\u7EED\u4F18\u5316\u5F53\u524D\u8349\u6848\u7684\u5668\u4EF6\u9009\u62E9\u548C\u8FDE\u63A5\u7EC6\u8282" }];
   }
   function summarizeToolInput3(toolName, input) {
-    if (toolName === "library.search_devices" && input && typeof input === "object") return `query=${String(input.query || "")}`;
-    if (toolName === "draft.generate_plan" && input && typeof input === "object") return `selected_devices=${(input.selectedDevices || []).length}`;
-    if (toolName === "draft.preview_plan" && input && typeof input === "object") return `plan_components=${(input.plan?.components || []).length}`;
-    if (toolName === "rules.validate_draft" && input && typeof input === "object") return `draft_components=${(input.draft?.components || []).length}`;
-    if (toolName === "llm.generate" && input && typeof input === "object") return `messages=${(input.messages || []).length}`;
+    if (toolName === "library_search_devices" && input && typeof input === "object") return `query=${String(input.query || "")}`;
+    if (toolName === "draft_generate_plan" && input && typeof input === "object") return `selected_devices=${(input.selectedDevices || []).length}`;
+    if (toolName === "draft_preview_plan" && input && typeof input === "object") return `plan_components=${(input.plan?.components || []).length}`;
+    if (toolName === "rules_validate_draft" && input && typeof input === "object") return `draft_components=${(input.draft?.components || []).length}`;
+    if (toolName === "llm_generate" && input && typeof input === "object") return `messages=${(input.messages || []).length}`;
     return "";
   }
   function summarizeToolOutput3(toolName, output) {
-    if (toolName === "library.search_devices" && Array.isArray(output)) {
+    if (toolName === "library_search_devices" && Array.isArray(output)) {
       if (output.length === 0) return "\u672A\u627E\u5230\u5339\u914D\u5668\u4EF6";
       const first = output[0];
       return [`\u627E\u5230 ${output.length} \u4E2A\u5019\u9009`, first?.name ? `\u9996\u9879 ${first.name}` : "", first?.manufacturer || "", first?.footprintName ? `\u5C01\u88C5 ${first.footprintName}` : ""].filter(Boolean).join("\uFF0C");
     }
-    if (toolName === "mcp.list_resources" && output && typeof output === "object") return `\u5DF2\u52A0\u8F7D ${(output.resources || []).length} \u6761\u77E5\u8BC6\u8D44\u6E90`;
-    if (toolName === "mcp.read_resource" && output && typeof output === "object") return [output.title || "", output.summary || ""].filter(Boolean).join("\uFF1A");
-    if (toolName === "draft.generate_plan" && output && typeof output === "object") return `\u751F\u6210\u8349\u6848\u8BA1\u5212\uFF0C\u5668\u4EF6 ${(output.components || []).length} \u4E2A\uFF0C\u7F51\u7EDC ${(output.nets || []).length} \u6761`;
-    if (toolName === "draft.preview_plan" && output && typeof output === "object") return `\u751F\u6210\u8349\u6848\u9884\u89C8\uFF0C\u5668\u4EF6 ${Number(output.componentCount || 0)} \u4E2A\uFF0C\u7F51\u7EDC ${Number(output.netCount || 0)} \u6761`;
-    if (toolName === "rules.validate_draft" && output && typeof output === "object") return output.summary || `\u53D1\u73B0 ${(output.issues || []).length} \u4E2A\u95EE\u9898`;
-    if (toolName === "editor.preview_apply_plan") return "\u5DF2\u6E32\u67D3\u8349\u6848\u9884\u89C8";
-    if (toolName === "llm.generate" && output && typeof output === "object") return output.output_text ? `\u5DF2\u751F\u6210 ${output.output_text?.length || 0} \u5B57\u8349\u6848\u63D0\u793A` : "\u5DF2\u751F\u6210\u8349\u6848\u63D0\u793A";
+    if (toolName === "mcp_list_resources" && output && typeof output === "object") return `\u5DF2\u52A0\u8F7D ${(output.resources || []).length} \u6761\u77E5\u8BC6\u8D44\u6E90`;
+    if (toolName === "mcp_read_resource" && output && typeof output === "object") return [output.title || "", output.summary || ""].filter(Boolean).join("\uFF1A");
+    if (toolName === "draft_generate_plan" && output && typeof output === "object") return `\u751F\u6210\u8349\u6848\u8BA1\u5212\uFF0C\u5668\u4EF6 ${(output.components || []).length} \u4E2A\uFF0C\u7F51\u7EDC ${(output.nets || []).length} \u6761`;
+    if (toolName === "draft_preview_plan" && output && typeof output === "object") return `\u751F\u6210\u8349\u6848\u9884\u89C8\uFF0C\u5668\u4EF6 ${Number(output.componentCount || 0)} \u4E2A\uFF0C\u7F51\u7EDC ${Number(output.netCount || 0)} \u6761`;
+    if (toolName === "rules_validate_draft" && output && typeof output === "object") return output.summary || `\u53D1\u73B0 ${(output.issues || []).length} \u4E2A\u95EE\u9898`;
+    if (toolName === "editor_preview_apply_plan") return "\u5DF2\u6E32\u67D3\u8349\u6848\u9884\u89C8";
+    if (toolName === "llm_generate" && output && typeof output === "object") return output.output_text ? `\u5DF2\u751F\u6210 ${output.output_text?.length || 0} \u5B57\u8349\u6848\u63D0\u793A` : "\u5DF2\u751F\u6210\u8349\u6848\u63D0\u793A";
     return "";
   }
   function mapToolNameToLabel3(toolName) {
     const map = {
-      "editor.get_current_context": "jlceda_get_schematic_context",
-      "library.search_devices": "jlceda_search_component_library",
-      "mcp.list_resources": "jlceda_list_knowledge_resources",
-      "mcp.read_resource": "jlceda_read_knowledge_resource",
-      "llm.generate": "llm_generate_draft_hint",
-      "draft.generate_plan": "jlceda_generate_draft_plan",
-      "draft.preview_plan": "jlceda_preview_draft",
-      "rules.validate_draft": "jlceda_validate_draft",
-      "editor.preview_apply_plan": "jlceda_preview_apply_plan"
+      "editor_get_current_context": "jlceda_get_schematic_context",
+      "library_search_devices": "jlceda_search_component_library",
+      "mcp_list_resources": "jlceda_list_knowledge_resources",
+      "mcp_read_resource": "jlceda_read_knowledge_resource",
+      "llm_generate": "llm_generate_draft_hint",
+      "draft_generate_plan": "jlceda_generate_draft_plan",
+      "draft_preview_plan": "jlceda_preview_draft",
+      "rules_validate_draft": "jlceda_validate_draft",
+      "editor_preview_apply_plan": "jlceda_preview_apply_plan"
     };
     return map[toolName] ?? toolName;
   }
@@ -5925,7 +5925,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
     toTools() {
       return [
         {
-          name: "mcp.list_resources",
+          name: "mcp_list_resources",
           description: "List MCP resources available to the plugin agent",
           riskLevel: "low",
           execute: async () => ({
@@ -5933,7 +5933,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
           })
         },
         {
-          name: "mcp.read_resource",
+          name: "mcp_read_resource",
           description: "Read a specific MCP resource document by URI",
           riskLevel: "low",
           execute: async (input) => this.readResource(input.uri)

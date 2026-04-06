@@ -1,6 +1,11 @@
 export interface MainPanelState {
   __stateVersion?: number;
   loggedIn: boolean;
+  llmMode?: "custom" | "proxy";
+  llmLastRoute?: "custom" | "proxy";
+  llmLastModel?: string;
+  llmLastAt?: string;
+  llmDebugEnabled?: boolean;
   sessionTitle?: string;
   agentRunState?: "idle" | "planning" | "running_tools" | "waiting_llm" | "awaiting_confirmation" | "completed" | "failed";
   agentRunRoute?: "chat" | "analysis" | "draft";
@@ -36,6 +41,12 @@ export interface MainPanelState {
     role: "assistant" | "user" | "system";
     title?: string;
     content: string;
+    contextCompaction?: {
+      compressedTurns: number;
+      keptRecentTurns: number;
+      createdAt: string;
+      version: number;
+    };
     structuredContent?: Array<
       | {
           kind: "paragraph";
@@ -123,6 +134,7 @@ export interface MainPanelState {
       action: "login" | "rerun" | "locate" | "apply_draft" | "rollback";
       payload?: string;
     }>;
+    analysisMarkdown?: string;
   }>;
   creditsTransactions?: Array<{
     id: string;

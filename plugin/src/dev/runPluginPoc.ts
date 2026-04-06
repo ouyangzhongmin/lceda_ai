@@ -56,6 +56,7 @@ async function main(): Promise<void> {
   const ragClient = new RagClient(new FetchHttpClient(baseUrl));
   const llmClient = new LlmProxyClient(new FetchHttpClient(baseUrl));
   const creditsClient = new CreditsClient(new FetchHttpClient(baseUrl));
+  const mcpClient = new MCPClient();
   const pluginAgent = createPluginAgent({
     llmClient,
     ragClient,
@@ -114,14 +115,14 @@ async function main(): Promise<void> {
   const ragResult = await tools.invoke<
     { query: string; topK?: number },
     { results: Array<{ title: string; source_ref: string; kb_type: string }> }
-  >("rag.search", {
+  >("rag_search", {
     query: "How should I check LDO input and diode polarity in a power path?",
     topK: 2,
   });
   const citationPackage = await tools.invoke<
     { query: string; topK?: number },
     { query: string; results: Array<{ title: string; source_ref: string; kb_type: string }> }
-  >("rag.build_citations", {
+  >("rag_build_citations", {
     query: "Build citations for LDO and diode polarity review.",
     topK: 2,
   });
@@ -136,7 +137,7 @@ async function main(): Promise<void> {
       remaining_credits: number;
       billing_transaction: string;
     }
-  >("llm.generate", {
+  >("llm_generate", {
     model: "",
     messages: [
       {

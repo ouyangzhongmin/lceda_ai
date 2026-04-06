@@ -51,7 +51,11 @@ type knowledgeTaskService interface {
 
 type llmService interface {
 	Generate(req llmusecase.GenerateRequest) (llmusecase.CompletionResult, error)
-	StreamGenerate(req llmusecase.GenerateRequest, onDelta func(text string)) (llmusecase.CompletionResult, error)
+	StreamGenerate(
+		req llmusecase.GenerateRequest,
+		onDelta func(text string),
+		onReasoningDelta func(text string),
+	) (llmusecase.CompletionResult, error)
 	ListLogs(userID string, limit int) []llmusecase.RequestLog
 	ListProviders() []llmusecase.ProviderInfo
 }

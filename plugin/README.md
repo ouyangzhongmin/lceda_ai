@@ -40,15 +40,15 @@
 - 宿主桥接注入与真实通道优先逻辑
 - 原理图上下文采集
 - 最小 `ReAct + ToolRegistry`
-- 最小本地规则引擎与 `rules.run_schematic_checks`
-- 规则结果到 `editor.locate` 的最小问题定位闭环
+- 最小本地规则引擎与 `rules_run_schematic_checks`
+- 规则结果到 `editor_locate` 的最小问题定位闭环
 - 服务端邮箱登录会话轮询
 - 浏览器启动器与登录轮询控制器
 - 登录态持久化存储抽象
 - 自定义 LLM 配置本地持久化抽象
-- 服务端 `rag.search` / `llm.generate` 最小联调链路
-- 草案生成、预览与 `validate_draft` 最小闭环
-- `editor.preview_apply_plan` / `editor.apply_plan` 最小闭环
+- 服务端 `rag_search` / `llm_generate` 最小联调链路
+- 草案生成、预览与 `rules_validate_draft` 最小闭环
+- `editor_preview_apply_plan` / `editor_apply_plan` 最小闭环
 
 ## 当前限制
 - 尚未接入真实嘉立创标准版/专业版插件 API

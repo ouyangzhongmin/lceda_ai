@@ -5,10 +5,7 @@ import type { SessionStore } from "../services/auth/sessionStore";
 import type { CustomLlmConfigStore } from "../services/llm/customLlmConfigStore";
 import type { LlmProxyClient } from "../services/llm/llmProxyClient";
 import type { RagClient } from "../services/rag/ragClient";
-import { executeAgentTurn } from "./agentRunner";
-import { buildFallbackPlan, buildPlannerSystemPrompt, buildPlannerUserPrompt, normalizePlannerPlan } from "./prompts/plannerPrompts";
-import type { AgentResult, AgentTaskType, AgentTurnPlan, AgentTurnResult } from "./shared/agentTypes";
-import { SkillLoader } from "./skills/skillLoader";
+import type { AgentResult, AgentTaskType, AgentTurnResult } from "./shared/agentTypes";
 import { ToolRegistry } from "./tools/toolRegistry";
 import { createEditorTools } from "./tools/editorTools";
 import { createIssueTools } from "./tools/issueTools";
@@ -21,15 +18,16 @@ import { createServerTools } from "./tools/serverTools";
 import { createTodoTools } from "./tools/todoTools";
 import type { HostEditorBridge } from "../editor/host/runtime";
 import type { MCPClient } from "./mcp/mcpClient";
-import { runAnalysisReactAgent } from "./core/analysisReactAgent";
-import { runChatReactAgent } from "./core/chatReactAgent";
-import { runDraftReactAgent } from "./core/draftReactAgent";
+import { runUnifiedReactAgent } from "./core/unifiedReactAgent";
+import type { UnifiedLlmRouteInfo } from "../services/llm/unifiedLlmClient";
 
 export interface PluginAgentDeps {
   llmClient: LlmProxyClient;
   ragClient: RagClient;
   sessionStore: SessionStore;
   customLlmConfigStore: CustomLlmConfigStore;
+  llmModeStore: import("../services/llm/llmModeStore").LlmModeStore;
+  onLlmRoute?: (info: UnifiedLlmRouteInfo) => void;
   hostBridge?: HostEditorBridge;
   mcpClient?: MCPClient;
 }
@@ -42,8 +40,18 @@ export interface PluginAgent {
     panelState?: MainPanelState;
     context?: SchematicContext;
     adapter?: EditorAdapter;
+    onStreamEvent?: (event: {
+      route: "chat" | "analysis" | "draft";
+      stage: "llm" | "progress";
+      textDelta?: string;
+      text?: string;
+      reasoningDelta?: string;
+      detail?: string;
+      reactEvents?: AgentResult["reactEvents"];
+      stepStates?: AgentResult["stepStates"];
+      workingMemory?: AgentResult["workingMemory"];
+    }) => void;
   }): Promise<AgentResult>;
-  planUserTurn(input: { userQuery: string }): Promise<AgentTurnPlan>;
   handleUserTurn(input: {
     userQuery: string;
     panelState: MainPanelState;
@@ -54,6 +62,7 @@ export interface PluginAgent {
       stage: "llm" | "progress";
       textDelta?: string;
       text?: string;
+      reasoningDelta?: string;
       detail?: string;
       reactEvents?: AgentResult["reactEvents"];
       stepStates?: AgentResult["stepStates"];
@@ -67,6 +76,7 @@ export interface PluginAgent {
     locateStatus?: string;
     locateLabel?: string;
     analysisReport?: AgentResult["analysisReport"];
+    analysisMarkdown?: AgentResult["analysisMarkdown"];
     libraryInsights?: AgentResult["libraryInsights"];
     issueItems?: MainPanelState["issueItems"];
     mcpResources?: AgentResult["mcpResources"];
@@ -106,7 +116,18 @@ export interface PluginAgent {
 }
 
 export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
-  const skillLoader = new SkillLoader();
+  const filterDisplayReactEvents = (
+    reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"]
+  ): NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] | undefined => {
+    if (!Array.isArray(reactEvents) || reactEvents.length === 0) {
+      return undefined;
+    }
+    const filtered = reactEvents.filter(
+      (event) => event && (event.kind === "tool_call" || event.kind === "observation")
+    );
+    return filtered.length > 0 ? filtered : undefined;
+  };
+
   const buildStepTranscript = (
     reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"]
   ): string[] | undefined => {
@@ -131,189 +152,106 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
   return {
     createToolRegistry: (adapter, options) => createAgentToolRegistry(adapter, deps, options),
     run: async (input) => {
+      const toolRegistry = (() => {
+        if (input.adapter) {
+          return createAgentToolRegistry(input.adapter, deps, { includeIssueTools: true, includeLibraryTools: true });
+        }
+        return createBaseToolRegistry(deps);
+      })();
+      for (const tool of createMcpTools(deps.mcpClient)) {
+        toolRegistry.register(tool);
+      }
+      const allowedTools = toolRegistry
+        .list()
+        .filter((tool) => !tool.requiresConfirmation) // hard-safety boundary
+        .map((tool) => tool.name);
+
       if (input.type === "natural_chat") {
         if (!input.panelState) {
           throw new Error("panelState is required for natural_chat");
         }
-        return runNaturalChatInternal(
-          input.userQuery,
-          input.panelState,
-          undefined,
-          input.plan?.steps?.map((step) => ({ kind: step.kind, note: step.note })) ?? undefined
-        );
+        const { result } = await runUnifiedReactAgent({
+          userQuery: input.userQuery,
+          panelState: input.panelState,
+          adapter: input.adapter,
+          context: input.context,
+          tools: toolRegistry,
+          allowedTools,
+          onStreamEvent: input.onStreamEvent,
+        });
+        return result;
       }
       if (input.type === "schematic_analysis") {
         if (!input.context || !input.adapter) {
           throw new Error("context and adapter are required for schematic_analysis");
         }
-        return runAnalysisInternal(
-          input.userQuery,
-          input.context,
-          input.adapter,
-          undefined,
-          input.plan?.steps?.map((step) => ({ kind: step.kind, note: step.note })) ?? undefined
-        );
+        const { result } = await runUnifiedReactAgent({
+          userQuery: input.userQuery,
+          panelState: input.panelState ?? ({} as MainPanelState),
+          adapter: input.adapter,
+          context: input.context,
+          tools: toolRegistry,
+          allowedTools,
+          onStreamEvent: input.onStreamEvent,
+        });
+        return result;
       }
       if (!input.context || !input.adapter) {
         throw new Error("context and adapter are required for schematic_draft");
       }
-      return runDraftInternal(
-        input.userQuery,
-        input.context,
-        input.adapter,
-        undefined,
-        input.plan?.steps?.map((step) => ({ kind: step.kind, note: step.note })) ?? undefined
-      );
+      const { result } = await runUnifiedReactAgent({
+        userQuery: input.userQuery,
+        panelState: input.panelState ?? ({} as MainPanelState),
+        adapter: input.adapter,
+        context: input.context,
+        tools: toolRegistry,
+        allowedTools,
+        onStreamEvent: input.onStreamEvent,
+      });
+      return result;
     },
-    planUserTurn: async (input) => planUserTurnInternal(input.userQuery, {}),
     handleUserTurn: async (input) => {
-      const intentHint = await classifyUserIntent(input.userQuery, input.panelState, input.context);
-      if (intentHint.startsWith("pcb")) {
-        return {
-          route: "chat",
-          intent: "chat",
-          plan: {
-            intent: "chat",
-            route: "chat",
-            requiresContext: false,
-            steps: [{ kind: "llm", required: true, note: "自然对话回复" }],
-          },
-          result: {
-            summary: "pcb intent not supported",
-            naturalReply: "当前插件端尚未支持 PCB 绘制流程，请先提供原理图或描述分析需求。",
-            toolTraceNames: [],
-            stepStates: [],
-            reactEvents: [
-              {
-                kind: "thought",
-                label: "意图分析",
-                status: "done",
-                text: intentHint,
-                stepKind: "llm",
-              },
-            ],
-            workingMemory: {
-              hasContext: Boolean(input.context),
-              mcpReady: false,
-              libraryReady: false,
-              llmReady: false,
-              rulesReady: false,
-              draftReady: false,
-            },
-            uiEvents: [
-              { kind: "think", label: "意图分析", status: "done", text: intentHint, source: "planner" },
-              { kind: "plan", label: "计划", status: "done", text: "Route: chat\n任务列表：\n1. 自然对话回复", source: "planner" },
-              { kind: "finish", label: "完成", status: "done", text: "PCB 绘制暂未支持", source: "planner" },
-            ],
-          },
-        };
+      const adapter = input.adapter;
+      const tools = adapter
+        ? createAgentToolRegistry(adapter, deps, { includeIssueTools: true, includeLibraryTools: true })
+        : createBaseToolRegistry(deps);
+      for (const tool of createMcpTools(deps.mcpClient)) {
+        tools.register(tool);
       }
+      const allowedTools = tools
+        .list()
+        .filter((tool) => !tool.requiresConfirmation)
+        .map((tool) => tool.name);
 
-      let plan: AgentTurnPlan;
-      try {
-        plan = await planUserTurnInternal(
-          input.userQuery,
-          {
-            panelState: input.panelState,
-            context: input.context,
-          },
-          intentHint
-        );
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        
-        // 未登录错误
-        if (errorMessage === "NOT_LOGGED_IN") {
-          return {
-            route: "chat",
-            intent: "chat",
-            plan: {
-              intent: "chat",
-              route: "chat",
-              requiresContext: false,
-              steps: [],
-            },
-            result: {
-              summary: "not_logged_in",
-              naturalReply: "请先登录后再使用 AI 助手功能。",
-              toolTraceNames: [],
-              stepStates: [],
-              reactEvents: [],
-              workingMemory: {
-                hasContext: Boolean(input.context),
-                mcpReady: false,
-                libraryReady: false,
-                llmReady: false,
-                rulesReady: false,
-                draftReady: false,
-              },
-            },
-          };
-        }
-
-        // LLM 调用失败或解析失败
-        console.error("[agent] handleUserTurn: plan failed", error);
-        return {
-          route: "chat",
-          intent: "chat",
-          plan: {
-            intent: "chat",
-            route: "chat",
-            requiresContext: false,
-            steps: [],
-          },
-          result: {
-            summary: "planner_failed",
-            naturalReply: errorMessage === "PLANNER_PARSE_FAILED" 
-              ? "规划任务时出现问题，请稍后重试或换个方式描述您的需求。"
-              : "调用 AI 服务时出现网络问题，请检查网络连接后重试。",
-            toolTraceNames: [],
-            stepStates: [],
-            reactEvents: [],
-            workingMemory: {
-              hasContext: Boolean(input.context),
-              mcpReady: false,
-              libraryReady: false,
-              llmReady: false,
-              rulesReady: false,
-              draftReady: false,
-            },
-          },
-        };
-      }
-
-      const initialResult = await executeAgentTurn(
-        {
-          plan,
-          userQuery: input.userQuery,
-          panelState: input.panelState,
-          context: input.context,
-          adapter: input.adapter,
-          intentHint,
-        },
-        {
-          runNaturalChat: (userQuery, panelState, adapter, context) =>
-            runNaturalChatInternal(userQuery, panelState, adapter, context, input.onStreamEvent, intentHint),
-            runAnalysis: (userQuery, context, adapter, planSteps) =>
-              runAnalysisInternal(userQuery, context, adapter, input.onStreamEvent, planSteps),
-            runDraft: (userQuery, context, adapter, planSteps) =>
-              runDraftInternal(userQuery, context, adapter, input.onStreamEvent, planSteps),
-        }
-      );
-      const turn = await maybeReplanBlockedDraft(plan, initialResult, input);
-      const finalRoute = resolveFinalRoute(turn.plan, turn.result, turn.route);
+      const { result } = await runUnifiedReactAgent({
+        userQuery: input.userQuery,
+        panelState: input.panelState,
+        context: input.context,
+        adapter,
+        tools,
+        allowedTools,
+        onStreamEvent: input.onStreamEvent,
+      });
+      const route = result.draftPlan || result.draftPreview || result.draftValidation || result.draftRisk
+        ? "draft"
+        : result.analysisReport || result.checkResult || result.analysisMarkdown
+          ? "analysis"
+          : "chat";
       return {
-        route: finalRoute,
-        intent: turn.plan.intent,
-        plan: turn.plan,
-        result: turn.result,
+        route,
+        intent: route === "draft" ? "draft" : route === "analysis" ? "analysis" : "chat",
+        plan: {
+          intent: route === "draft" ? "draft" : route === "analysis" ? "analysis" : "chat",
+          route,
+          requiresContext: false,
+          steps: [],
+        },
+        result,
       };
     },
     buildNaturalChatMessage: (result) => {
-      const reactEvents = (result.reactEvents ?? []).filter(
-        (event) => event.kind === "tool_call" || event.kind === "observation"
-      );
-      const hasToolSteps = reactEvents.length > 0;
+      const reactEvents = filterDisplayReactEvents(result.reactEvents);
+      const hasToolSteps = Array.isArray(reactEvents) && reactEvents.length > 0;
       return {
         role: "assistant",
         title: "助手",
@@ -324,7 +262,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         toolTraces: result.toolTraces,
         executionTraces: result.executionTraces,
         uiEvents: undefined,
-        reactEvents: hasToolSteps ? reactEvents : undefined,
+        reactEvents,
         stepTranscript: hasToolSteps ? buildStepTranscript(reactEvents) : undefined,
         stepStates: hasToolSteps ? result.stepStates : undefined,
         workingMemory: result.workingMemory,
@@ -340,12 +278,11 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
             : undefined,
       };
     },
-  buildAnalysisMessages: (input) => {
+    buildAnalysisMessages: (input) => {
+      const displayReactEvents = filterDisplayReactEvents(input.reactEvents);
       const report = input.analysisReport;
       const schematicEntries = [
         report?.schematicInfo?.pageName ? `原理图：${report.schematicInfo.pageName}` : "",
-        report?.schematicInfo?.projectId ? `项目ID：${report.schematicInfo.projectId}` : "",
-        report?.schematicInfo?.pageId ? `页面ID：${report.schematicInfo.pageId}` : "",
         report?.schematicInfo?.channel
           ? `版本：${report.schematicInfo.channel === "professional" ? "专业版" : "标准版"}`
           : "",
@@ -449,28 +386,32 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         nextSuggestions: input.nextSuggestions,
         libraryInsights: input.libraryInsights,
       });
+      const markdownOnly = input.analysisMarkdown && input.analysisMarkdown.trim().length > 0;
       return [
         {
           role: "assistant",
           title: "分析结果",
           tone: input.issueCount > 0 ? "warning" : "success",
+          analysisMarkdown: input.analysisMarkdown,
           content:
-            input.issueCount > 0
-              ? `${report?.overview ?? `我已经完成当前原理图的首轮检查，发现 ${input.issueCount} 个需要关注的问题。`}${schematicInfoHint}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}\n\n优先问题：${
-                  input.topIssueTitle ?? "未命名问题"
-                }\n定位结果：${input.locateLabel || formatLocateStatus(input.locateStatus)}\n\n${issueLines || "暂无可定位问题。"}${riskHint}${libraryHint}${suggestionHint}`
-              : `${report?.overview ?? "当前原理图未发现明显规则问题，可以继续进行草案生成或更深入问答。"}${schematicInfoHint}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}${riskHint}${libraryHint}${suggestionHint}`,
-          structuredContent,
+            markdownOnly
+              ? input.analysisMarkdown!
+              : input.issueCount > 0
+                ? `${report?.overview ?? `我已经完成当前原理图的首轮检查，发现 ${input.issueCount} 个需要关注的问题。`}${schematicInfoHint}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}\n\n优先问题：${
+                    input.topIssueTitle ?? "未命名问题"
+                  }\n定位结果：${input.locateLabel || formatLocateStatus(input.locateStatus)}\n\n${issueLines || "暂无可定位问题。"}${riskHint}${libraryHint}${suggestionHint}`
+                : `${report?.overview ?? "当前原理图未发现明显规则问题，可以继续进行草案生成或更深入问答。"}${schematicInfoHint}${executiveSummaryHint}${ercSummaryHint}${bomOverviewHint}${functionalBlocksHint}${powerDomainsHint}${powerPathsHint}${signalPathsHint}${controlPathsHint}${keyComponentsHint}${riskHint}${libraryHint}${suggestionHint}`,
+          structuredContent: markdownOnly ? undefined : structuredContent,
           evidenceItems: buildEvidenceItems({
             toolTraces: input.toolTraces,
-            reactEvents: input.reactEvents,
+            reactEvents: displayReactEvents,
             uiEvents: input.uiEvents,
           }),
           toolTraces: input.toolTraces,
           executionTraces: input.executionTraces,
           uiEvents: input.uiEvents,
-          reactEvents: input.reactEvents,
-          stepTranscript: buildStepTranscript(input.reactEvents),
+          reactEvents: displayReactEvents,
+          stepTranscript: buildStepTranscript(displayReactEvents),
           stepStates: input.stepStates,
           workingMemory: input.workingMemory,
           analysisReport: input.analysisReport,
@@ -480,6 +421,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       ];
     },
     buildDraftMessages: (input) => {
+      const displayReactEvents = filterDisplayReactEvents(input.reactEvents);
       const preview = input.draftPreview;
       if (!preview) {
         return [
@@ -534,14 +476,14 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
            structuredContent,
            evidenceItems: buildEvidenceItems({
              toolTraces: input.toolTraces,
-             reactEvents: input.reactEvents,
+             reactEvents: displayReactEvents,
              uiEvents: input.uiEvents,
            }),
              toolTraces: input.toolTraces,
             executionTraces: input.executionTraces,
             uiEvents: input.uiEvents,
-            reactEvents: input.reactEvents,
-            stepTranscript: buildStepTranscript(input.reactEvents),
+            reactEvents: displayReactEvents,
+            stepTranscript: buildStepTranscript(displayReactEvents),
             stepStates: input.stepStates,
             workingMemory: input.workingMemory,
             suggestions: input.structuredSuggestions,
@@ -599,238 +541,6 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       },
     ],
   };
-
-  function runNaturalChatInternal(
-    input: string,
-    panelState: MainPanelState,
-    adapter?: EditorAdapter,
-    _context?: SchematicContext,
-    onStreamEvent?: (event: {
-      route: "chat" | "analysis" | "draft";
-      stage: "llm";
-      textDelta?: string;
-      text?: string;
-      detail?: string;
-    }) => void,
-    intentHint?: string,
-    planSteps?: Array<{ kind: AgentTurnPlan["steps"][number]["kind"]; note: string }>
-  ): Promise<AgentResult> {
-    const tools = createBaseToolRegistry(deps);
-    if (adapter) {
-      for (const tool of createEditorTools(adapter)) {
-        tools.register(tool);
-      }
-      for (const tool of createSchematicSummaryTools()) {
-        tools.register(tool);
-      }
-    }
-    const skill = skillLoader.selectForTask("natural_chat", input);
-    return runChatReactAgent(
-      {
-        task: {
-          type: "natural_chat",
-          userQuery: input,
-          planSteps,
-        },
-        panelState,
-        allowedTools: skill.allowedTools,
-        invokeTool: (toolName, toolInput) => tools.invoke(toolName, toolInput),
-        listToolNames: () => tools.list().map((tool) => tool.name),
-      },
-      { onStreamEvent, intentHint }
-    ).then(({ result, reactEvents }) => ({
-      ...result,
-      selectedSkill: skill.name,
-      reactEvents,
-    }));
-  }
-
-  async function planUserTurnInternal(
-    userQuery: string,
-    input: { panelState?: MainPanelState; context?: SchematicContext },
-    intentHint?: string
-  ): Promise<AgentTurnPlan> {
-    const session = await deps.sessionStore.get();
-    if (!session?.accessToken) {
-      throw new Error("NOT_LOGGED_IN");
-    }
-
-    const resolvedIntentHint =
-      intentHint ?? (await classifyUserIntent(userQuery, input.panelState, input.context));
-
-    const plannerResult = await deps.llmClient.generate(session.accessToken, {
-      messages: [
-        { role: "system", content: buildPlannerSystemPrompt() },
-        { role: "user", content: buildPlannerUserPrompt(userQuery, resolvedIntentHint) },
-      ],
-    });
-
-    const plan = normalizePlannerPlan(plannerResult.output_text);
-    if (!plan) {
-      console.error("[agent] planUserTurn: failed to parse planner output", plannerResult.output_text);
-      const fallbackIntent =
-        resolvedIntentHint.includes("draft") || resolvedIntentHint.includes("design") || resolvedIntentHint.includes("generate")
-          ? "draft"
-          : resolvedIntentHint.includes("analysis") ||
-              resolvedIntentHint.includes("schematic") ||
-              resolvedIntentHint.includes("检查") ||
-              resolvedIntentHint.includes("分析")
-            ? "analysis"
-            : "chat";
-      return buildFallbackPlan(fallbackIntent);
-    }
-
-    return plan;
-  }
-
-  function runAnalysisInternal(
-    input: string,
-    context: SchematicContext,
-    adapter: EditorAdapter,
-    onStreamEvent?: (event: {
-      route: "chat" | "analysis" | "draft";
-      stage: "llm" | "progress";
-      textDelta?: string;
-      text?: string;
-      detail?: string;
-      reactEvents?: AgentResult["reactEvents"];
-      stepStates?: AgentResult["stepStates"];
-      workingMemory?: AgentResult["workingMemory"];
-    }) => void,
-    planSteps?: Array<{ kind: AgentTurnPlan["steps"][number]["kind"]; note: string }>
-  ): Promise<AgentResult> {
-    const tools = createAgentToolRegistry(adapter, deps, { includeIssueTools: true, includeLibraryTools: true });
-    for (const tool of createMcpTools(deps.mcpClient)) {
-      tools.register(tool);
-    }
-    const skill = skillLoader.selectForTask("schematic_analysis", input);
-    return runAnalysisReactAgent({
-      task: {
-        type: "schematic_analysis",
-        userQuery: input,
-        context,
-        planSteps,
-      },
-      allowedTools: skill.allowedTools,
-      invokeTool: (toolName, toolInput) => tools.invoke(toolName, toolInput),
-      listToolNames: () => tools.list().map((tool) => tool.name),
-      onProgress: (payload) => {
-        onStreamEvent?.({
-          route: "analysis",
-          stage: "progress",
-          detail: payload.detail,
-          textDelta: payload.textDelta,
-          text: payload.text,
-          reactEvents: payload.reactEvents,
-          stepStates: payload.stepStates,
-          workingMemory: payload.workingMemory,
-        });
-      },
-    }).then(({ result, reactEvents }) => ({
-      ...result,
-      selectedSkill: skill.name,
-      reactEvents,
-    }));
-  }
-
-  function runDraftInternal(
-    input: string,
-    context: SchematicContext,
-    adapter: EditorAdapter,
-    onStreamEvent?: (event: {
-      route: "chat" | "analysis" | "draft";
-      stage: "llm" | "progress";
-      textDelta?: string;
-      text?: string;
-      detail?: string;
-      reactEvents?: AgentResult["reactEvents"];
-      stepStates?: AgentResult["stepStates"];
-      workingMemory?: AgentResult["workingMemory"];
-    }) => void,
-    planSteps?: Array<{ kind: AgentTurnPlan["steps"][number]["kind"]; note: string }>
-  ): Promise<AgentResult> {
-    const tools = createAgentToolRegistry(adapter, deps, { includeLibraryTools: true });
-    for (const tool of createMcpTools(deps.mcpClient)) {
-      tools.register(tool);
-    }
-    const skill = skillLoader.selectForTask("schematic_draft", input);
-    return runDraftReactAgent({
-      task: {
-        type: "schematic_draft",
-        userQuery: input,
-        context,
-        planSteps,
-      },
-      allowedTools: skill.allowedTools,
-      invokeTool: (toolName, toolInput) => tools.invoke(toolName, toolInput),
-      listToolNames: () => tools.list().map((tool) => tool.name),
-      onProgress: (payload) => {
-        onStreamEvent?.({
-          route: "draft",
-          stage: "progress",
-          detail: payload.detail,
-          textDelta: payload.textDelta,
-          text: payload.text,
-          reactEvents: payload.reactEvents,
-          stepStates: payload.stepStates,
-          workingMemory: payload.workingMemory,
-        });
-      },
-    }).then(({ result, reactEvents }) => ({
-      ...result,
-      selectedSkill: skill.name,
-      reactEvents,
-    }));
-  }
-
-  async function maybeReplanBlockedDraft(
-    plan: AgentTurnPlan,
-    result: AgentResult,
-    input: {
-      userQuery: string;
-      panelState: MainPanelState;
-      context?: SchematicContext;
-      adapter?: EditorAdapter;
-    }
-  ): Promise<{ route: AgentTurnPlan["route"]; plan: AgentTurnPlan; result: AgentResult }> {
-    if (plan.route !== "draft" || result.draftRisk?.level !== "blocked") {
-      return { route: plan.route, plan, result };
-    }
-    if (!input.context || !input.adapter) {
-      return { route: plan.route, plan, result };
-    }
-
-    const replannedPlan: AgentTurnPlan = {
-      intent: "analysis",
-      route: "analysis",
-      requiresContext: true,
-      steps: [
-        { kind: "context", required: true, note: "replan uses existing schematic context" },
-        { kind: "mcp", required: true, note: "replan loads engineering references for blocked draft" },
-        { kind: "rules", required: true, note: "replan inspects constraints that blocked draft apply" },
-      ],
-    };
-    const analysisResult = await runAnalysisInternal(
-      "analyze current schematic constraints for blocked draft",
-      input.context,
-      input.adapter
-    );
-    return {
-      route: "analysis",
-      plan: replannedPlan,
-      result: {
-        ...analysisResult,
-        executionTraces: [
-          ...(result.executionTraces ?? []),
-          {
-            phase: "reason",
-            message: `replan from=draft to=analysis because ${result.draftRisk.message}`,
-          },
-          ...(analysisResult.executionTraces ?? []),
-        ],
-      },
-    };
-  }
 
   function formatLocateStatus(locateStatus?: string): string {
     if (!locateStatus || locateStatus === "none") {
@@ -896,19 +606,19 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     const blocks: NonNullable<NonNullable<MainPanelState["chatMessages"]>[number]["structuredContent"]> = [];
     const report = input.report;
 
-    blocks.push({
-      kind: "paragraph",
-      text:
-        report?.overview ??
-        (input.issueCount > 0
-          ? `我已经完成当前原理图的首轮检查，发现 ${input.issueCount} 个需要关注的问题。`
-          : "当前原理图未发现明显规则问题，可以继续进行草案生成或更深入问答。"),
-    });
+    const pageName = String(report?.schematicInfo?.pageName || "").trim();
+    const dominantIssueTitle = (() => {
+      const groups = report?.issueGroups ?? [];
+      if (!groups.length) return "";
+      const severityRank = (value: string) => (value === "high" ? 2 : value === "medium" ? 1 : 0);
+      return groups
+        .slice()
+        .sort((a, b) => (b.count - a.count) || (severityRank(b.severity) - severityRank(a.severity)))[0]
+        ?.title?.trim?.() ?? "";
+    })();
 
     const schematicEntries = [
       report?.schematicInfo?.pageName ? { key: "原理图", value: report.schematicInfo.pageName } : null,
-      report?.schematicInfo?.projectId ? { key: "项目ID", value: report.schematicInfo.projectId } : null,
-      report?.schematicInfo?.pageId ? { key: "页面ID", value: report.schematicInfo.pageId } : null,
       report?.schematicInfo?.channel
         ? { key: "版本", value: report.schematicInfo.channel === "professional" ? "专业版" : "标准版" }
         : null,
@@ -922,21 +632,25 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         ? { key: "选中对象", value: String(report.schematicInfo.selectionCount) }
         : null,
     ].filter(Boolean) as Array<{ key: string; value: string }>;
-    if (schematicEntries.length > 0) {
-      blocks.push({
-        kind: "kv",
-        title: "当前原理图信息",
-        entries: schematicEntries,
-      });
-    }
+    const schematicMeta =
+      schematicEntries.length > 0
+        ? schematicEntries.map((item) => `${item.key} ${item.value}`).join(" · ")
+        : "";
 
-    if (report?.executiveSummary) {
-      blocks.push({
-        kind: "section",
-        title: "整图理解",
-        text: report.executiveSummary,
-      });
-    }
+    const leadBase =
+      input.issueCount > 0
+        ? `已完成当前原理图${pageName ? `【${pageName}】` : ""}检查，发现 ${input.issueCount} 个需要关注的问题` +
+          (dominantIssueTitle ? `，当前以${dominantIssueTitle}为主。` : "。")
+        : `已完成当前原理图${pageName ? `【${pageName}】` : ""}检查，未发现明显规则问题。`;
+
+    blocks.push({
+      kind: "paragraph",
+      text:
+        leadBase + (schematicMeta ? `（${schematicMeta}）` : ""),
+    });
+
+    // Prefer issue-first layout when issues exist: keep report short and actionable.
+    const issueFirst = input.issueCount > 0;
 
     if (input.issueCount > 0) {
       blocks.push({
@@ -949,38 +663,98 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       });
     }
 
-    const findings =
-      report?.keyFindings?.length
-        ? report.keyFindings
-        : (input.issueItems ?? [])
-            .slice(0, 5)
-            .map((item) => `${item.title}${formatIssueLocationSuffix(item.objectType, item.objectId)}`);
-    if (findings && findings.length > 0) {
+    if (report?.issueGroups && report.issueGroups.length > 0) {
+      const groupLines = report.issueGroups.slice(0, 4).map((group) => {
+        const severity = group.severity === "high" ? "高" : group.severity === "low" ? "低" : "中";
+        const examples = group.examples && group.examples.length > 0 ? `；代表：${group.examples.join("、")}` : "";
+        const suggestion = group.suggestion ? `；建议：${group.suggestion}` : "";
+        return `【${severity}风险】${group.title}：${group.count} 个${examples}${suggestion}`;
+      });
       blocks.push({
         kind: "list",
-        title: input.issueCount > 0 ? "关键问题" : "关键观察",
-        items: findings,
+        title: "问题聚合（按类型）",
+        items: groupLines,
       });
     }
 
-    pushStructuredList(blocks, "ERC 基础检查", report?.ercSummary);
-    pushStructuredList(blocks, "元件清单概览", report?.bomOverview);
-    pushStructuredList(blocks, "电路功能分析", report?.functionalBlocks);
-    pushStructuredList(blocks, "电源域分析", report?.powerDomains);
-    pushStructuredList(blocks, "关键电源路径", report?.powerPaths);
-    pushStructuredList(blocks, "主要信号路径", report?.signalPaths);
-    pushStructuredList(blocks, "主控中心链路", report?.controlPaths);
-    pushStructuredList(blocks, "关键器件", report?.keyComponents);
+    if (report?.issueSamples && report.issueSamples.length > 0) {
+      const sampleLines = report.issueSamples.slice(0, 6).map((item) => {
+        const severity = item.severity === "high" ? "高" : item.severity === "low" ? "低" : "中";
+        const parts = [
+          `【${severity}风险】${item.title}`,
+          item.label ? `对象：${item.label}` : "",
+          item.message ? `影响：${item.message}` : "",
+          item.suggestion ? `建议：${item.suggestion}` : "",
+        ].filter(Boolean);
+        return parts.join("\n");
+      });
+      blocks.push({
+        kind: "list",
+        title: "问题样本（抽样）",
+        items: sampleLines,
+      });
+    }
 
+    if (!issueFirst) {
+      if (report?.executiveSummary) {
+        blocks.push({
+          kind: "section",
+          title: "整图理解",
+          text: report.executiveSummary,
+        });
+      }
+      pushStructuredList(blocks, "ERC 基础检查", report?.ercSummary);
+      pushStructuredList(blocks, "元件清单概览", report?.bomOverview);
+      pushStructuredList(blocks, "电路功能分析", report?.functionalBlocks);
+      pushStructuredList(blocks, "电源域分析", report?.powerDomains);
+      pushStructuredList(blocks, "关键电源路径", report?.powerPaths);
+      pushStructuredList(blocks, "主要信号路径", report?.signalPaths);
+      pushStructuredList(blocks, "主控中心链路", report?.controlPaths);
+      pushStructuredList(blocks, "关键器件", report?.keyComponents);
+      pushStructuredList(blocks, "连接性检查", report?.connectivityChecks);
+    } else {
+      // Keep one lightweight context block when issues exist.
+      const compactContext = [
+        ...(report?.functionalBlocks ?? []).slice(0, 3),
+        ...(report?.keyComponents ?? []).slice(0, 3),
+      ].filter(Boolean);
+      if (compactContext.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "关联模块与关键器件（摘要）",
+          items: compactContext.slice(0, 6),
+        });
+      }
+      if (report?.connectivityChecks && report.connectivityChecks.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "连接性与电源路径提示（摘要）",
+          items: report.connectivityChecks.slice(0, 4),
+        });
+      }
+    }
+
+    const severityCounts = (groups?: NonNullable<NonNullable<AgentResult["analysisReport"]>["issueGroups"]>) => {
+      const counts = { high: 0, medium: 0, low: 0 };
+      (groups ?? []).forEach((g) => {
+        if (!g || !g.severity || !g.count) return;
+        if (g.severity === "high") counts.high += g.count;
+        else if (g.severity === "low") counts.low += g.count;
+        else counts.medium += g.count;
+      });
+      return counts;
+    };
+    const counts = report?.issueGroups?.length ? severityCounts(report.issueGroups) : undefined;
     const riskEntries = [
-      report?.riskGroups?.high?.length ? { key: "高风险", value: report.riskGroups.high.join("；") } : null,
-      report?.riskGroups?.medium?.length ? { key: "中风险", value: report.riskGroups.medium.join("；") } : null,
-      report?.riskGroups?.low?.length ? { key: "低风险", value: report.riskGroups.low.join("；") } : null,
+      typeof input.issueCount === "number" ? { key: "问题总数", value: String(input.issueCount) } : null,
+      counts ? { key: "高风险", value: String(counts.high) } : null,
+      counts ? { key: "中风险", value: String(counts.medium) } : null,
+      counts ? { key: "低风险", value: String(counts.low) } : null,
     ].filter(Boolean) as Array<{ key: string; value: string }>;
     if (riskEntries.length > 0) {
       blocks.push({
         kind: "kv",
-        title: "风险分组",
+        title: "风险概览",
         entries: riskEntries,
       });
     }
@@ -998,7 +772,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       blocks.push({
         kind: "list",
         title: "下一步建议",
-        items: nextSteps,
+        items: nextSteps.slice(0, 4),
       });
     }
 
@@ -1085,42 +859,6 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     });
   }
 
-  async function classifyUserIntent(
-    userQuery: string,
-    panelState?: MainPanelState,
-    context?: SchematicContext
-  ): Promise<string> {
-    const session = await deps.sessionStore.get();
-    if (!session?.accessToken) {
-      return "fallback:chat";
-    }
-    const contextHint = context
-      ? `context: components=${context.components.length}, nets=${context.nets.length}, selection=${context.selection.objectIds.length}`
-      : panelState
-        ? `panel: components=${panelState.componentCount ?? 0}, nets=${panelState.netCount ?? 0}, selection=${panelState.selectionCount ?? 0}`
-        : "context: unavailable";
-    try {
-      const result = await deps.llmClient.generate(session.accessToken, {
-        messages: [
-          {
-            role: "system",
-            content:
-              "你是嘉立创 EDA 插件的意图分类器。根据用户输入判断意图：" +
-              "chat=闲聊/澄清/解释概念；analysis=分析/检查/排查当前原理图；draft=设计/生成/绘制原理图草案；pcb=绘制PCB。" +
-              "仅输出 JSON：{\"intent\":\"chat|analysis|draft|pcb\",\"reason\":\"...\"}",
-          },
-          { role: "user", content: `用户输入：${userQuery}\n${contextHint}` },
-        ],
-      });
-      const jsonText = result.output_text?.match(/\{[\s\S]*\}/)?.[0] ?? "";
-      const parsed = JSON.parse(jsonText) as { intent?: string; reason?: string };
-      const intent = parsed.intent ?? "chat";
-      return `${intent}${parsed.reason ? ` (${parsed.reason})` : ""}`;
-    } catch {
-      return "fallback:chat";
-    }
-  }
-
   function buildEvidenceItems(input: {
     toolTraces?: AgentResult["toolTraces"];
     reactEvents?: AgentResult["reactEvents"];
@@ -1187,31 +925,31 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       return "证据";
     }
     const exact = {
-      "editor.get_current_context": "原理图上下文",
-      "editor.get_selection": "当前选区",
-      "editor.describe_selection": "选区描述",
-      "editor.describe_object": "对象描述",
-      "editor.find_object": "对象查找",
-      "editor.locate": "对象定位",
-      "rules.run_schematic_checks": "规则检查",
-      "rules.validate_draft": "草案校验",
-      "library.search_devices": "器件库搜索",
-      "library.get_device": "器件详情",
-      "library.get_devices_by_lcsc_ids": "LCSC 器件查询",
-      "schematic.summarize_bom": "BOM 摘要",
-      "schematic.identify_key_components": "关键器件识别",
-      "schematic.identify_functional_blocks": "功能模块识别",
-      "schematic.identify_power_domains": "电源域识别",
-      "schematic.summarize_connectivity": "连接性摘要",
-      "schematic.trace_power_paths": "电源路径追踪",
-      "schematic.trace_signal_paths": "信号路径追踪",
-      "schematic.trace_control_paths": "控制链路追踪",
-      "schematic.build_analysis_evidence": "分析证据构建",
-      "issues.locate_first": "问题定位",
+      "editor_get_current_context": "原理图上下文",
+      "editor_get_selection": "当前选区",
+      "editor_describe_selection": "选区描述",
+      "editor_describe_object": "对象描述",
+      "editor_find_object": "对象查找",
+      "editor_locate": "对象定位",
+      "rules_run_schematic_checks": "规则检查",
+      "rules_validate_draft": "草案校验",
+      "library_search_devices": "器件库搜索",
+      "library_get_device": "器件详情",
+      "library_get_devices_by_lcsc_ids": "LCSC 器件查询",
+      "schematic_summarize_bom": "BOM 摘要",
+      "schematic_identify_key_components": "关键器件识别",
+      "schematic_identify_functional_blocks": "功能模块识别",
+      "schematic_identify_power_domains": "电源域识别",
+      "schematic_summarize_connectivity": "连接性摘要",
+      "schematic_trace_power_paths": "电源路径追踪",
+      "schematic_trace_signal_paths": "信号路径追踪",
+      "schematic_trace_control_paths": "控制链路追踪",
+      "schematic_build_analysis_evidence": "分析证据构建",
+      "issues_locate_first": "问题定位",
       "todo_list": "任务列表",
-      "rag.search": "知识检索",
-      "rag.build_citations": "引用构建",
-      "llm.generate": "LLM 生成",
+      "rag_search": "知识检索",
+      "rag_build_citations": "引用构建",
+      "llm_generate": "LLM 生成",
     };
     if (exact[value]) {
       return exact[value];
@@ -1223,30 +961,11 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     return label || "证据";
   }
 
-  function resolveFinalRoute(
-    plan: AgentTurnPlan,
-    result: AgentResult,
-    fallbackRoute: AgentTurnPlan["route"]
-  ): AgentTurnPlan["route"] {
-    if (result.draftPreview || result.draftPlan) {
-      return "draft";
-    }
-    if (result.analysisReport || result.checkResult) {
-      return "analysis";
-    }
-    if (result.naturalReply) {
-      return "chat";
-    }
-    if (plan.followup?.route === "draft" && (result.draftRisk || result.draftValidation)) {
-      return "draft";
-    }
-    return fallbackRoute;
-  }
 }
 
 function createAgentToolRegistry(
   adapter: EditorAdapter,
-  deps: Pick<PluginAgentDeps, "hostBridge" | "ragClient" | "llmClient" | "sessionStore">,
+  deps: Pick<PluginAgentDeps, "hostBridge" | "ragClient" | "llmClient" | "sessionStore" | "customLlmConfigStore" | "llmModeStore">,
   options?: { includeIssueTools?: boolean; includeLibraryTools?: boolean }
 ): ToolRegistry {
   const tools = createBaseToolRegistry(deps);
@@ -1276,10 +995,20 @@ function createAgentToolRegistry(
 }
 
 function createBaseToolRegistry(
-  deps: Pick<PluginAgentDeps, "ragClient" | "llmClient" | "sessionStore" | "hostBridge">
+  deps: Pick<
+    PluginAgentDeps,
+    "ragClient" | "llmClient" | "sessionStore" | "hostBridge" | "customLlmConfigStore" | "llmModeStore" | "onLlmRoute"
+  >
 ): ToolRegistry {
   const tools = new ToolRegistry();
-  for (const tool of createServerTools(deps.ragClient, deps.llmClient, deps.sessionStore)) {
+  for (const tool of createServerTools(
+    deps.ragClient,
+    deps.llmClient,
+    deps.sessionStore,
+    deps.customLlmConfigStore,
+    deps.llmModeStore,
+    deps.onLlmRoute
+  )) {
     tools.register(tool);
   }
   for (const tool of createLibraryTools(deps.hostBridge)) {

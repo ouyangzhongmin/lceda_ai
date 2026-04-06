@@ -5,8 +5,21 @@ import type { AgentTool } from "./toolRegistry";
 export function createDraftTools(): AgentTool[] {
   return [
     {
-      name: "draft.generate_plan",
-      description: "Generate a minimal schematic draft plan from the user's prompt",
+      name: "draft_generate_plan",
+      description: "根据用户需求生成最小可用的原理图草案计划",
+      parameters: {
+        type: "object",
+        properties: {
+          userQuery: { type: "string", description: "用户的草案需求描述" },
+          selectedDevices: {
+            type: "array",
+            items: { type: "object" },
+            description: "可选。用户已挑选的器件列表。",
+          },
+        },
+        required: ["userQuery"],
+        additionalProperties: true,
+      },
       execute: async (input: {
         userQuery: string;
         selectedDevices?: Array<{
@@ -27,8 +40,18 @@ export function createDraftTools(): AgentTool[] {
         }),
     },
     {
-      name: "draft.preview_plan",
-      description: "Build a preview summary from a draft plan",
+      name: "draft_preview_plan",
+      description: "根据草案计划生成预览摘要",
+      parameters: {
+        type: "object",
+        properties: {
+          plan: {
+            type: "object",
+            description: "草案计划。若省略，宿主会复用最近生成的 draft plan。",
+          },
+        },
+        additionalProperties: true,
+      },
       execute: async (input: {
         plan: ReturnType<typeof generateDraftPlanFromPrompt>;
       }) => previewDraftPlan(input.plan),
