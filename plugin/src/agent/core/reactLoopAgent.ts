@@ -465,7 +465,7 @@ export async function runReActLoop(input: {
       tool_calls: assistantToolCalls,
     });
 
-    state.reactEvents.push({
+    const toolCallEvent: AgentReactEvent = {
       kind: "tool_call",
       label: "Action",
       status: "running",
@@ -473,7 +473,8 @@ export async function runReActLoop(input: {
       toolName,
       inputSummary: summarize(toolInput, 160),
       stepKind: stepKind,
-    });
+    };
+    state.reactEvents.push(toolCallEvent);
 
     try {
       const toolResult = isSpecial && specialTools
@@ -485,6 +486,7 @@ export async function runReActLoop(input: {
       const outputSummary = toolResult?.observationForUi ?? formatted?.summary ?? summarize(output, 900);
       const modelObs = toolResult?.observationForModel ?? formatted?.messageForModel ?? outputSummary;
       state.toolTraces.push({ toolName, status: "success", note: outputSummary.slice(0, 180) });
+      toolCallEvent.status = "done";
       state.reactEvents.push({
         kind: "observation",
         label: "Observation",
@@ -517,6 +519,7 @@ export async function runReActLoop(input: {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       state.toolTraces.push({ toolName, status: "blocked", note: msg });
+      toolCallEvent.status = "failed";
       state.reactEvents.push({
         kind: "observation",
         label: "Observation",

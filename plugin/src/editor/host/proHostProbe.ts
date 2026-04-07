@@ -422,8 +422,17 @@ async function normalizeTypedComponent(
   const packageName =
     normalizeFootprintName(await callStateValue(record, ["getState_Footprint"])) ??
     normalizeFootprintName(record.footprint) ??
-    readStringRecord(record, ["footprint", "Footprint"]) ??
-    readStringRecord(properties, ["Footprint", "Package", "封装"]);
+    readStringRecord(record, ["footprint", "Footprint", "footprintName", "FootprintName"]) ??
+    readStringRecord(properties, [
+      "Footprint",
+      "footprint",
+      "FootprintName",
+      "footprintName",
+      "Supplier Footprint",
+      "SupplierFootprint",
+      "Package",
+      "封装",
+    ]);
   const componentLink = normalizeLinkedEntity(await callStateValue(record, ["getState_Component"])) ?? normalizeLinkedEntity(record.component);
   const footprintLink =
     normalizeLinkedEntity(await callStateValue(record, ["getState_Footprint"])) ?? normalizeLinkedEntity(record.footprint);

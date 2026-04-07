@@ -5,6 +5,7 @@ import type { ReactAgentDeps, ReactAgentState } from "../reactTypes";
 import { runUnifiedReactAgent } from "../unifiedReactAgent";
 import { ToolRegistry, type AgentTool } from "../../tools/toolRegistry";
 import type { SchematicContext } from "../../../types/schematic";
+import type { DraftPlan } from "../../../editor/apply-plan/draftPlan";
 import type { MainPanelState } from "../../../ui/panels/mainPanel";
 import { planContextCompaction } from "../../../app/assistantRuntime";
 
@@ -326,6 +327,54 @@ test("runReActLoop creates stepStates when mapped tools execute", async () => {
       observation: "已完成：editor_get_current_context",
     },
   ]);
+});
+
+test("runReActLoop settles tool_call react event status after tool result", async () => {
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析当前原理图有什么问题" },
+    allowedTools: ["editor_get_current_context"],
+    listToolNames: () => ["editor_get_current_context", "llm_generate"],
+    invokeTool: async (toolName) => {
+      if (toolName === "llm_generate") {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "editor_get_current_context",
+                arguments: "{}",
+              },
+            },
+          ],
+        } as never;
+      }
+      if (toolName === "editor_get_current_context") {
+        return createMinimalContext() as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  const state = createState();
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    toolDefinitions: [{
+      name: "editor_get_current_context",
+      description: "读取当前编辑器中的原理图上下文",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    maxIterations: 1,
+    mapToolToStepKind: () => "context",
+  });
+
+  const toolCallEvent = state.reactEvents.find((event) => event.kind === "tool_call");
+  assert.ok(toolCallEvent);
+  assert.equal(toolCallEvent?.status, "done");
 });
 
 test("runUnifiedReactAgent forces analysis queries to fetch context and run checks", async () => {
@@ -744,4 +793,86 @@ test("planContextCompaction does not trigger below 20 turns", () => {
   assert.equal(plan.shouldCompact, false);
   assert.equal(plan.olderMessages.length, 0);
   assert.equal(plan.recentMessages.length, 38);
+});
+
+test("runUnifiedReactAgent reuses persisted draftPlan for follow-up draft preview", async () => {
+  const registry = new ToolRegistry();
+  const persistedDraftPlan: DraftPlan = {
+    title: "5V LED Indicator Draft",
+    rationale: "5V -> R1 -> D1 -> GND",
+    components: [],
+    pins: [],
+    nets: [],
+  };
+  let previewInput: unknown;
+  let llmCalls = 0;
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: {
+      type: "object",
+      properties: {
+        messages: { type: "array", items: { type: "object" } },
+      },
+      required: ["messages"],
+      additionalProperties: true,
+    },
+    execute: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "draft_preview_plan",
+                arguments: "{}",
+              },
+            },
+          ],
+        };
+      }
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"done","output":"ok"}',
+      };
+    },
+  });
+
+  registry.register({
+    name: "draft_preview_plan",
+    description: "根据草案计划生成预览摘要",
+    parameters: {
+      type: "object",
+      properties: {
+        plan: { type: "object" },
+      },
+      additionalProperties: true,
+    },
+    execute: async (input: unknown) => {
+      previewInput = input;
+      return {
+        title: "5V LED Indicator Draft",
+        rationale: "Generated a minimal LED indicator draft based on the user request.",
+        componentRefs: ["J1", "R1", "D1"],
+        netNames: ["5V", "LED_ANODE", "GND"],
+        componentCount: 3,
+        netCount: 3,
+      };
+    },
+  } satisfies AgentTool);
+
+  const { result } = await runUnifiedReactAgent({
+    userQuery: "上面展示的J1,R1,D1是什么器件，这个应该显示清楚，剩下的确认操作",
+    panelState: { loggedIn: true, draftPlan: persistedDraftPlan } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate", "draft_preview_plan"],
+  });
+
+  assert.deepEqual(previewInput, { plan: persistedDraftPlan });
+  assert.equal(result.draftPreview?.title, "5V LED Indicator Draft");
+  assert.deepEqual(result.draftPreview?.componentRefs, ["J1", "R1", "D1"]);
 });

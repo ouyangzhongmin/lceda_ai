@@ -186,6 +186,40 @@ function schedulePersistPanelState(
   }, PERSIST_PANEL_STATE_THROTTLE_MS);
 }
 
+function cancelScheduledPanelStatePersist(): void {
+  pendingPersist = null;
+  if (persistPanelTimer) {
+    clearTimeout(persistPanelTimer);
+    persistPanelTimer = null;
+  }
+}
+
+export function shouldIgnoreDuplicateSendWhileRunning(input: {
+  trimmedInput: string;
+  pendingChatInput?: string;
+  activeTurnId?: number;
+  agentRunState?: MainPanelState["agentRunState"];
+  lastUserMessageContent?: string;
+}): boolean {
+  const normalizedInput = input.trimmedInput.trim();
+  const normalizedPending = input.pendingChatInput?.trim();
+  const normalizedLastUser = input.lastUserMessageContent?.trim();
+  if (!normalizedInput) {
+    return false;
+  }
+  const isRunning =
+    input.agentRunState === "planning" ||
+    input.agentRunState === "running_tools" ||
+    input.agentRunState === "waiting_llm";
+  if (!isRunning) {
+    return false;
+  }
+  if (normalizedPending && normalizedInput === normalizedPending) {
+    return Boolean(input.activeTurnId || input.agentRunState === "planning");
+  }
+  return Boolean(normalizedLastUser && normalizedInput === normalizedLastUser);
+}
+
 function formatReactEventLine(event: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T> ? T : never): string {
   if (!event || !event.kind) return "";
   if (event.kind === "task") return `任务: ${event.text || event.label || ""}`;
@@ -356,6 +390,7 @@ function createAssistantRuntime(): AssistantRuntime {
   async function openIdlePanelState(): Promise<MainPanelState> {
     const restored = await restorePanelState(storage);
     if (restored) {
+        internals.draftPlan = restored.draftPlan;
         await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
       if (
         restored.agentRunState === "planning" ||
@@ -701,6 +736,8 @@ function createAssistantRuntime(): AssistantRuntime {
       internals.draftBlocked = undefined;
       internals.lastApplyTransactionId = undefined;
       internals.pendingChatInput = undefined;
+      internals.activeTurnId = undefined;
+      cancelScheduledPanelStatePersist();
       await clearPanelState(storage);
       return openIdlePanelState();
     },
@@ -726,6 +763,7 @@ function createAssistantRuntime(): AssistantRuntime {
           state.agentRunDetail = result.summary;
           internals.draftPlan = result.draftPlan;
           internals.draftBlocked = result.draftRisk?.level === "blocked";
+          state.draftPlan = result.draftPlan;
           state.draftPreview = {
             title: result.draftPreview.title,
             rationale: result.draftPreview.rationale,
@@ -824,6 +862,25 @@ function createAssistantRuntime(): AssistantRuntime {
       }
       if (!current.sessionTitle || current.sessionTitle === "New Session") {
         current.sessionTitle = buildSessionTitleFromPrompt(trimmed);
+      }
+      if (
+        shouldIgnoreDuplicateSendWhileRunning({
+          trimmedInput: trimmed,
+          pendingChatInput: internals.pendingChatInput,
+          activeTurnId: internals.activeTurnId,
+          agentRunState: current.agentRunState,
+          lastUserMessageContent:
+            sanitizeChatMessages(current.chatMessages)
+              .filter((message) => message.role === "user")
+              .slice(-1)[0]?.content,
+        })
+      ) {
+        if (typeof console !== "undefined") {
+          console.warn(`${LOG_PREFIX} sendChat.duplicate-ignored`, {
+            promptLength: trimmed.length,
+          });
+        }
+        return current;
       }
       await compactChatHistoryIfNeeded({
         state: current,
@@ -1277,6 +1334,7 @@ function createAssistantRuntime(): AssistantRuntime {
         state.agentRunDetail = result.summary;
         internals.draftPlan = result.draftPlan;
         internals.draftBlocked = result.draftRisk?.level === "blocked";
+        state.draftPlan = result.draftPlan;
         state.draftPreview = {
           title: result.draftPreview.title,
           rationale: result.draftPreview.rationale,
@@ -1318,13 +1376,14 @@ function createAssistantRuntime(): AssistantRuntime {
     return commitState(internals, state, storage);
   }
 
-  async function generateDraftStateFromResult(
-    result: Awaited<ReturnType<typeof pluginAgent.run>>,
-    previousMessages: NonNullable<MainPanelState["chatMessages"]>
-  ): Promise<MainPanelState> {
-    const state = internals.currentState ?? (await computeAnalysisState());
-    if (result.draftPreview) {
+async function generateDraftStateFromResult(
+  result: Awaited<ReturnType<typeof pluginAgent.run>>,
+  _previousMessages: NonNullable<MainPanelState["chatMessages"]>
+): Promise<MainPanelState> {
+  const state = internals.currentState ?? (await computeAnalysisState());
+  if (result.draftPreview) {
       internals.draftPlan = result.draftPlan;
+      state.draftPlan = result.draftPlan;
       state.draftPreview = {
         title: result.draftPreview.title,
         rationale: result.draftPreview.rationale,
@@ -1334,30 +1393,24 @@ function createAssistantRuntime(): AssistantRuntime {
         netCount: result.draftPreview.netCount,
       };
       state.summary = `草案已生成：${result.draftPreview.title}，共 ${result.draftPreview.componentCount} 个器件，${result.draftPreview.netCount} 条网络。`;
-      state.chatMessages = [
-        ...previousMessages,
-        ...pluginAgent.buildDraftMessages({
-          draftPreview: state.draftPreview,
-          mcpResources: result.mcpResources,
-          mcpResourceReads: result.mcpResourceReads,
-          toolTraces: result.toolTraces,
-          executionTraces: result.executionTraces,
-          uiEvents: result.uiEvents,
-          reactEvents: result.reactEvents,
-          stepStates: result.stepStates,
-          workingMemory: result.workingMemory,
-          draftRisk: result.draftRisk,
-        }),
-      ];
+      state.chatMessages = pluginAgent.buildDraftMessages({
+        draftPreview: state.draftPreview,
+        mcpResources: result.mcpResources,
+        mcpResourceReads: result.mcpResourceReads,
+        toolTraces: result.toolTraces,
+        executionTraces: result.executionTraces,
+        uiEvents: result.uiEvents,
+        reactEvents: result.reactEvents,
+        stepStates: result.stepStates,
+        workingMemory: result.workingMemory,
+        draftRisk: result.draftRisk,
+      });
     } else {
       state.agentRunState = "completed";
       state.agentRunRoute = "draft";
       state.agentRunDetail = "草案未返回预览";
       state.summary = "草案生成完成，但未返回预览信息。";
-      state.chatMessages = [
-        ...previousMessages,
-        ...pluginAgent.buildStatusMessages({ content: state.summary, tone: "warning" }),
-      ];
+      state.chatMessages = pluginAgent.buildStatusMessages({ content: state.summary, tone: "warning" });
     }
     state.nextActions = buildNextActions(state);
     return state;
@@ -1387,7 +1440,7 @@ function createAssistantRuntime(): AssistantRuntime {
       drafted.agentRunRoute = "draft";
       drafted.agentRunState = input.result.draftPreview ? "awaiting_confirmation" : "completed";
       drafted.agentRunDetail = input.result.summary;
-      drafted.chatMessages = replaceTrailingPendingAssistant(input.userMessages, drafted.chatMessages ?? []);
+      drafted.chatMessages = finalizeDraftTurnMessages(input.userMessages, drafted.chatMessages ?? []);
       drafted.nextActions = buildNextActions(drafted);
       return drafted;
     }
@@ -1773,6 +1826,13 @@ function replaceTrailingPendingAssistant(
   }
   
   return [...list, ...normalized];
+}
+
+export function finalizeDraftTurnMessages(
+  previousMessages: NonNullable<MainPanelState["chatMessages"]>,
+  draftMessages: NonNullable<MainPanelState["chatMessages"]>
+): NonNullable<MainPanelState["chatMessages"]> {
+  return replaceTrailingPendingAssistant(previousMessages, draftMessages);
 }
 
 function preferNonEmptyArray<T>(primary?: T[], fallback?: T[]): T[] | undefined {

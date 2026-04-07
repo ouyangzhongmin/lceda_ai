@@ -118,7 +118,7 @@ export async function runUnifiedReactAgent(input: {
     systemPrompt,
     tools: input.tools,
     allowedTools: input.allowedTools,
-    maxIterations: 50,  // 最多 50 轮迭代
+    maxIterations: 100,  // 最多 100 轮迭代
     onStreamEvent: input.onStreamEvent,
   });
   

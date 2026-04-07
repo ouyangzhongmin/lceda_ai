@@ -1,3 +1,5 @@
+import type { DraftPlan } from "../../editor/apply-plan/draftPlan";
+
 export interface MainPanelState {
   __stateVersion?: number;
   loggedIn: boolean;
@@ -37,6 +39,7 @@ export interface MainPanelState {
     componentCount: number;
     netCount: number;
   };
+  draftPlan?: DraftPlan;
   chatMessages?: Array<{
     role: "assistant" | "user" | "system";
     title?: string;

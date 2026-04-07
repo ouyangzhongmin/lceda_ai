@@ -275,7 +275,7 @@ export async function runUnifiedReactAgent(input: {
   let liveContext: SchematicContext | undefined = input.context;
   let checkResult: AgentResult["checkResult"] | undefined;
   let locateResult: AgentResult["locateResult"] | undefined;
-  let draftPlan: AgentResult["draftPlan"] | undefined;
+  let draftPlan: AgentResult["draftPlan"] | undefined = input.panelState.draftPlan;
   let draftPreview: AgentResult["draftPreview"] | undefined;
   let draftValidation: AgentResult["draftValidation"] | undefined;
   let draftRisk: AgentResult["draftRisk"] | undefined;
@@ -291,6 +291,10 @@ export async function runUnifiedReactAgent(input: {
     workingMemory: createWorkingMemory(task),
     reactEvents: [],
   };
+
+  if (draftPlan) {
+    state.workingMemory.draftReady = true;
+  }
 
   // Do not pre-seed stepStates. Steps should reflect actual tool calls / observations.
 

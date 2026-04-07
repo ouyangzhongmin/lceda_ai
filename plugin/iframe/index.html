@@ -19,6 +19,7 @@
       --text: #1E293B;
       --text-sec: #64748B;
       --border: #E2E8F0;
+      --chat-pane-half: 280px;
       --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
     }
 
@@ -136,6 +137,101 @@
       display: flex;
       flex-direction: column;
       gap: 16px;
+    }
+
+    .chat-list.empty {
+      min-height: 100%;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    .welcome-shell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100%;
+      padding: 12px 4px 28px;
+    }
+
+    .welcome-card {
+      width: 100%;
+      max-width: 720px;
+      padding: 28px 28px 24px;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at top left, rgba(148, 163, 184, 0.14), transparent 38%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+      text-align: center;
+    }
+
+    .welcome-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 2px solid #1f2937;
+      background: #ffffff;
+      color: #111827;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .welcome-title {
+      margin-bottom: 12px;
+      font-size: 28px;
+      line-height: 1.2;
+      font-weight: 800;
+      color: #111827;
+    }
+
+    .welcome-copy {
+      max-width: 540px;
+      margin: 0 auto;
+      font-size: 16px;
+      line-height: 1.7;
+      color: #334155;
+    }
+
+    .welcome-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .welcome-action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 2px solid #1f2937;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #111827;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    }
+
+    .welcome-action-btn:hover {
+      background: #f8fafc;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .welcome-action-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
 
     /* Messages */
@@ -483,12 +579,21 @@
     .message.assistant {
       display: flex;
       flex-direction: column;
-      min-height: 360px;
+      min-height: 0;
       padding: 14px;
       border-radius: 22px;
       border: 2px solid #1f2937;
       background: #f6f7f9;
       box-shadow: none;
+    }
+
+    .message.assistant.assistant-split-layout {
+      display: grid;
+      grid-template-rows: minmax(0, var(--chat-pane-half)) minmax(0, var(--chat-pane-half));
+      align-content: end;
+      gap: 12px;
+      min-height: calc(var(--chat-pane-half) * 2 + 28px);
+      max-height: calc(var(--chat-pane-half) * 2 + 28px);
     }
 
     .message.assistant.context-compaction {
@@ -589,6 +694,23 @@
       margin-bottom: 12px;
     }
 
+    .assistant-top-pane {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .message.assistant.assistant-split-layout .assistant-top-pane {
+      min-height: 0;
+      max-height: var(--chat-pane-half);
+    }
+
+    .message.assistant.assistant-split-layout .assistant-head-simple {
+      margin-bottom: 10px;
+      flex: 0 0 auto;
+    }
+
     .assistant-head-left {
       display: inline-flex;
       align-items: center;
@@ -668,16 +790,24 @@
 
     .assistant-steps-simple {
       display: flex;
-      flex: 1 1 auto;
+      flex: 0 0 auto;
       flex-direction: column;
       border: 2px solid #1f2937;
       border-radius: 16px;
       background: #ffffff;
       padding: 8px;
-      margin-top: auto;
-      margin-bottom: 10px;
-      min-height: 260px;
+      margin-top: 0;
+      margin-bottom: 0;
+      min-height: 120px;
+      max-height: var(--chat-pane-half);
       overflow: hidden;
+    }
+
+    .message.assistant.assistant-split-layout .assistant-steps-simple {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      align-self: stretch;
     }
 
     .assistant-steps-simple[hidden] {
@@ -687,7 +817,8 @@
     .assistant-steps-content {
       flex: 1 1 auto;
       margin: 0;
-      min-height: 242px;
+      min-height: 102px;
+      max-height: calc(var(--chat-pane-half) - 18px);
       overflow-y: auto;
       overflow-x: hidden;
       padding-right: 2px;
@@ -1058,12 +1189,41 @@
     }
 
     .assistant-summary {
-      min-height: 52px;
+      min-height: 0;
+      max-height: 180px;
       font-size: 13px;
       line-height: 1.6;
       color: #111827;
       white-space: pre-wrap;
       word-break: break-word;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 2px;
+    }
+
+    .assistant-main-pane {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      overflow: hidden;
+    }
+
+    .message.assistant.assistant-split-layout .assistant-main-pane {
+      min-height: 0;
+      max-height: none;
+      flex: 1 1 auto;
+    }
+
+    .message.assistant.assistant-split-layout .assistant-summary {
+      flex: 1 1 auto;
+      max-height: none;
+      min-height: 0;
+      align-self: stretch;
+    }
+
+    .assistant-summary[hidden] {
+      display: none;
     }
 
     .assistant-summary.md {
@@ -1163,11 +1323,26 @@
 
     /* Thinking stage (image 1) */
     .assistant-thinking {
+      display: flex;
+      flex-direction: column;
       border: 2px solid #1f2937;
       border-radius: 16px;
       background: #ffffff;
       padding: 10px 10px;
       margin-bottom: 12px;
+      max-height: var(--chat-pane-half);
+      overflow: hidden;
+    }
+
+    .message.assistant.assistant-split-layout .assistant-thinking {
+      flex: 1 1 auto;
+      max-height: none;
+      margin-bottom: 0;
+      align-self: stretch;
+    }
+
+    .assistant-thinking.live {
+      height: var(--chat-pane-half);
     }
 
     .assistant-thinking[hidden] {
@@ -1198,6 +1373,8 @@
 
     .assistant-thinking-body {
       display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
       gap: 12px;
       align-items: flex-start;
       color: #0f172a;
@@ -1205,7 +1382,7 @@
       line-height: 1.58;
       white-space: pre-wrap;
       word-break: break-word;
-      max-height: 220px;
+      max-height: calc(var(--chat-pane-half) - 54px);
       overflow-y: auto;
       overflow-x: hidden;
       padding-right: 2px;
@@ -2250,13 +2427,95 @@
       if (input) input.disabled = busy;
     }
 
+    function sendPrompt(text) {
+      const prompt = String(text || "").trim();
+      if (!prompt || isBusy) return;
+      if (currentState && currentState.llmMode === "proxy" && currentState.loggedIn === false) {
+        showToast("当前 LLM 模式为服务器转发，请先登录");
+        return;
+      }
+      setBusy(true);
+      invokeRuntime("sendChat", prompt);
+      const input = document.getElementById("chat-input");
+      if (input) input.value = "";
+    }
+
+    function fillPromptInput(text) {
+      const prompt = String(text || "");
+      const input = document.getElementById("chat-input");
+      if (!input) return;
+      input.value = prompt;
+      input.focus();
+      if (typeof input.setSelectionRange === "function") {
+        const end = prompt.length;
+        input.setSelectionRange(end, end);
+      }
+    }
+
+    function renderWelcomeState(list) {
+      list.innerHTML = "";
+      list.classList.add("empty");
+
+      const shell = document.createElement("div");
+      shell.className = "welcome-shell";
+
+      const card = document.createElement("section");
+      card.className = "welcome-card";
+
+      const badge = document.createElement("div");
+      badge.className = "welcome-badge";
+      badge.textContent = "AI 助手";
+
+      const title = document.createElement("div");
+      title.className = "welcome-title";
+      title.textContent = "我是一个AI助手";
+
+      const copy = document.createElement("div");
+      copy.className = "welcome-copy";
+      copy.textContent = "我是一个AI助手，已经准备好读取当前原理图，你可以直接提问。";
+
+      const actions = document.createElement("div");
+      actions.className = "welcome-actions";
+
+      [
+        "检查这个原理图",
+        "这个电路有什么问题",
+        "帮我设计一个点亮LED的电路",
+      ].forEach((prompt) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "welcome-action-btn";
+        button.textContent = prompt;
+        button.disabled = Boolean(isBusy);
+        button.addEventListener("click", () => fillPromptInput(prompt));
+        actions.appendChild(button);
+      });
+
+      card.appendChild(badge);
+      card.appendChild(title);
+      card.appendChild(copy);
+      card.appendChild(actions);
+      shell.appendChild(card);
+      list.appendChild(shell);
+    }
+
     function renderChat(messages) {
       const list = document.getElementById("chat-list");
       if (!list) return;
+      updateAssistantPaneHeights();
 
-      const finalMessages = messages && messages.length > 0 ? messages : [
-        { role: "assistant", content: "我已经准备好读取当前原理图。你可以直接提问。" },
-      ];
+      const finalMessages = Array.isArray(messages) ? messages : [];
+      if (finalMessages.length === 0) {
+        renderedMessageCount = 0;
+        messageDom.clear();
+        renderWelcomeState(list);
+        return;
+      }
+      const needsFullRebuild =
+        list.classList.contains("empty") ||
+        list.children.length !== renderedMessageCount ||
+        messageDom.size !== renderedMessageCount;
+      list.classList.remove("empty");
 
       // If we inserted optimistic nodes, drop them once state contains the matching user message.
       if (optimistic.active && finalMessages.length >= 1) {
@@ -2284,7 +2543,7 @@
         stickToBottom = true;
       }
       lastHasStreaming = hasStreaming;
-      if (renderedMessageCount > finalMessages.length) {
+      if (needsFullRebuild || renderedMessageCount > finalMessages.length) {
         list.innerHTML = "";
         messageDom.clear();
         finalMessages.forEach((message, index) => {
@@ -2337,12 +2596,28 @@
     function bindAutoScroll() {
       const scroller = document.querySelector(".chat-scroll");
       if (!scroller) return;
+      updateAssistantPaneHeights();
+      let resizeTimer = null;
+      window.addEventListener("resize", () => {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          resizeTimer = null;
+          updateAssistantPaneHeights();
+        }, 50);
+      }, { passive: true });
       scroller.addEventListener("scroll", () => {
         const nearBottom = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight) < 160;
         // If user scrolls away from bottom, stop auto-sticking.
         // When user scrolls back to bottom, resume auto-sticking.
         stickToBottom = nearBottom;
       }, { passive: true });
+    }
+
+    function updateAssistantPaneHeights() {
+      const scroller = document.querySelector(".chat-scroll");
+      if (!scroller) return;
+      const half = Math.max(180, Math.floor(scroller.clientHeight * 0.5));
+      document.documentElement.style.setProperty("--chat-pane-half", `${half}px`);
     }
 
     function resolveMessageRole(message) {
@@ -2372,7 +2647,13 @@
 
       let statusEl = null;
       let stepsBtnEl = null;
+      let topPane = null;
+      let mainPane = null;
       if (role !== "user") {
+        topPane = document.createElement("div");
+        topPane.className = "assistant-top-pane";
+        card.appendChild(topPane);
+
         const head = document.createElement("div");
         head.className = "assistant-head-simple";
 
@@ -2399,7 +2680,11 @@
 
         head.appendChild(headLeft);
         head.appendChild(stepsBtnEl);
-        card.appendChild(head);
+        topPane.appendChild(head);
+
+        mainPane = document.createElement("div");
+        mainPane.className = "assistant-main-pane";
+        topPane.appendChild(mainPane);
       }
 
       // Thinking card: shown before tool execution kicks in (image 1 style)
@@ -2408,7 +2693,7 @@
         thinkingHost = document.createElement("div");
         thinkingHost.className = "assistant-thinking";
         thinkingHost.hidden = true;
-        card.appendChild(thinkingHost);
+        mainPane.appendChild(thinkingHost);
       }
 
       const stepsHost = document.createElement("div");
@@ -2419,7 +2704,11 @@
       const content = document.createElement("div");
       content.className = role === "user" ? "message-content" : "assistant-summary";
       content.textContent = message.content || "";
-      card.appendChild(content);
+      if (role === "user") {
+        card.appendChild(content);
+      } else {
+        mainPane.appendChild(content);
+      }
 
       row.appendChild(card);
 
@@ -2427,6 +2716,8 @@
         row,
         cardEl: card,
         contentEl: content,
+        topPaneEl: topPane,
+        mainPaneEl: mainPane,
         stepsHostEl: stepsHost,
         stepsToggleHostEl: stepsBtnEl,
         thinkingHostEl: thinkingHost,
@@ -2498,6 +2789,7 @@
         const showThinking = Boolean(dom.thinkingHostEl && hasThought && nextStreaming);
         if (dom.thinkingHostEl) {
           dom.thinkingHostEl.hidden = !showThinking;
+          dom.thinkingHostEl.classList.toggle("live", showThinking);
           if (showThinking) {
             // Pick the latest thought text as the visible content.
             const latest = [...reactEvents].reverse().find((e) => e && e.kind === "thought" && String(e.text || "").trim());
@@ -2602,6 +2894,15 @@
       }
 
       if (role === "assistant") {
+        const hasStructuredContent = Boolean(structured && structured.length > 0);
+        const visibleText = String(nextText || "").trim();
+        const shouldHideContent =
+          !hasStructuredContent &&
+          (visibleText === "" || visibleText === "正在思考...");
+        dom.contentEl.hidden = shouldHideContent;
+      }
+
+      if (role === "assistant") {
          const stepEntries = collectStepEntries(message);
          const stepLines = stepEntries.map(formatStepEntryLine).filter(Boolean);
          const hadRenderedSteps = Boolean(dom.stepsUI && dom.stepsUI.lines.length);
@@ -2630,6 +2931,13 @@
            renderStepsUI(activeUI);
          }
        }
+
+      if (role === "assistant" && dom.cardEl) {
+        const hasThinkingPane = Boolean(dom.thinkingHostEl && !dom.thinkingHostEl.hidden);
+        const hasStepsPane = Boolean(dom.stepsHostEl && !dom.stepsHostEl.hidden);
+        const useSplitLayout = !message.contextCompaction && (hasThinkingPane || hasStepsPane);
+        dom.cardEl.classList.toggle("assistant-split-layout", useSplitLayout);
+      }
 
       dom.isStreaming = nextStreaming;
       dom.lastSignature = buildMessageSignature(message);
@@ -3587,23 +3895,7 @@
       const text = input.value.trim();
       console.log(`${LOG_PREFIX} send button clicked`, { text, isBusy });
       if (!text || isBusy) return;
-
-      if (currentState && currentState.llmMode === "proxy" && currentState.loggedIn === false) {
-        showToast("当前 LLM 模式为服务器转发，请先登录");
-        return;
-      }
-      
-      const runtime = getHostRuntime();
-      console.log(`${LOG_PREFIX} runtime check`, { 
-        hasRuntime: !!runtime, 
-        hasSendChat: runtime && typeof runtime.sendChat === "function" 
-      });
-      
-      // Disable composer immediately, not only after state arrives.
-      setBusy(true);
-
-      invokeRuntime("sendChat", text);
-      input.value = "";
+      sendPrompt(text);
     });
 
     document.getElementById("chat-input").addEventListener("keydown", (e) => {
@@ -4030,7 +4322,16 @@ var edaEsbuildExportName = (() => {
     const componentType = await callStateString(record, ["getState_ComponentType"]) ?? readStringRecord(record, ["componentType", "ComponentType", "type", "Type"]);
     const ref = await callStateString(record, ["getState_Designator"]) ?? readStringRecord(record, ["designator", "Designator"]) ?? readStringRecord(properties, ["Designator", "Ref", "REF", "\u4F4D\u53F7"]);
     const name = await callStateString(record, ["getState_Name"]) ?? readStringRecord(record, ["name", "Name"]) ?? readStringRecord(properties, ["Name", "Comment", "\u540D\u79F0"]);
-    const packageName = normalizeFootprintName(await callStateValue(record, ["getState_Footprint"])) ?? normalizeFootprintName(record.footprint) ?? readStringRecord(record, ["footprint", "Footprint"]) ?? readStringRecord(properties, ["Footprint", "Package", "\u5C01\u88C5"]);
+    const packageName = normalizeFootprintName(await callStateValue(record, ["getState_Footprint"])) ?? normalizeFootprintName(record.footprint) ?? readStringRecord(record, ["footprint", "Footprint", "footprintName", "FootprintName"]) ?? readStringRecord(properties, [
+      "Footprint",
+      "footprint",
+      "FootprintName",
+      "footprintName",
+      "Supplier Footprint",
+      "SupplierFootprint",
+      "Package",
+      "\u5C01\u88C5"
+    ]);
     const componentLink = normalizeLinkedEntity(await callStateValue(record, ["getState_Component"])) ?? normalizeLinkedEntity(record.component);
     const footprintLink = normalizeLinkedEntity(await callStateValue(record, ["getState_Footprint"])) ?? normalizeLinkedEntity(record.footprint);
     const libraryId = await callStateString(record, ["getState_UniqueId"]) ?? readStringRecord(record, ["uniqueId", "UniqueId", "componentUuid"]) ?? componentLink?.uuid;
@@ -5906,6 +6207,128 @@ var edaEsbuildExportName = (() => {
     const ldoDevice = pickSelected("ldo_regulator");
     const inputCapacitorDevice = pickSelected("input_capacitor");
     const outputCapacitorDevice = pickSelected("output_capacitor") ?? inputCapacitorDevice;
+    const ledDevice = pickSelected("led");
+    const resistorDevice = pickSelected("resistor");
+    const connectorDevice = pickSelected("power_connector");
+    const looksLikeLedDraft = /led|发光二极管|点亮|指示灯/u.test(userQuery) && !/ldo|稳压|regulator|3\.3v|3v3/u.test(userQuery);
+    if (looksLikeLedDraft) {
+      return {
+        title: "5V LED Indicator Draft",
+        rationale: "Generated a minimal LED indicator draft based on the user request." + (selectedDevices.length > 0 ? ` Matched ${selectedDevices.length} integrated-library device candidate(s) for later placement.` : ""),
+        components: [
+          {
+            id: "draft-j1",
+            ref: "J1",
+            name: connectorDevice?.name ?? "Power Header",
+            libraryId: connectorDevice?.deviceUuid ?? "lib-power-header",
+            packageName: connectorDevice?.footprintName ?? "HDR-TH_1X2",
+            value: "5V Input",
+            properties: {
+              expected_net_1: "5V",
+              expected_net_2: "GND",
+              device_uuid: connectorDevice?.deviceUuid ?? "",
+              library_uuid: connectorDevice?.libraryUuid ?? "",
+              symbol_uuid: connectorDevice?.symbolUuid ?? "",
+              footprint_uuid: connectorDevice?.footprintUuid ?? "",
+              ...withPlacement(120, 220, 0)
+            }
+          },
+          {
+            id: "draft-r1",
+            ref: "R1",
+            name: resistorDevice?.name ?? "Resistor",
+            libraryId: resistorDevice?.deviceUuid ?? "lib-resistor",
+            packageName: resistorDevice?.footprintName ?? "R0805",
+            value: "150\u03A9",
+            properties: {
+              expected_net_1: "5V",
+              expected_net_2: "LED_ANODE",
+              device_uuid: resistorDevice?.deviceUuid ?? "",
+              library_uuid: resistorDevice?.libraryUuid ?? "",
+              symbol_uuid: resistorDevice?.symbolUuid ?? "",
+              footprint_uuid: resistorDevice?.footprintUuid ?? "",
+              ...withPlacement(250, 220, 0)
+            }
+          },
+          {
+            id: "draft-d1",
+            ref: "D1",
+            name: ledDevice?.name ?? "LED",
+            libraryId: ledDevice?.deviceUuid ?? "lib-led",
+            packageName: ledDevice?.footprintName ?? "LED-TH_BD3.9-P2.54-RD_RED",
+            value: "RED",
+            properties: {
+              expected_net_A: "LED_ANODE",
+              expected_net_K: "GND",
+              led_color: "red",
+              device_uuid: ledDevice?.deviceUuid ?? "",
+              library_uuid: ledDevice?.libraryUuid ?? "",
+              symbol_uuid: ledDevice?.symbolUuid ?? "",
+              footprint_uuid: ledDevice?.footprintUuid ?? "",
+              ...withPlacement(390, 220, 0)
+            }
+          }
+        ],
+        pins: [
+          {
+            id: "draft-j1-1",
+            componentId: "draft-j1",
+            pinName: "5V",
+            electricalType: "power_in"
+          },
+          {
+            id: "draft-j1-2",
+            componentId: "draft-j1",
+            pinName: "GND",
+            electricalType: "power_in"
+          },
+          {
+            id: "draft-r1-1",
+            componentId: "draft-r1",
+            pinName: "1",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-r1-2",
+            componentId: "draft-r1",
+            pinName: "2",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-d1-a",
+            componentId: "draft-d1",
+            pinName: "A",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-d1-k",
+            componentId: "draft-d1",
+            pinName: "K",
+            electricalType: "passive"
+          }
+        ],
+        nets: [
+          {
+            id: "draft-net-5v",
+            name: "5V",
+            nodeIds: ["draft-j1-1", "draft-r1-1"],
+            isPower: true
+          },
+          {
+            id: "draft-net-led-anode",
+            name: "LED_ANODE",
+            nodeIds: ["draft-r1-2", "draft-d1-a"]
+          },
+          {
+            id: "draft-net-gnd",
+            name: "GND",
+            nodeIds: ["draft-j1-2", "draft-d1-k"],
+            isPower: true
+          }
+        ],
+        selectedDevices
+      };
+    }
     if (normalized.includes("ldo") || normalized.includes("5v") || normalized.includes("3.3v")) {
       return {
         title: "5V to 3.3V LDO Draft",
@@ -6157,6 +6580,23 @@ var edaEsbuildExportName = (() => {
   }
 
   // src/rules/checks/componentAttributesCheck.ts
+  function hasUsablePackageInfo(component) {
+    if (String(component.packageName || "").trim()) {
+      return true;
+    }
+    const properties = component.properties || {};
+    const candidates = [
+      properties.Footprint,
+      properties.footprint,
+      properties.FootprintName,
+      properties.footprintName,
+      properties["Supplier Footprint"],
+      properties.SupplierFootprint,
+      properties.Package,
+      properties["\u5C01\u88C5"]
+    ];
+    return candidates.some((value) => String(value || "").trim().length > 0);
+  }
   function runComponentAttributesCheck(context) {
     const issues = [];
     for (const component of context.components) {
@@ -6175,7 +6615,7 @@ var edaEsbuildExportName = (() => {
           suggestion: "\u8BF7\u4E3A\u8BE5\u5668\u4EF6\u8865\u5145\u552F\u4E00\u4F4D\u53F7\u3002"
         });
       }
-      if (component.addIntoPcb !== false && !component.packageName) {
+      if (component.addIntoPcb !== false && !hasUsablePackageInfo(component)) {
         issues.push({
           id: `issue-${component.id}-missing-package`,
           ruleId: "component.missing-package",
@@ -8493,7 +8933,7 @@ var edaEsbuildExportName = (() => {
         content: null,
         tool_calls: assistantToolCalls
       });
-      state.reactEvents.push({
+      const toolCallEvent = {
         kind: "tool_call",
         label: "Action",
         status: "running",
@@ -8501,7 +8941,8 @@ var edaEsbuildExportName = (() => {
         toolName,
         inputSummary: summarize(toolInput, 160),
         stepKind
-      });
+      };
+      state.reactEvents.push(toolCallEvent);
       try {
         const toolResult = isSpecial && specialTools ? await specialTools[toolName]({ toolName, toolInput, iteration: i, messages: messages.slice() }) : void 0;
         const output = toolResult ? toolResult.output : await deps.invokeTool(toolName, toolInput);
@@ -8510,6 +8951,7 @@ var edaEsbuildExportName = (() => {
         const outputSummary = toolResult?.observationForUi ?? formatted?.summary ?? summarize(output, 900);
         const modelObs = toolResult?.observationForModel ?? formatted?.messageForModel ?? outputSummary;
         state.toolTraces.push({ toolName, status: "success", note: outputSummary.slice(0, 180) });
+        toolCallEvent.status = "done";
         state.reactEvents.push({
           kind: "observation",
           label: "Observation",
@@ -8542,6 +8984,7 @@ var edaEsbuildExportName = (() => {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         state.toolTraces.push({ toolName, status: "blocked", note: msg });
+        toolCallEvent.status = "failed";
         state.reactEvents.push({
           kind: "observation",
           label: "Observation",
@@ -8843,7 +9286,7 @@ ${match[2] || ""}`);
     let liveContext = input.context;
     let checkResult;
     let locateResult;
-    let draftPlan;
+    let draftPlan = input.panelState.draftPlan;
     let draftPreview;
     let draftValidation;
     let draftRisk;
@@ -8857,6 +9300,9 @@ ${match[2] || ""}`);
       workingMemory: createWorkingMemory(task),
       reactEvents: []
     };
+    if (draftPlan) {
+      state.workingMemory.draftReady = true;
+    }
     const baseContextHint = buildContextHint(input.context, input.panelState);
     const allVisibleTools = input.tools.list().filter((t) => isAllowedToolName(t.name, input.allowedTools)).filter((t) => !t.requiresConfirmation);
     const decisionToolNames = buildDecisionToolNames({
@@ -10846,6 +11292,29 @@ ${content}`;
       }
     }, PERSIST_PANEL_STATE_THROTTLE_MS);
   }
+  function cancelScheduledPanelStatePersist() {
+    pendingPersist = null;
+    if (persistPanelTimer) {
+      clearTimeout(persistPanelTimer);
+      persistPanelTimer = null;
+    }
+  }
+  function shouldIgnoreDuplicateSendWhileRunning(input) {
+    const normalizedInput = input.trimmedInput.trim();
+    const normalizedPending = input.pendingChatInput?.trim();
+    const normalizedLastUser = input.lastUserMessageContent?.trim();
+    if (!normalizedInput) {
+      return false;
+    }
+    const isRunning = input.agentRunState === "planning" || input.agentRunState === "running_tools" || input.agentRunState === "waiting_llm";
+    if (!isRunning) {
+      return false;
+    }
+    if (normalizedPending && normalizedInput === normalizedPending) {
+      return Boolean(input.activeTurnId || input.agentRunState === "planning");
+    }
+    return Boolean(normalizedLastUser && normalizedInput === normalizedLastUser);
+  }
   function formatReactEventLine(event) {
     if (!event || !event.kind) return "";
     if (event.kind === "task") return `\u4EFB\u52A1: ${event.text || event.label || ""}`;
@@ -10957,6 +11426,7 @@ ${content}`;
     async function openIdlePanelState() {
       const restored = await restorePanelState(storage);
       if (restored) {
+        internals.draftPlan = restored.draftPlan;
         await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore2);
         if (restored.agentRunState === "planning" || restored.agentRunState === "running_tools" || restored.agentRunState === "waiting_llm") {
           restored.agentRunState = "idle";
@@ -11272,6 +11742,8 @@ ${content}`;
         internals.draftBlocked = void 0;
         internals.lastApplyTransactionId = void 0;
         internals.pendingChatInput = void 0;
+        internals.activeTurnId = void 0;
+        cancelScheduledPanelStatePersist();
         await clearPanelState(storage);
         return openIdlePanelState();
       },
@@ -11296,6 +11768,7 @@ ${content}`;
             state.agentRunDetail = result.summary;
             internals.draftPlan = result.draftPlan;
             internals.draftBlocked = result.draftRisk?.level === "blocked";
+            state.draftPlan = result.draftPlan;
             state.draftPreview = {
               title: result.draftPreview.title,
               rationale: result.draftPreview.rationale,
@@ -11386,6 +11859,20 @@ ${content}`;
         }
         if (!current.sessionTitle || current.sessionTitle === "New Session") {
           current.sessionTitle = buildSessionTitleFromPrompt(trimmed);
+        }
+        if (shouldIgnoreDuplicateSendWhileRunning({
+          trimmedInput: trimmed,
+          pendingChatInput: internals.pendingChatInput,
+          activeTurnId: internals.activeTurnId,
+          agentRunState: current.agentRunState,
+          lastUserMessageContent: sanitizeChatMessages(current.chatMessages).filter((message) => message.role === "user").slice(-1)[0]?.content
+        })) {
+          if (typeof console !== "undefined") {
+            console.warn(`${LOG_PREFIX} sendChat.duplicate-ignored`, {
+              promptLength: trimmed.length
+            });
+          }
+          return current;
         }
         await compactChatHistoryIfNeeded({
           state: current,
@@ -11801,6 +12288,7 @@ ${content}`;
           state.agentRunDetail = result.summary;
           internals.draftPlan = result.draftPlan;
           internals.draftBlocked = result.draftRisk?.level === "blocked";
+          state.draftPlan = result.draftPlan;
           state.draftPreview = {
             title: result.draftPreview.title,
             rationale: result.draftPreview.rationale,
@@ -11840,10 +12328,11 @@ ${content}`;
       state.nextActions = buildNextActions(state);
       return commitState(internals, state, storage);
     }
-    async function generateDraftStateFromResult(result, previousMessages) {
+    async function generateDraftStateFromResult(result, _previousMessages) {
       const state = internals.currentState ?? await computeAnalysisState();
       if (result.draftPreview) {
         internals.draftPlan = result.draftPlan;
+        state.draftPlan = result.draftPlan;
         state.draftPreview = {
           title: result.draftPreview.title,
           rationale: result.draftPreview.rationale,
@@ -11853,30 +12342,24 @@ ${content}`;
           netCount: result.draftPreview.netCount
         };
         state.summary = `\u8349\u6848\u5DF2\u751F\u6210\uFF1A${result.draftPreview.title}\uFF0C\u5171 ${result.draftPreview.componentCount} \u4E2A\u5668\u4EF6\uFF0C${result.draftPreview.netCount} \u6761\u7F51\u7EDC\u3002`;
-        state.chatMessages = [
-          ...previousMessages,
-          ...pluginAgent.buildDraftMessages({
-            draftPreview: state.draftPreview,
-            mcpResources: result.mcpResources,
-            mcpResourceReads: result.mcpResourceReads,
-            toolTraces: result.toolTraces,
-            executionTraces: result.executionTraces,
-            uiEvents: result.uiEvents,
-            reactEvents: result.reactEvents,
-            stepStates: result.stepStates,
-            workingMemory: result.workingMemory,
-            draftRisk: result.draftRisk
-          })
-        ];
+        state.chatMessages = pluginAgent.buildDraftMessages({
+          draftPreview: state.draftPreview,
+          mcpResources: result.mcpResources,
+          mcpResourceReads: result.mcpResourceReads,
+          toolTraces: result.toolTraces,
+          executionTraces: result.executionTraces,
+          uiEvents: result.uiEvents,
+          reactEvents: result.reactEvents,
+          stepStates: result.stepStates,
+          workingMemory: result.workingMemory,
+          draftRisk: result.draftRisk
+        });
       } else {
         state.agentRunState = "completed";
         state.agentRunRoute = "draft";
         state.agentRunDetail = "\u8349\u6848\u672A\u8FD4\u56DE\u9884\u89C8";
         state.summary = "\u8349\u6848\u751F\u6210\u5B8C\u6210\uFF0C\u4F46\u672A\u8FD4\u56DE\u9884\u89C8\u4FE1\u606F\u3002";
-        state.chatMessages = [
-          ...previousMessages,
-          ...pluginAgent.buildStatusMessages({ content: state.summary, tone: "warning" })
-        ];
+        state.chatMessages = pluginAgent.buildStatusMessages({ content: state.summary, tone: "warning" });
       }
       state.nextActions = buildNextActions(state);
       return state;
@@ -11897,7 +12380,7 @@ ${content}`;
         drafted.agentRunRoute = "draft";
         drafted.agentRunState = input.result.draftPreview ? "awaiting_confirmation" : "completed";
         drafted.agentRunDetail = input.result.summary;
-        drafted.chatMessages = replaceTrailingPendingAssistant(input.userMessages, drafted.chatMessages ?? []);
+        drafted.chatMessages = finalizeDraftTurnMessages(input.userMessages, drafted.chatMessages ?? []);
         drafted.nextActions = buildNextActions(drafted);
         return drafted;
       }
@@ -12192,6 +12675,9 @@ ${content}`;
       return [...list, ...mergedReplacements];
     }
     return [...list, ...normalized];
+  }
+  function finalizeDraftTurnMessages(previousMessages, draftMessages) {
+    return replaceTrailingPendingAssistant(previousMessages, draftMessages);
   }
   function preferNonEmptyArray(primary, fallback) {
     if (Array.isArray(primary) && primary.length > 0) {

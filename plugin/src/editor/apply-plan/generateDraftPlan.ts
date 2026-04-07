@@ -27,6 +27,136 @@ export function generateDraftPlanFromPrompt(
   const ldoDevice = pickSelected("ldo_regulator");
   const inputCapacitorDevice = pickSelected("input_capacitor");
   const outputCapacitorDevice = pickSelected("output_capacitor") ?? inputCapacitorDevice;
+  const ledDevice = pickSelected("led");
+  const resistorDevice = pickSelected("resistor");
+  const connectorDevice = pickSelected("power_connector");
+
+  const looksLikeLedDraft =
+    /led|发光二极管|点亮|指示灯/u.test(userQuery) &&
+    !/ldo|稳压|regulator|3\.3v|3v3/u.test(userQuery);
+
+  if (looksLikeLedDraft) {
+    return {
+      title: "5V LED Indicator Draft",
+      rationale:
+        "Generated a minimal LED indicator draft based on the user request." +
+        (selectedDevices.length > 0
+          ? ` Matched ${selectedDevices.length} integrated-library device candidate(s) for later placement.`
+          : ""),
+      components: [
+        {
+          id: "draft-j1",
+          ref: "J1",
+          name: connectorDevice?.name ?? "Power Header",
+          libraryId: connectorDevice?.deviceUuid ?? "lib-power-header",
+          packageName: connectorDevice?.footprintName ?? "HDR-TH_1X2",
+          value: "5V Input",
+          properties: {
+            expected_net_1: "5V",
+            expected_net_2: "GND",
+            device_uuid: connectorDevice?.deviceUuid ?? "",
+            library_uuid: connectorDevice?.libraryUuid ?? "",
+            symbol_uuid: connectorDevice?.symbolUuid ?? "",
+            footprint_uuid: connectorDevice?.footprintUuid ?? "",
+            ...withPlacement(120, 220, 0),
+          },
+        },
+        {
+          id: "draft-r1",
+          ref: "R1",
+          name: resistorDevice?.name ?? "Resistor",
+          libraryId: resistorDevice?.deviceUuid ?? "lib-resistor",
+          packageName: resistorDevice?.footprintName ?? "R0805",
+          value: "150Ω",
+          properties: {
+            expected_net_1: "5V",
+            expected_net_2: "LED_ANODE",
+            device_uuid: resistorDevice?.deviceUuid ?? "",
+            library_uuid: resistorDevice?.libraryUuid ?? "",
+            symbol_uuid: resistorDevice?.symbolUuid ?? "",
+            footprint_uuid: resistorDevice?.footprintUuid ?? "",
+            ...withPlacement(250, 220, 0),
+          },
+        },
+        {
+          id: "draft-d1",
+          ref: "D1",
+          name: ledDevice?.name ?? "LED",
+          libraryId: ledDevice?.deviceUuid ?? "lib-led",
+          packageName: ledDevice?.footprintName ?? "LED-TH_BD3.9-P2.54-RD_RED",
+          value: "RED",
+          properties: {
+            expected_net_A: "LED_ANODE",
+            expected_net_K: "GND",
+            led_color: "red",
+            device_uuid: ledDevice?.deviceUuid ?? "",
+            library_uuid: ledDevice?.libraryUuid ?? "",
+            symbol_uuid: ledDevice?.symbolUuid ?? "",
+            footprint_uuid: ledDevice?.footprintUuid ?? "",
+            ...withPlacement(390, 220, 0),
+          },
+        },
+      ],
+      pins: [
+        {
+          id: "draft-j1-1",
+          componentId: "draft-j1",
+          pinName: "5V",
+          electricalType: "power_in",
+        },
+        {
+          id: "draft-j1-2",
+          componentId: "draft-j1",
+          pinName: "GND",
+          electricalType: "power_in",
+        },
+        {
+          id: "draft-r1-1",
+          componentId: "draft-r1",
+          pinName: "1",
+          electricalType: "passive",
+        },
+        {
+          id: "draft-r1-2",
+          componentId: "draft-r1",
+          pinName: "2",
+          electricalType: "passive",
+        },
+        {
+          id: "draft-d1-a",
+          componentId: "draft-d1",
+          pinName: "A",
+          electricalType: "passive",
+        },
+        {
+          id: "draft-d1-k",
+          componentId: "draft-d1",
+          pinName: "K",
+          electricalType: "passive",
+        },
+      ],
+      nets: [
+        {
+          id: "draft-net-5v",
+          name: "5V",
+          nodeIds: ["draft-j1-1", "draft-r1-1"],
+          isPower: true,
+        },
+        {
+          id: "draft-net-led-anode",
+          name: "LED_ANODE",
+          nodeIds: ["draft-r1-2", "draft-d1-a"],
+        },
+        {
+          id: "draft-net-gnd",
+          name: "GND",
+          nodeIds: ["draft-j1-2", "draft-d1-k"],
+          isPower: true,
+        },
+      ],
+      selectedDevices,
+    };
+  }
 
   if (normalized.includes("ldo") || normalized.includes("5v") || normalized.includes("3.3v")) {
     return {

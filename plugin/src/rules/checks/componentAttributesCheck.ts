@@ -1,6 +1,24 @@
 import type { SchematicContext } from "../../types/schematic";
 import type { RuleIssue } from "../models/issue";
 
+function hasUsablePackageInfo(component: SchematicContext["components"][number]): boolean {
+  if (String(component.packageName || "").trim()) {
+    return true;
+  }
+  const properties = component.properties || {};
+  const candidates = [
+    properties.Footprint,
+    properties.footprint,
+    properties.FootprintName,
+    properties.footprintName,
+    properties["Supplier Footprint"],
+    properties.SupplierFootprint,
+    properties.Package,
+    properties["封装"],
+  ];
+  return candidates.some((value) => String(value || "").trim().length > 0);
+}
+
 export function runComponentAttributesCheck(context: SchematicContext): RuleIssue[] {
   const issues: RuleIssue[] = [];
 
@@ -22,7 +40,7 @@ export function runComponentAttributesCheck(context: SchematicContext): RuleIssu
       });
     }
 
-    if (component.addIntoPcb !== false && !component.packageName) {
+    if (component.addIntoPcb !== false && !hasUsablePackageInfo(component)) {
       issues.push({
         id: `issue-${component.id}-missing-package`,
         ruleId: "component.missing-package",
