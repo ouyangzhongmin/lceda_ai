@@ -588,12 +588,10 @@
     }
 
     .message.assistant.assistant-split-layout {
-      display: grid;
-      grid-template-rows: minmax(0, var(--chat-pane-half)) minmax(0, var(--chat-pane-half));
-      align-content: end;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
       gap: 12px;
-      min-height: calc(var(--chat-pane-half) * 2 + 28px);
-      max-height: calc(var(--chat-pane-half) * 2 + 28px);
     }
 
     .message.assistant.context-compaction {
@@ -696,14 +694,13 @@
 
     .assistant-top-pane {
       min-height: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+      display: block;
+      overflow: visible;
     }
 
     .message.assistant.assistant-split-layout .assistant-top-pane {
       min-height: 0;
-      max-height: var(--chat-pane-half);
+      max-height: none;
     }
 
     .message.assistant.assistant-split-layout .assistant-head-simple {
@@ -804,9 +801,9 @@
     }
 
     .message.assistant.assistant-split-layout .assistant-steps-simple {
-      flex: 1 1 auto;
+      flex: 0 0 auto;
       min-height: 0;
-      max-height: none;
+      max-height: var(--chat-pane-half);
       align-self: stretch;
     }
 
@@ -1201,6 +1198,11 @@
       padding-right: 2px;
     }
 
+    .assistant-summary.report-fill-height {
+      max-height: none;
+      min-height: min(360px, calc(100vh - 320px));
+    }
+
     .assistant-main-pane {
       min-height: 0;
       display: flex;
@@ -1212,12 +1214,12 @@
     .message.assistant.assistant-split-layout .assistant-main-pane {
       min-height: 0;
       max-height: none;
-      flex: 1 1 auto;
+      flex: 0 0 auto;
     }
 
     .message.assistant.assistant-split-layout .assistant-summary {
-      flex: 1 1 auto;
-      max-height: none;
+      flex: 0 0 auto;
+      max-height: 180px;
       min-height: 0;
       align-self: stretch;
     }
@@ -1335,8 +1337,8 @@
     }
 
     .message.assistant.assistant-split-layout .assistant-thinking {
-      flex: 1 1 auto;
-      max-height: none;
+      flex: 0 0 auto;
+      max-height: var(--chat-pane-half);
       margin-bottom: 0;
       align-self: stretch;
     }
@@ -2648,7 +2650,6 @@
       let statusEl = null;
       let stepsBtnEl = null;
       let topPane = null;
-      let mainPane = null;
       if (role !== "user") {
         topPane = document.createElement("div");
         topPane.className = "assistant-top-pane";
@@ -2681,19 +2682,14 @@
         head.appendChild(headLeft);
         head.appendChild(stepsBtnEl);
         topPane.appendChild(head);
-
-        mainPane = document.createElement("div");
-        mainPane.className = "assistant-main-pane";
-        topPane.appendChild(mainPane);
       }
 
-      // Thinking card: shown before tool execution kicks in (image 1 style)
       let thinkingHost = null;
       if (role !== "user") {
         thinkingHost = document.createElement("div");
         thinkingHost.className = "assistant-thinking";
         thinkingHost.hidden = true;
-        mainPane.appendChild(thinkingHost);
+        card.appendChild(thinkingHost);
       }
 
       const stepsHost = document.createElement("div");
@@ -2707,7 +2703,7 @@
       if (role === "user") {
         card.appendChild(content);
       } else {
-        mainPane.appendChild(content);
+        card.appendChild(content);
       }
 
       row.appendChild(card);
@@ -2717,7 +2713,7 @@
         cardEl: card,
         contentEl: content,
         topPaneEl: topPane,
-        mainPaneEl: mainPane,
+        mainPaneEl: null,
         stepsHostEl: stepsHost,
         stepsToggleHostEl: stepsBtnEl,
         thinkingHostEl: thinkingHost,
@@ -2763,6 +2759,36 @@
       return Boolean(message && message.role === "assistant" && message.streaming);
     }
 
+    function getAssistantCardLayoutState(input) {
+      if (input.contextCompaction) {
+        return {
+          showThinking: false,
+          showSteps: false,
+          showReport: Boolean(input.hasReport),
+          useSplitLayout: false,
+          reportFillsRemainingHeight: true,
+        };
+      }
+
+      if (input.streaming) {
+        return {
+          showThinking: Boolean(input.hasThinking),
+          showSteps: Boolean(input.hasSteps),
+          showReport: Boolean(input.hasReport),
+          useSplitLayout: Boolean(input.hasThinking || input.hasSteps),
+          reportFillsRemainingHeight: false,
+        };
+      }
+
+      return {
+        showThinking: false,
+        showSteps: Boolean(input.hasSteps && input.stepsOpen),
+        showReport: Boolean(input.hasReport),
+        useSplitLayout: false,
+        reportFillsRemainingHeight: Boolean(input.hasReport && !(input.hasSteps && input.stepsOpen)),
+      };
+    }
+
     function patchMessageDom(dom, message) {
       const role = resolveMessageRole(message);
       if (dom.role !== role) {
@@ -2786,7 +2812,7 @@
         const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : [];
         const hasTooling = reactEvents.some((e) => e && (e.kind === "tool_call" || e.kind === "observation"));
         const hasThought = reactEvents.some((e) => e && e.kind === "thought" && String(e.text || "").trim());
-        const showThinking = Boolean(dom.thinkingHostEl && hasThought && nextStreaming);
+        const showThinking = Boolean(dom.thinkingHostEl && hasThought && nextStreaming && !hasTooling);
         if (dom.thinkingHostEl) {
           dom.thinkingHostEl.hidden = !showThinking;
           dom.thinkingHostEl.classList.toggle("live", showThinking);
@@ -2933,10 +2959,25 @@
        }
 
       if (role === "assistant" && dom.cardEl) {
-        const hasThinkingPane = Boolean(dom.thinkingHostEl && !dom.thinkingHostEl.hidden);
-        const hasStepsPane = Boolean(dom.stepsHostEl && !dom.stepsHostEl.hidden);
-        const useSplitLayout = !message.contextCompaction && (hasThinkingPane || hasStepsPane);
-        dom.cardEl.classList.toggle("assistant-split-layout", useSplitLayout);
+        const stepLineCount = dom.stepsUI && Array.isArray(dom.stepsUI.lines) ? dom.stepsUI.lines.length : 0;
+        const layout = getAssistantCardLayoutState({
+          contextCompaction: Boolean(message && message.contextCompaction),
+          streaming: nextStreaming,
+          hasThinking: Boolean(dom.thinkingHostEl && !dom.thinkingHostEl.hidden),
+          hasSteps: stepLineCount > 0,
+          hasReport: !dom.contentEl.hidden,
+          stepsOpen: nextStreaming || Boolean(dom.stepsUI && dom.stepsUI.open),
+        });
+
+        if (dom.thinkingHostEl) {
+          dom.thinkingHostEl.hidden = !layout.showThinking;
+        }
+        if (dom.stepsHostEl) {
+          dom.stepsHostEl.hidden = !layout.showSteps;
+        }
+        dom.contentEl.hidden = !layout.showReport;
+        dom.contentEl.classList.toggle("report-fill-height", Boolean(layout.reportFillsRemainingHeight));
+        dom.cardEl.classList.toggle("assistant-split-layout", layout.useSplitLayout);
       }
 
       dom.isStreaming = nextStreaming;
@@ -4928,15 +4969,484 @@ var edaEsbuildExportName = (() => {
     globalThis.LCEDA_HOST_BRIDGE = createHostBridge(options);
   }
 
+  // src/editor/apply-plan/generateDraftPlan.ts
+  function toSafeProperties(value) {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    const result = {};
+    for (const [key, raw] of Object.entries(value)) {
+      if (raw === void 0 || raw === null) continue;
+      result[key] = String(raw);
+    }
+    return result;
+  }
+  function buildLegacyPinId(componentId, pinLabel) {
+    const safe = String(pinLabel || "pin").trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
+    return `${componentId}-${safe}`;
+  }
+  function inferPowerNet(netName) {
+    const normalized = String(netName || "").trim().toUpperCase();
+    return ["GND", "VCC", "VIN", "VBAT", "5V", "3V3", "3.3V"].includes(normalized);
+  }
+  function normalizeDraftPlan(plan) {
+    const candidate = plan && typeof plan === "object" ? plan : {};
+    const components = Array.isArray(candidate.components) ? candidate.components.map((component, index) => ({
+      id: String(component.id || `draft-component-${index + 1}`),
+      ref: typeof component.ref === "string" ? component.ref : void 0,
+      name: typeof component.name === "string" ? component.name : void 0,
+      libraryId: typeof component.libraryId === "string" ? component.libraryId : void 0,
+      packageName: typeof component.packageName === "string" ? component.packageName : void 0,
+      value: typeof component.value === "string" ? component.value : void 0,
+      componentType: typeof component.componentType === "string" ? component.componentType : void 0,
+      addIntoBom: typeof component.addIntoBom === "boolean" ? component.addIntoBom : true,
+      addIntoPcb: typeof component.addIntoPcb === "boolean" ? component.addIntoPcb : true,
+      properties: toSafeProperties(component.properties)
+    })) : [];
+    const hasPins = Array.isArray(candidate.pins) && candidate.pins.length > 0;
+    const hasNets = Array.isArray(candidate.nets) && candidate.nets.length > 0;
+    if (hasPins && hasNets) {
+      return {
+        title: String(candidate.title || "Draft Plan"),
+        rationale: String(candidate.rationale || ""),
+        components,
+        pins: candidate.pins.map((pin, index) => ({
+          id: String(pin.id || `draft-pin-${index + 1}`),
+          componentId: String(pin.componentId || ""),
+          pinNumber: typeof pin.pinNumber === "string" ? pin.pinNumber : void 0,
+          pinName: typeof pin.pinName === "string" ? pin.pinName : void 0,
+          electricalType: typeof pin.electricalType === "string" ? pin.electricalType : void 0,
+          noConnected: typeof pin.noConnected === "boolean" ? pin.noConnected : void 0,
+          netName: typeof pin.netName === "string" ? pin.netName : void 0
+        })),
+        nets: candidate.nets.map((net, index) => ({
+          id: String(net.id || `draft-net-${index + 1}`),
+          name: typeof net.name === "string" ? net.name : void 0,
+          nodeIds: Array.isArray(net.nodeIds) ? net.nodeIds.map((item) => String(item)) : [],
+          isPower: typeof net.isPower === "boolean" ? net.isPower : inferPowerNet(typeof net.name === "string" ? net.name : void 0)
+        })),
+        selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : void 0
+      };
+    }
+    const pinMap = /* @__PURE__ */ new Map();
+    const netsByName = /* @__PURE__ */ new Map();
+    for (const connection of Array.isArray(candidate.connections) ? candidate.connections : []) {
+      const netName = String(connection.netName || "").trim() || `NET_${netsByName.size + 1}`;
+      const fromPin = String(connection.fromPin || "1").trim();
+      const toPin = String(connection.toPin || "1").trim();
+      const fromPinId = buildLegacyPinId(String(connection.from), fromPin);
+      const toPinId = buildLegacyPinId(String(connection.to), toPin);
+      if (!pinMap.has(fromPinId)) {
+        pinMap.set(fromPinId, {
+          id: fromPinId,
+          componentId: String(connection.from),
+          pinNumber: fromPin,
+          pinName: fromPin,
+          electricalType: "passive",
+          netName
+        });
+      }
+      if (!pinMap.has(toPinId)) {
+        pinMap.set(toPinId, {
+          id: toPinId,
+          componentId: String(connection.to),
+          pinNumber: toPin,
+          pinName: toPin,
+          electricalType: "passive",
+          netName
+        });
+      }
+      const existingNet = netsByName.get(netName);
+      if (existingNet) {
+        if (!existingNet.nodeIds.includes(fromPinId)) existingNet.nodeIds.push(fromPinId);
+        if (!existingNet.nodeIds.includes(toPinId)) existingNet.nodeIds.push(toPinId);
+      } else {
+        netsByName.set(netName, {
+          id: `draft-net-${netName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || netsByName.size + 1}`,
+          name: netName,
+          nodeIds: [fromPinId, toPinId],
+          isPower: inferPowerNet(netName)
+        });
+      }
+    }
+    return {
+      title: String(candidate.title || "Draft Plan"),
+      rationale: String(candidate.rationale || ""),
+      components,
+      pins: Array.from(pinMap.values()),
+      nets: Array.from(netsByName.values()),
+      selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : void 0
+    };
+  }
+  function withPlacement(x, y, rotation = 0) {
+    return {
+      placement_x: String(x),
+      placement_y: String(y),
+      placement_rotation: String(rotation)
+    };
+  }
+  function generateDraftPlanFromPrompt(userQuery, options = {}) {
+    const normalized = userQuery.toLowerCase();
+    const selectedDevices = options.selectedDevices ?? [];
+    const pickSelected = (role) => selectedDevices.find((item) => item.role === role);
+    const ldoDevice = pickSelected("ldo_regulator");
+    const inputCapacitorDevice = pickSelected("input_capacitor");
+    const outputCapacitorDevice = pickSelected("output_capacitor") ?? inputCapacitorDevice;
+    const ledDevice = pickSelected("led");
+    const resistorDevice = pickSelected("resistor");
+    const connectorDevice = pickSelected("power_connector");
+    const looksLikeLedDraft = /led|发光二极管|点亮|指示灯/u.test(userQuery) && !/ldo|稳压|regulator|3\.3v|3v3/u.test(userQuery);
+    if (looksLikeLedDraft) {
+      return {
+        title: "5V LED Indicator Draft",
+        rationale: "Generated a minimal LED indicator draft based on the user request." + (selectedDevices.length > 0 ? ` Matched ${selectedDevices.length} integrated-library device candidate(s) for later placement.` : ""),
+        components: [
+          {
+            id: "draft-j1",
+            ref: "J1",
+            name: connectorDevice?.name ?? "Power Header",
+            libraryId: connectorDevice?.deviceUuid ?? "lib-power-header",
+            packageName: connectorDevice?.footprintName ?? "HDR-TH_1X2",
+            value: "5V Input",
+            properties: {
+              expected_net_1: "5V",
+              expected_net_2: "GND",
+              device_uuid: connectorDevice?.deviceUuid ?? "",
+              library_uuid: connectorDevice?.libraryUuid ?? "",
+              symbol_uuid: connectorDevice?.symbolUuid ?? "",
+              footprint_uuid: connectorDevice?.footprintUuid ?? "",
+              ...withPlacement(120, 220, 0)
+            }
+          },
+          {
+            id: "draft-r1",
+            ref: "R1",
+            name: resistorDevice?.name ?? "Resistor",
+            libraryId: resistorDevice?.deviceUuid ?? "lib-resistor",
+            packageName: resistorDevice?.footprintName ?? "R0805",
+            value: "150\u03A9",
+            properties: {
+              expected_net_1: "5V",
+              expected_net_2: "LED_ANODE",
+              device_uuid: resistorDevice?.deviceUuid ?? "",
+              library_uuid: resistorDevice?.libraryUuid ?? "",
+              symbol_uuid: resistorDevice?.symbolUuid ?? "",
+              footprint_uuid: resistorDevice?.footprintUuid ?? "",
+              ...withPlacement(250, 220, 0)
+            }
+          },
+          {
+            id: "draft-d1",
+            ref: "D1",
+            name: ledDevice?.name ?? "LED",
+            libraryId: ledDevice?.deviceUuid ?? "lib-led",
+            packageName: ledDevice?.footprintName ?? "LED-TH_BD3.9-P2.54-RD_RED",
+            value: "RED",
+            properties: {
+              expected_net_A: "LED_ANODE",
+              expected_net_K: "GND",
+              led_color: "red",
+              device_uuid: ledDevice?.deviceUuid ?? "",
+              library_uuid: ledDevice?.libraryUuid ?? "",
+              symbol_uuid: ledDevice?.symbolUuid ?? "",
+              footprint_uuid: ledDevice?.footprintUuid ?? "",
+              ...withPlacement(390, 220, 0)
+            }
+          }
+        ],
+        pins: [
+          {
+            id: "draft-j1-1",
+            componentId: "draft-j1",
+            pinName: "5V",
+            electricalType: "power_in"
+          },
+          {
+            id: "draft-j1-2",
+            componentId: "draft-j1",
+            pinName: "GND",
+            electricalType: "power_in"
+          },
+          {
+            id: "draft-r1-1",
+            componentId: "draft-r1",
+            pinName: "1",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-r1-2",
+            componentId: "draft-r1",
+            pinName: "2",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-d1-a",
+            componentId: "draft-d1",
+            pinName: "A",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-d1-k",
+            componentId: "draft-d1",
+            pinName: "K",
+            electricalType: "passive"
+          }
+        ],
+        nets: [
+          {
+            id: "draft-net-5v",
+            name: "5V",
+            nodeIds: ["draft-j1-1", "draft-r1-1"],
+            isPower: true
+          },
+          {
+            id: "draft-net-led-anode",
+            name: "LED_ANODE",
+            nodeIds: ["draft-r1-2", "draft-d1-a"]
+          },
+          {
+            id: "draft-net-gnd",
+            name: "GND",
+            nodeIds: ["draft-j1-2", "draft-d1-k"],
+            isPower: true
+          }
+        ],
+        selectedDevices
+      };
+    }
+    if (normalized.includes("ldo") || normalized.includes("5v") || normalized.includes("3.3v")) {
+      return {
+        title: "5V to 3.3V LDO Draft",
+        rationale: "Generated a minimal regulated power-path draft based on the user request." + (selectedDevices.length > 0 ? ` Matched ${selectedDevices.length} integrated-library device candidate(s) for later placement.` : ""),
+        components: [
+          {
+            id: "draft-u1",
+            ref: "U1",
+            name: ldoDevice?.name ?? "LDO",
+            libraryId: ldoDevice?.deviceUuid ?? "lib-ldo",
+            packageName: ldoDevice?.footprintName ?? "SOT-223",
+            value: "3.3V",
+            properties: {
+              expected_net_VIN: "5V",
+              expected_net_VOUT: "3V3",
+              expected_net_GND: "GND",
+              device_uuid: ldoDevice?.deviceUuid ?? "",
+              library_uuid: ldoDevice?.libraryUuid ?? "",
+              symbol_uuid: ldoDevice?.symbolUuid ?? "",
+              footprint_uuid: ldoDevice?.footprintUuid ?? "",
+              ...withPlacement(220, 220, 0)
+            }
+          },
+          {
+            id: "draft-c1",
+            ref: "C1",
+            name: inputCapacitorDevice?.name ?? "Capacitor",
+            libraryId: inputCapacitorDevice?.deviceUuid ?? "lib-cap",
+            packageName: inputCapacitorDevice?.footprintName ?? "0603",
+            value: "10uF",
+            properties: {
+              expected_net_POS: "5V",
+              expected_net_NEG: "GND",
+              polarity_sensitive: "true",
+              device_uuid: inputCapacitorDevice?.deviceUuid ?? "",
+              library_uuid: inputCapacitorDevice?.libraryUuid ?? "",
+              symbol_uuid: inputCapacitorDevice?.symbolUuid ?? "",
+              footprint_uuid: inputCapacitorDevice?.footprintUuid ?? "",
+              ...withPlacement(120, 220, 0)
+            }
+          },
+          {
+            id: "draft-c2",
+            ref: "C2",
+            name: outputCapacitorDevice?.name ?? "Capacitor",
+            libraryId: outputCapacitorDevice?.deviceUuid ?? "lib-cap",
+            packageName: outputCapacitorDevice?.footprintName ?? "0603",
+            value: "10uF",
+            properties: {
+              expected_net_POS: "3V3",
+              expected_net_NEG: "GND",
+              polarity_sensitive: "true",
+              device_uuid: outputCapacitorDevice?.deviceUuid ?? "",
+              library_uuid: outputCapacitorDevice?.libraryUuid ?? "",
+              symbol_uuid: outputCapacitorDevice?.symbolUuid ?? "",
+              footprint_uuid: outputCapacitorDevice?.footprintUuid ?? "",
+              ...withPlacement(320, 220, 0)
+            }
+          }
+        ],
+        pins: [
+          {
+            id: "draft-u1-vin",
+            componentId: "draft-u1",
+            pinName: "VIN",
+            electricalType: "power_in"
+          },
+          {
+            id: "draft-u1-vout",
+            componentId: "draft-u1",
+            pinName: "VOUT",
+            electricalType: "power_out"
+          },
+          {
+            id: "draft-u1-gnd",
+            componentId: "draft-u1",
+            pinName: "GND",
+            electricalType: "power_in"
+          },
+          {
+            id: "draft-c1-pos",
+            componentId: "draft-c1",
+            pinName: "POS",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-c1-neg",
+            componentId: "draft-c1",
+            pinName: "NEG",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-c2-pos",
+            componentId: "draft-c2",
+            pinName: "POS",
+            electricalType: "passive"
+          },
+          {
+            id: "draft-c2-neg",
+            componentId: "draft-c2",
+            pinName: "NEG",
+            electricalType: "passive"
+          }
+        ],
+        nets: [
+          {
+            id: "draft-net-5v",
+            name: "5V",
+            nodeIds: ["draft-u1-vin", "draft-c1-pos"],
+            isPower: true
+          },
+          {
+            id: "draft-net-3v3",
+            name: "3V3",
+            nodeIds: ["draft-u1-vout", "draft-c2-pos"],
+            isPower: true
+          },
+          {
+            id: "draft-net-gnd",
+            name: "GND",
+            nodeIds: ["draft-u1-gnd", "draft-c1-neg", "draft-c2-neg"],
+            isPower: true
+          }
+        ],
+        selectedDevices
+      };
+    }
+    return {
+      title: "Generic Draft",
+      rationale: "Generated a placeholder draft plan from the prompt." + (selectedDevices.length > 0 ? ` Captured ${selectedDevices.length} selected library candidate(s).` : ""),
+      components: [],
+      pins: [],
+      nets: [],
+      selectedDevices
+    };
+  }
+
   // src/editor/apply-plan/previewDraftPlan.ts
   function previewDraftPlan(plan) {
+    const normalized = normalizeDraftPlan(plan);
     return {
-      title: plan.title,
-      rationale: plan.selectedDevices && plan.selectedDevices.length > 0 ? `${plan.rationale} \u5DF2\u9009\u5668\u4EF6: ${plan.selectedDevices.map((item) => `${item.role}=${item.name}`).join(", ")}` : plan.rationale,
-      componentRefs: plan.components.map((component) => component.ref ?? component.id),
-      netNames: plan.nets.map((net) => net.name ?? net.id),
-      componentCount: plan.components.length,
-      netCount: plan.nets.length
+      title: normalized.title,
+      rationale: normalized.selectedDevices && normalized.selectedDevices.length > 0 ? `${normalized.rationale} \u5DF2\u9009\u5668\u4EF6: ${normalized.selectedDevices.map((item) => `${item.role}=${item.name}`).join(", ")}` : normalized.rationale,
+      componentRefs: normalized.components.map((component) => component.ref ?? component.id),
+      netNames: normalized.nets.map((net) => net.name ?? net.id),
+      componentCount: normalized.components.length,
+      netCount: normalized.nets.length
+    };
+  }
+
+  // src/editor/apply-plan/resolveDraftPlanDevices.ts
+  function hasPlacementDevice(component) {
+    return Boolean(component.properties?.device_uuid && component.properties?.library_uuid);
+  }
+  function inferComponentRole(component) {
+    const ref = String(component.ref || "").toUpperCase();
+    const name = String(component.name || "").toLowerCase();
+    if (ref.startsWith("R") || name.includes("resistor")) return "resistor";
+    if (ref.startsWith("D") || name.includes("led")) return "led";
+    if (ref.startsWith("J") || name.includes("header") || name.includes("connector")) return "power_connector";
+    if (ref.startsWith("C") || name.includes("capacitor")) return "input_capacitor";
+    if (ref.startsWith("U") || name.includes("ldo") || name.includes("regulator")) return "ldo_regulator";
+    return "generic";
+  }
+  function buildDraftDeviceSearchQuery(component) {
+    const role = inferComponentRole(component);
+    const value = String(component.value || "").trim();
+    const pkg = String(component.packageName || "").trim();
+    if (role === "resistor") return [value, "resistor", pkg].filter(Boolean).join(" ");
+    if (role === "led") return [value, "LED", pkg].filter(Boolean).join(" ");
+    if (role === "power_connector") return ["header 2pin", pkg].filter(Boolean).join(" ");
+    if (role === "input_capacitor") return [value, "capacitor", pkg].filter(Boolean).join(" ");
+    if (role === "ldo_regulator") return [value, "ldo regulator", pkg].filter(Boolean).join(" ");
+    const fallback = [String(component.name || "").trim(), value, pkg].filter(Boolean).join(" ");
+    return fallback || null;
+  }
+  function pickBestSearchResult(component, results) {
+    const pkg = String(component.packageName || "").trim().toLowerCase();
+    if (!pkg) return results[0];
+    return results.find((item) => String(item.footprintName || "").trim().toLowerCase() === pkg) || results.find((item) => String(item.footprintName || "").trim().toLowerCase().includes(pkg)) || results[0];
+  }
+  function toSelectedDevice(component, query, result) {
+    return {
+      role: inferComponentRole(component),
+      query,
+      deviceUuid: result.uuid,
+      libraryUuid: result.libraryUuid,
+      name: result.name,
+      manufacturer: result.manufacturer,
+      symbolUuid: result.symbolUuid,
+      symbolName: result.symbolName,
+      footprintUuid: result.footprintUuid,
+      footprintName: result.footprintName
+    };
+  }
+  async function resolveDraftPlanDevices(plan, searchLibraryDevices) {
+    const existingSelectedDevices = Array.isArray(plan.selectedDevices) ? plan.selectedDevices.slice() : [];
+    const components = await Promise.all(
+      plan.components.map(async (component) => {
+        if (hasPlacementDevice(component)) {
+          return component;
+        }
+        const query = buildDraftDeviceSearchQuery(component);
+        if (!query) {
+          return component;
+        }
+        const results = await searchLibraryDevices(query);
+        if (!results || results.length === 0) {
+          return component;
+        }
+        const picked = pickBestSearchResult(component, results);
+        if (!picked?.uuid || !picked.libraryUuid) {
+          return component;
+        }
+        existingSelectedDevices.push(toSelectedDevice(component, query, picked));
+        return {
+          ...component,
+          libraryId: picked.uuid,
+          packageName: picked.footprintName || component.packageName,
+          properties: {
+            ...component.properties,
+            device_uuid: picked.uuid,
+            library_uuid: picked.libraryUuid,
+            symbol_uuid: picked.symbolUuid || "",
+            footprint_uuid: picked.footprintUuid || ""
+          }
+        };
+      })
+    );
+    return {
+      ...plan,
+      components,
+      selectedDevices: existingSelectedDevices
     };
   }
 
@@ -4944,20 +5454,28 @@ var edaEsbuildExportName = (() => {
   var applyTransactions = /* @__PURE__ */ new Map();
   function createApiApplyPlanAdapter(invoker, options) {
     return {
-      preview: async (plan) => previewDraftPlan(plan),
+      preview: async (plan) => previewDraftPlan(normalizeDraftPlan(plan)),
       apply: async (plan) => {
+        plan = normalizeDraftPlan(plan);
+        if (options?.typedPlacementEnabled && !canApplyByTypedPlacement(plan)) {
+          plan = await resolveDraftPlanDevices(
+            plan,
+            async (query) => typedSearchLibraryDevices({ query, scope: "system", pageSize: 5 })
+          );
+        }
         const transactionId = createTransactionId();
         if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
           const placed = await applyTypedSchematicPlan(plan);
+          const applied = placed.componentIds.length > 0 || placed.wireIds.length > 0;
           applyTransactions.set(transactionId, {
             kind: "typed_schematic",
             componentIds: placed.componentIds,
             wireIds: placed.wireIds
           });
-          return summarizeApply(plan, transactionId, true);
+          return summarizeApply(plan, transactionId, applied, applied);
         }
         if (!invoker) {
-          return summarizeApply(plan, transactionId, false);
+          return summarizeApply(plan, transactionId, false, false);
         }
         const sourceRead = await tryInvokeCandidates(invoker, [
           ["getSource"],
@@ -4981,7 +5499,7 @@ var edaEsbuildExportName = (() => {
             kind: "source",
             sourceSnapshot: sourceRead.value
           });
-          return summarizeApply(plan, transactionId, true);
+          return summarizeApply(plan, transactionId, true, true);
         }
         const shapes = draftToShapes(plan);
         const createdShapeIds = [];
@@ -5004,7 +5522,7 @@ var edaEsbuildExportName = (() => {
             ["createShape", shape.payload],
             ["createShape", shape.kind, shape.payload]
           ]);
-          if (!created.called) {
+          if (!created.called || !isSuccessfulMutationResult(created.value)) {
             throw new Error(`host api apply shape failed: cannot create shape ${shape.id}`);
           }
           if (!(existingResult.called && existingResult.value !== void 0 && existingResult.value !== null)) {
@@ -5015,7 +5533,7 @@ var edaEsbuildExportName = (() => {
           kind: "shape",
           shapeIds: createdShapeIds
         });
-        return summarizeApply(plan, transactionId, createdShapeIds.length > 0);
+        return summarizeApply(plan, transactionId, createdShapeIds.length > 0, createdShapeIds.length > 0);
       },
       rollback: async (transactionId) => {
         const tx = applyTransactions.get(transactionId);
@@ -5281,14 +5799,20 @@ var edaEsbuildExportName = (() => {
     }
     return eda.sch_PrimitiveWire.delete(wireIds);
   }
-  function summarizeApply(plan, transactionId, rollbackSupported) {
+  function summarizeApply(plan, transactionId, applied, rollbackSupported) {
     return {
-      applied: true,
+      applied,
       componentCount: plan.components.length,
       netCount: plan.nets.length,
       transactionId,
       rollbackSupported
     };
+  }
+  function isSuccessfulMutationResult(value) {
+    if (value === void 0 || value === null || value === false) {
+      return false;
+    }
+    return true;
   }
   function mergeDraftIntoSource(rawSource, plan) {
     const base = normalizeSourceObject(rawSource);
@@ -6190,280 +6714,6 @@ var edaEsbuildExportName = (() => {
         }
       }
     ];
-  }
-
-  // src/editor/apply-plan/generateDraftPlan.ts
-  function withPlacement(x, y, rotation = 0) {
-    return {
-      placement_x: String(x),
-      placement_y: String(y),
-      placement_rotation: String(rotation)
-    };
-  }
-  function generateDraftPlanFromPrompt(userQuery, options = {}) {
-    const normalized = userQuery.toLowerCase();
-    const selectedDevices = options.selectedDevices ?? [];
-    const pickSelected = (role) => selectedDevices.find((item) => item.role === role);
-    const ldoDevice = pickSelected("ldo_regulator");
-    const inputCapacitorDevice = pickSelected("input_capacitor");
-    const outputCapacitorDevice = pickSelected("output_capacitor") ?? inputCapacitorDevice;
-    const ledDevice = pickSelected("led");
-    const resistorDevice = pickSelected("resistor");
-    const connectorDevice = pickSelected("power_connector");
-    const looksLikeLedDraft = /led|发光二极管|点亮|指示灯/u.test(userQuery) && !/ldo|稳压|regulator|3\.3v|3v3/u.test(userQuery);
-    if (looksLikeLedDraft) {
-      return {
-        title: "5V LED Indicator Draft",
-        rationale: "Generated a minimal LED indicator draft based on the user request." + (selectedDevices.length > 0 ? ` Matched ${selectedDevices.length} integrated-library device candidate(s) for later placement.` : ""),
-        components: [
-          {
-            id: "draft-j1",
-            ref: "J1",
-            name: connectorDevice?.name ?? "Power Header",
-            libraryId: connectorDevice?.deviceUuid ?? "lib-power-header",
-            packageName: connectorDevice?.footprintName ?? "HDR-TH_1X2",
-            value: "5V Input",
-            properties: {
-              expected_net_1: "5V",
-              expected_net_2: "GND",
-              device_uuid: connectorDevice?.deviceUuid ?? "",
-              library_uuid: connectorDevice?.libraryUuid ?? "",
-              symbol_uuid: connectorDevice?.symbolUuid ?? "",
-              footprint_uuid: connectorDevice?.footprintUuid ?? "",
-              ...withPlacement(120, 220, 0)
-            }
-          },
-          {
-            id: "draft-r1",
-            ref: "R1",
-            name: resistorDevice?.name ?? "Resistor",
-            libraryId: resistorDevice?.deviceUuid ?? "lib-resistor",
-            packageName: resistorDevice?.footprintName ?? "R0805",
-            value: "150\u03A9",
-            properties: {
-              expected_net_1: "5V",
-              expected_net_2: "LED_ANODE",
-              device_uuid: resistorDevice?.deviceUuid ?? "",
-              library_uuid: resistorDevice?.libraryUuid ?? "",
-              symbol_uuid: resistorDevice?.symbolUuid ?? "",
-              footprint_uuid: resistorDevice?.footprintUuid ?? "",
-              ...withPlacement(250, 220, 0)
-            }
-          },
-          {
-            id: "draft-d1",
-            ref: "D1",
-            name: ledDevice?.name ?? "LED",
-            libraryId: ledDevice?.deviceUuid ?? "lib-led",
-            packageName: ledDevice?.footprintName ?? "LED-TH_BD3.9-P2.54-RD_RED",
-            value: "RED",
-            properties: {
-              expected_net_A: "LED_ANODE",
-              expected_net_K: "GND",
-              led_color: "red",
-              device_uuid: ledDevice?.deviceUuid ?? "",
-              library_uuid: ledDevice?.libraryUuid ?? "",
-              symbol_uuid: ledDevice?.symbolUuid ?? "",
-              footprint_uuid: ledDevice?.footprintUuid ?? "",
-              ...withPlacement(390, 220, 0)
-            }
-          }
-        ],
-        pins: [
-          {
-            id: "draft-j1-1",
-            componentId: "draft-j1",
-            pinName: "5V",
-            electricalType: "power_in"
-          },
-          {
-            id: "draft-j1-2",
-            componentId: "draft-j1",
-            pinName: "GND",
-            electricalType: "power_in"
-          },
-          {
-            id: "draft-r1-1",
-            componentId: "draft-r1",
-            pinName: "1",
-            electricalType: "passive"
-          },
-          {
-            id: "draft-r1-2",
-            componentId: "draft-r1",
-            pinName: "2",
-            electricalType: "passive"
-          },
-          {
-            id: "draft-d1-a",
-            componentId: "draft-d1",
-            pinName: "A",
-            electricalType: "passive"
-          },
-          {
-            id: "draft-d1-k",
-            componentId: "draft-d1",
-            pinName: "K",
-            electricalType: "passive"
-          }
-        ],
-        nets: [
-          {
-            id: "draft-net-5v",
-            name: "5V",
-            nodeIds: ["draft-j1-1", "draft-r1-1"],
-            isPower: true
-          },
-          {
-            id: "draft-net-led-anode",
-            name: "LED_ANODE",
-            nodeIds: ["draft-r1-2", "draft-d1-a"]
-          },
-          {
-            id: "draft-net-gnd",
-            name: "GND",
-            nodeIds: ["draft-j1-2", "draft-d1-k"],
-            isPower: true
-          }
-        ],
-        selectedDevices
-      };
-    }
-    if (normalized.includes("ldo") || normalized.includes("5v") || normalized.includes("3.3v")) {
-      return {
-        title: "5V to 3.3V LDO Draft",
-        rationale: "Generated a minimal regulated power-path draft based on the user request." + (selectedDevices.length > 0 ? ` Matched ${selectedDevices.length} integrated-library device candidate(s) for later placement.` : ""),
-        components: [
-          {
-            id: "draft-u1",
-            ref: "U1",
-            name: ldoDevice?.name ?? "LDO",
-            libraryId: ldoDevice?.deviceUuid ?? "lib-ldo",
-            packageName: ldoDevice?.footprintName ?? "SOT-223",
-            value: "3.3V",
-            properties: {
-              expected_net_VIN: "5V",
-              expected_net_VOUT: "3V3",
-              expected_net_GND: "GND",
-              device_uuid: ldoDevice?.deviceUuid ?? "",
-              library_uuid: ldoDevice?.libraryUuid ?? "",
-              symbol_uuid: ldoDevice?.symbolUuid ?? "",
-              footprint_uuid: ldoDevice?.footprintUuid ?? "",
-              ...withPlacement(220, 220, 0)
-            }
-          },
-          {
-            id: "draft-c1",
-            ref: "C1",
-            name: inputCapacitorDevice?.name ?? "Capacitor",
-            libraryId: inputCapacitorDevice?.deviceUuid ?? "lib-cap",
-            packageName: inputCapacitorDevice?.footprintName ?? "0603",
-            value: "10uF",
-            properties: {
-              expected_net_POS: "5V",
-              expected_net_NEG: "GND",
-              polarity_sensitive: "true",
-              device_uuid: inputCapacitorDevice?.deviceUuid ?? "",
-              library_uuid: inputCapacitorDevice?.libraryUuid ?? "",
-              symbol_uuid: inputCapacitorDevice?.symbolUuid ?? "",
-              footprint_uuid: inputCapacitorDevice?.footprintUuid ?? "",
-              ...withPlacement(120, 220, 0)
-            }
-          },
-          {
-            id: "draft-c2",
-            ref: "C2",
-            name: outputCapacitorDevice?.name ?? "Capacitor",
-            libraryId: outputCapacitorDevice?.deviceUuid ?? "lib-cap",
-            packageName: outputCapacitorDevice?.footprintName ?? "0603",
-            value: "10uF",
-            properties: {
-              expected_net_POS: "3V3",
-              expected_net_NEG: "GND",
-              polarity_sensitive: "true",
-              device_uuid: outputCapacitorDevice?.deviceUuid ?? "",
-              library_uuid: outputCapacitorDevice?.libraryUuid ?? "",
-              symbol_uuid: outputCapacitorDevice?.symbolUuid ?? "",
-              footprint_uuid: outputCapacitorDevice?.footprintUuid ?? "",
-              ...withPlacement(320, 220, 0)
-            }
-          }
-        ],
-        pins: [
-          {
-            id: "draft-u1-vin",
-            componentId: "draft-u1",
-            pinName: "VIN",
-            electricalType: "power_in"
-          },
-          {
-            id: "draft-u1-vout",
-            componentId: "draft-u1",
-            pinName: "VOUT",
-            electricalType: "power_out"
-          },
-          {
-            id: "draft-u1-gnd",
-            componentId: "draft-u1",
-            pinName: "GND",
-            electricalType: "power_in"
-          },
-          {
-            id: "draft-c1-pos",
-            componentId: "draft-c1",
-            pinName: "POS",
-            electricalType: "passive"
-          },
-          {
-            id: "draft-c1-neg",
-            componentId: "draft-c1",
-            pinName: "NEG",
-            electricalType: "passive"
-          },
-          {
-            id: "draft-c2-pos",
-            componentId: "draft-c2",
-            pinName: "POS",
-            electricalType: "passive"
-          },
-          {
-            id: "draft-c2-neg",
-            componentId: "draft-c2",
-            pinName: "NEG",
-            electricalType: "passive"
-          }
-        ],
-        nets: [
-          {
-            id: "draft-net-5v",
-            name: "5V",
-            nodeIds: ["draft-u1-vin", "draft-c1-pos"],
-            isPower: true
-          },
-          {
-            id: "draft-net-3v3",
-            name: "3V3",
-            nodeIds: ["draft-u1-vout", "draft-c2-pos"],
-            isPower: true
-          },
-          {
-            id: "draft-net-gnd",
-            name: "GND",
-            nodeIds: ["draft-u1-gnd", "draft-c1-neg", "draft-c2-neg"],
-            isPower: true
-          }
-        ],
-        selectedDevices
-      };
-    }
-    return {
-      title: "Generic Draft",
-      rationale: "Generated a placeholder draft plan from the prompt." + (selectedDevices.length > 0 ? ` Captured ${selectedDevices.length} selected library candidate(s).` : ""),
-      components: [],
-      pins: [],
-      nets: [],
-      selectedDevices
-    };
   }
 
   // src/agent/tools/draftTools.ts
@@ -10546,7 +10796,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
     }
     async applyPlan(_plan) {
       return {
-        applied: true,
+        applied: false,
         componentCount: _plan.components.length,
         netCount: _plan.nets.length,
         rollbackSupported: false
@@ -11315,6 +11565,16 @@ ${content}`;
     }
     return Boolean(normalizedLastUser && normalizedInput === normalizedLastUser);
   }
+  function shouldAutoApplyDraftFromChatInput(input) {
+    if (input.agentRunState !== "awaiting_confirmation") {
+      return false;
+    }
+    if (!input.hasDraftPlan || input.draftBlocked) {
+      return false;
+    }
+    const normalized = input.input.trim().toLowerCase();
+    return /^(确认|确定|应用|应用草案|好的应用|开始应用|ok|okay|yes)$/u.test(normalized);
+  }
   function formatReactEventLine(event) {
     if (!event || !event.kind) return "";
     if (event.kind === "task") return `\u4EFB\u52A1: ${event.text || event.label || ""}`;
@@ -11669,6 +11929,68 @@ ${content}`;
       internals.currentState.nextActions = buildNextActions(internals.currentState);
       commitState(internals, internals.currentState, storage);
     }
+    async function applyCurrentDraftPlan() {
+      const state = internals.currentState ?? await computeAnalysisState();
+      const draftPlan = internals.draftPlan;
+      if (!draftPlan) {
+        state.agentRunState = "failed";
+        state.agentRunRoute = "draft";
+        state.agentRunDetail = "\u5F53\u524D\u6CA1\u6709\u53EF\u5E94\u7528\u8349\u6848";
+        state.summary = "\u5F53\u524D\u6CA1\u6709\u53EF\u5E94\u7528\u7684\u8349\u6848\uFF0C\u8BF7\u5148\u751F\u6210\u8349\u6848\u3002";
+        state.toast = {
+          id: Date.now(),
+          message: state.summary
+        };
+        return commitState(internals, state, storage);
+      }
+      if (internals.draftBlocked) {
+        state.agentRunState = "awaiting_confirmation";
+        state.agentRunRoute = "draft";
+        state.agentRunDetail = "\u8349\u6848\u5B58\u5728\u9AD8\u98CE\u9669\u95EE\u9898\uFF0C\u5DF2\u963B\u65AD\u76F4\u63A5\u5E94\u7528";
+        state.summary = "\u8349\u6848\u5B58\u5728\u9AD8\u98CE\u9669\u95EE\u9898\uFF0C\u8BF7\u5148\u4FEE\u6539\u6216\u91CD\u65B0\u751F\u6210\u540E\u518D\u5E94\u7528\u3002";
+        state.toast = {
+          id: Date.now(),
+          message: state.summary
+        };
+        return commitState(internals, state, storage);
+      }
+      const adapter = createEditorAdapter(resolveRuntimeChannel());
+      try {
+        const result = await adapter.applyPlan(draftPlan);
+        if (!result.applied) {
+          throw new Error("\u5BBF\u4E3B\u5F53\u524D\u672A\u771F\u6B63\u6267\u884C\u539F\u7406\u56FE\u5E94\u7528\uFF0C\u8BF7\u68C0\u67E5 applyPlan \u80FD\u529B\u662F\u5426\u5DF2\u63A5\u901A");
+        }
+        internals.lastApplyTransactionId = result.transactionId;
+        internals.draftBlocked = false;
+        state.agentRunState = "completed";
+        state.agentRunRoute = "draft";
+        state.agentRunDetail = "\u8349\u6848\u5DF2\u5E94\u7528";
+        state.summary = `\u8349\u6848\u5DF2\u5E94\u7528\uFF1A\u5668\u4EF6 ${result.componentCount}\uFF0C\u7F51\u7EDC ${result.netCount}\u3002`;
+        state.chatMessages = appendAssistantMessages(
+          sanitizeChatMessages(state.chatMessages),
+          pluginAgent.buildDraftAppliedMessages(result.componentCount, result.netCount)
+        );
+      } catch (error) {
+        state.agentRunState = "failed";
+        state.agentRunRoute = "draft";
+        state.agentRunDetail = error instanceof Error ? error.message : String(error);
+        state.summary = `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
+        state.chatMessages = appendAssistantMessages(
+          sanitizeChatMessages(state.chatMessages),
+          pluginAgent.buildStatusMessages({
+            title: "\u5E94\u7528\u5931\u8D25",
+            content: state.summary,
+            tone: "warning"
+          })
+        );
+        state.toast = {
+          id: Date.now(),
+          message: state.summary
+        };
+      }
+      state.nextActions = buildNextActions(state);
+      return commitState(internals, state, storage);
+    }
     return {
       openPanel: openIdlePanelState,
       rerunAnalysis: computeAnalysisState,
@@ -11836,6 +12158,22 @@ ${content}`;
           },
           storage
         );
+        if (shouldAutoApplyDraftFromChatInput({
+          agentRunState: current.agentRunState,
+          input: trimmed,
+          hasDraftPlan: Boolean(internals.draftPlan),
+          draftBlocked: internals.draftBlocked
+        })) {
+          current.chatMessages = appendUserChatMessage(
+            stripInitialWelcomeMessages(sanitizeChatMessages(current.chatMessages)),
+            trimmed
+          );
+          current.agentRunRoute = "draft";
+          current.agentRunDetail = "\u6B63\u5728\u5E94\u7528\u5DF2\u786E\u8BA4\u8349\u6848";
+          current.summary = "\u5DF2\u6536\u5230\u786E\u8BA4\uFF0C\u6B63\u5728\u5C06\u8349\u6848\u5E94\u7528\u5230\u539F\u7406\u56FE\u3002";
+          commitState(internals, current, storage);
+          return applyCurrentDraftPlan();
+        }
         const llmMode = await llmModeStore2.get();
         const session = await sessionStore.get();
         if (llmMode === "proxy" && !session?.accessToken) {
@@ -12151,52 +12489,7 @@ ${content}`;
         }
       },
       applyDraftPlan: async () => {
-        const state = internals.currentState ?? await computeAnalysisState();
-        const draftPlan = internals.draftPlan;
-        if (!draftPlan) {
-          state.agentRunState = "failed";
-          state.agentRunRoute = "draft";
-          state.agentRunDetail = "\u5F53\u524D\u6CA1\u6709\u53EF\u5E94\u7528\u8349\u6848";
-          state.summary = "\u5F53\u524D\u6CA1\u6709\u53EF\u5E94\u7528\u7684\u8349\u6848\uFF0C\u8BF7\u5148\u751F\u6210\u8349\u6848\u3002";
-          state.toast = {
-            id: Date.now(),
-            message: state.summary
-          };
-          return commitState(internals, state, storage);
-        }
-        if (internals.draftBlocked) {
-          state.agentRunState = "awaiting_confirmation";
-          state.agentRunRoute = "draft";
-          state.agentRunDetail = "\u8349\u6848\u5B58\u5728\u9AD8\u98CE\u9669\u95EE\u9898\uFF0C\u5DF2\u963B\u65AD\u76F4\u63A5\u5E94\u7528";
-          state.summary = "\u8349\u6848\u5B58\u5728\u9AD8\u98CE\u9669\u95EE\u9898\uFF0C\u8BF7\u5148\u4FEE\u6539\u6216\u91CD\u65B0\u751F\u6210\u540E\u518D\u5E94\u7528\u3002";
-          state.toast = {
-            id: Date.now(),
-            message: state.summary
-          };
-          return commitState(internals, state, storage);
-        }
-        const adapter = createEditorAdapter(resolveRuntimeChannel());
-        try {
-          const result = await adapter.applyPlan(draftPlan);
-          internals.lastApplyTransactionId = result.transactionId;
-          internals.draftBlocked = false;
-          state.agentRunState = "completed";
-          state.agentRunRoute = "draft";
-          state.agentRunDetail = "\u8349\u6848\u5DF2\u5E94\u7528";
-          state.summary = `\u8349\u6848\u5DF2\u5E94\u7528\uFF1A\u5668\u4EF6 ${result.componentCount}\uFF0C\u7F51\u7EDC ${result.netCount}\u3002`;
-          state.chatMessages = pluginAgent.buildDraftAppliedMessages(result.componentCount, result.netCount);
-        } catch (error) {
-          state.agentRunState = "failed";
-          state.agentRunRoute = "draft";
-          state.agentRunDetail = error instanceof Error ? error.message : String(error);
-          state.summary = `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
-          state.toast = {
-            id: Date.now(),
-            message: state.summary
-          };
-        }
-        state.nextActions = buildNextActions(state);
-        return commitState(internals, state, storage);
+        return applyCurrentDraftPlan();
       },
       rollbackLastApply: async () => {
         const state = internals.currentState ?? await computeAnalysisState();
@@ -12216,11 +12509,22 @@ ${content}`;
           state.agentRunState = "completed";
           state.agentRunDetail = result.rolledBack ? "\u5DF2\u56DE\u6EDA\u6700\u8FD1\u4E00\u6B21\u8349\u6848\u5E94\u7528" : "\u56DE\u6EDA\u672A\u751F\u6548";
           state.summary = result.rolledBack ? "\u5DF2\u56DE\u6EDA\u6700\u8FD1\u4E00\u6B21\u8349\u6848\u5E94\u7528\u3002" : "\u56DE\u6EDA\u672A\u751F\u6548\u3002";
-          state.chatMessages = pluginAgent.buildRollbackMessages(state.summary);
+          state.chatMessages = appendAssistantMessages(
+            sanitizeChatMessages(state.chatMessages),
+            pluginAgent.buildRollbackMessages(state.summary)
+          );
         } catch (error) {
           state.agentRunState = "failed";
           state.agentRunDetail = error instanceof Error ? error.message : String(error);
           state.summary = `\u56DE\u6EDA\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
+          state.chatMessages = appendAssistantMessages(
+            sanitizeChatMessages(state.chatMessages),
+            pluginAgent.buildStatusMessages({
+              title: "\u56DE\u6EDA\u5931\u8D25",
+              content: state.summary,
+              tone: "warning"
+            })
+          );
           state.toast = {
             id: Date.now(),
             message: state.summary
@@ -12678,6 +12982,19 @@ ${content}`;
   }
   function finalizeDraftTurnMessages(previousMessages, draftMessages) {
     return replaceTrailingPendingAssistant(previousMessages, draftMessages);
+  }
+  function appendAssistantMessages(previousMessages, nextMessages) {
+    return [...sanitizeChatMessages(previousMessages), ...nextMessages];
+  }
+  function appendUserChatMessage(previousMessages, content) {
+    return [
+      ...sanitizeChatMessages(previousMessages),
+      {
+        role: "user",
+        title: "\u4F60",
+        content
+      }
+    ];
   }
   function preferNonEmptyArray(primary, fallback) {
     if (Array.isArray(primary) && primary.length > 0) {

@@ -163,7 +163,7 @@ export class UnimplementedEditorAdapter implements EditorAdapter {
 
   async applyPlan(_plan: DraftPlan): Promise<ApplyPlanResult> {
     return {
-      applied: true,
+      applied: false,
       componentCount: _plan.components.length,
       netCount: _plan.nets.length,
       rollbackSupported: false,

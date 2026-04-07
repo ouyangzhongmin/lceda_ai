@@ -4,6 +4,142 @@ interface GenerateDraftPlanOptions {
   selectedDevices?: DraftPlanSelectedDevice[];
 }
 
+interface LegacyDraftConnection {
+  from: string;
+  fromPin?: string;
+  to: string;
+  toPin?: string;
+  netName?: string;
+}
+
+function toSafeProperties(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  const result: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (raw === undefined || raw === null) continue;
+    result[key] = String(raw);
+  }
+  return result;
+}
+
+function buildLegacyPinId(componentId: string, pinLabel: string): string {
+  const safe = String(pinLabel || "pin")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_");
+  return `${componentId}-${safe}`;
+}
+
+function inferPowerNet(netName?: string): boolean {
+  const normalized = String(netName || "").trim().toUpperCase();
+  return ["GND", "VCC", "VIN", "VBAT", "5V", "3V3", "3.3V"].includes(normalized);
+}
+
+export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
+  const candidate = (plan && typeof plan === "object" ? plan : {}) as Partial<DraftPlan> & {
+    connections?: LegacyDraftConnection[];
+    components?: Array<Record<string, unknown>>;
+    pins?: Array<Record<string, unknown>>;
+    nets?: Array<Record<string, unknown>>;
+    title?: string;
+    rationale?: string;
+    selectedDevices?: DraftPlanSelectedDevice[];
+  };
+
+  const components = Array.isArray(candidate.components)
+    ? candidate.components.map((component, index) => ({
+        id: String(component.id || `draft-component-${index + 1}`),
+        ref: typeof component.ref === "string" ? component.ref : undefined,
+        name: typeof component.name === "string" ? component.name : undefined,
+        libraryId: typeof component.libraryId === "string" ? component.libraryId : undefined,
+        packageName: typeof component.packageName === "string" ? component.packageName : undefined,
+        value: typeof component.value === "string" ? component.value : undefined,
+        componentType: typeof component.componentType === "string" ? component.componentType : undefined,
+        addIntoBom: typeof component.addIntoBom === "boolean" ? component.addIntoBom : true,
+        addIntoPcb: typeof component.addIntoPcb === "boolean" ? component.addIntoPcb : true,
+        properties: toSafeProperties(component.properties),
+      }))
+    : [];
+
+  const hasPins = Array.isArray(candidate.pins) && candidate.pins.length > 0;
+  const hasNets = Array.isArray(candidate.nets) && candidate.nets.length > 0;
+  if (hasPins && hasNets) {
+    return {
+      title: String(candidate.title || "Draft Plan"),
+      rationale: String(candidate.rationale || ""),
+      components,
+      pins: candidate.pins!.map((pin, index) => ({
+        id: String(pin.id || `draft-pin-${index + 1}`),
+        componentId: String(pin.componentId || ""),
+        pinNumber: typeof pin.pinNumber === "string" ? pin.pinNumber : undefined,
+        pinName: typeof pin.pinName === "string" ? pin.pinName : undefined,
+        electricalType: typeof pin.electricalType === "string" ? pin.electricalType : undefined,
+        noConnected: typeof pin.noConnected === "boolean" ? pin.noConnected : undefined,
+        netName: typeof pin.netName === "string" ? pin.netName : undefined,
+      })),
+      nets: candidate.nets!.map((net, index) => ({
+        id: String(net.id || `draft-net-${index + 1}`),
+        name: typeof net.name === "string" ? net.name : undefined,
+        nodeIds: Array.isArray(net.nodeIds) ? net.nodeIds.map((item) => String(item)) : [],
+        isPower: typeof net.isPower === "boolean" ? net.isPower : inferPowerNet(typeof net.name === "string" ? net.name : undefined),
+      })),
+      selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
+    };
+  }
+
+  const pinMap = new Map<string, DraftPlan["pins"][number]>();
+  const netsByName = new Map<string, DraftPlan["nets"][number]>();
+  for (const connection of Array.isArray(candidate.connections) ? candidate.connections : []) {
+    const netName = String(connection.netName || "").trim() || `NET_${netsByName.size + 1}`;
+    const fromPin = String(connection.fromPin || "1").trim();
+    const toPin = String(connection.toPin || "1").trim();
+    const fromPinId = buildLegacyPinId(String(connection.from), fromPin);
+    const toPinId = buildLegacyPinId(String(connection.to), toPin);
+    if (!pinMap.has(fromPinId)) {
+      pinMap.set(fromPinId, {
+        id: fromPinId,
+        componentId: String(connection.from),
+        pinNumber: fromPin,
+        pinName: fromPin,
+        electricalType: "passive",
+        netName,
+      });
+    }
+    if (!pinMap.has(toPinId)) {
+      pinMap.set(toPinId, {
+        id: toPinId,
+        componentId: String(connection.to),
+        pinNumber: toPin,
+        pinName: toPin,
+        electricalType: "passive",
+        netName,
+      });
+    }
+    const existingNet = netsByName.get(netName);
+    if (existingNet) {
+      if (!existingNet.nodeIds.includes(fromPinId)) existingNet.nodeIds.push(fromPinId);
+      if (!existingNet.nodeIds.includes(toPinId)) existingNet.nodeIds.push(toPinId);
+    } else {
+      netsByName.set(netName, {
+        id: `draft-net-${netName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || netsByName.size + 1}`,
+        name: netName,
+        nodeIds: [fromPinId, toPinId],
+        isPower: inferPowerNet(netName),
+      });
+    }
+  }
+
+  return {
+    title: String(candidate.title || "Draft Plan"),
+    rationale: String(candidate.rationale || ""),
+    components,
+    pins: Array.from(pinMap.values()),
+    nets: Array.from(netsByName.values()),
+    selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
+  };
+}
+
 function withPlacement(
   x: number,
   y: number,

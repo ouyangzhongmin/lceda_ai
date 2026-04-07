@@ -2,7 +2,7 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import { createPluginAgent } from "../index";
 import { runComponentAttributesCheck } from "../../rules/checks/componentAttributesCheck";
-import { generateDraftPlanFromPrompt } from "../../editor/apply-plan/generateDraftPlan";
+import { generateDraftPlanFromPrompt, normalizeDraftPlan } from "../../editor/apply-plan/generateDraftPlan";
 
 function createAgent() {
   return createPluginAgent({
@@ -105,4 +105,25 @@ test("generateDraftPlanFromPrompt builds LED draft instead of misrouting 5V LED 
   assert.equal(plan.components.some((component) => component.ref === "R1"), true);
   assert.equal(plan.components.some((component) => component.ref === "U1"), false);
   assert.deepEqual(plan.nets.map((net) => net.name), ["5V", "LED_ANODE", "GND"]);
+});
+
+test("normalizeDraftPlan converts legacy connections into pins and nets", () => {
+  const normalized = normalizeDraftPlan({
+    title: "5V LED Indicator Draft",
+    rationale: "Generated a minimal LED indicator draft based on the user request.",
+    components: [
+      { id: "draft-j1", ref: "J1", properties: {} },
+      { id: "draft-r1", ref: "R1", properties: {} },
+      { id: "draft-d1", ref: "D1", properties: {} },
+    ],
+    connections: [
+      { from: "draft-j1", fromPin: "1", to: "draft-r1", toPin: "1", netName: "5V" },
+      { from: "draft-r1", fromPin: "2", to: "draft-d1", toPin: "1", netName: "LED_ANODE" },
+      { from: "draft-d1", fromPin: "2", to: "draft-j1", toPin: "2", netName: "GND" },
+    ],
+  } as any);
+
+  assert.equal(normalized.pins.length, 6);
+  assert.deepEqual(normalized.nets.map((net) => net.name), ["5V", "LED_ANODE", "GND"]);
+  assert.deepEqual(normalized.nets.map((net) => net.nodeIds.length), [2, 2, 2]);
 });

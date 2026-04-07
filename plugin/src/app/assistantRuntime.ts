@@ -220,6 +220,22 @@ export function shouldIgnoreDuplicateSendWhileRunning(input: {
   return Boolean(normalizedLastUser && normalizedInput === normalizedLastUser);
 }
 
+export function shouldAutoApplyDraftFromChatInput(input: {
+  agentRunState?: MainPanelState["agentRunState"];
+  input: string;
+  hasDraftPlan: boolean;
+  draftBlocked?: boolean;
+}): boolean {
+  if (input.agentRunState !== "awaiting_confirmation") {
+    return false;
+  }
+  if (!input.hasDraftPlan || input.draftBlocked) {
+    return false;
+  }
+  const normalized = input.input.trim().toLowerCase();
+  return /^(确认|确定|应用|应用草案|好的应用|开始应用|ok|okay|yes)$/u.test(normalized);
+}
+
 function formatReactEventLine(event: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T> ? T : never): string {
   if (!event || !event.kind) return "";
   if (event.kind === "task") return `任务: ${event.text || event.label || ""}`;
@@ -657,6 +673,69 @@ function createAssistantRuntime(): AssistantRuntime {
     commitState(internals, internals.currentState, storage);
   }
 
+  async function applyCurrentDraftPlan(): Promise<MainPanelState> {
+    const state = internals.currentState ?? (await computeAnalysisState());
+    const draftPlan = internals.draftPlan;
+    if (!draftPlan) {
+      state.agentRunState = "failed";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "当前没有可应用草案";
+      state.summary = "当前没有可应用的草案，请先生成草案。";
+      state.toast = {
+        id: Date.now(),
+        message: state.summary,
+      };
+      return commitState(internals, state, storage);
+    }
+    if (internals.draftBlocked) {
+      state.agentRunState = "awaiting_confirmation";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "草案存在高风险问题，已阻断直接应用";
+      state.summary = "草案存在高风险问题，请先修改或重新生成后再应用。";
+      state.toast = {
+        id: Date.now(),
+        message: state.summary,
+      };
+      return commitState(internals, state, storage);
+    }
+    const adapter = createEditorAdapter(resolveRuntimeChannel());
+    try {
+      const result = await adapter.applyPlan(draftPlan);
+      if (!result.applied) {
+        throw new Error("宿主当前未真正执行原理图应用，请检查 applyPlan 能力是否已接通");
+      }
+      internals.lastApplyTransactionId = result.transactionId;
+      internals.draftBlocked = false;
+      state.agentRunState = "completed";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "草案已应用";
+      state.summary = `草案已应用：器件 ${result.componentCount}，网络 ${result.netCount}。`;
+      state.chatMessages = appendAssistantMessages(
+        sanitizeChatMessages(state.chatMessages),
+        pluginAgent.buildDraftAppliedMessages(result.componentCount, result.netCount)
+      );
+    } catch (error) {
+      state.agentRunState = "failed";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = error instanceof Error ? error.message : String(error);
+      state.summary = `应用草案失败：${error instanceof Error ? error.message : String(error)}`;
+      state.chatMessages = appendAssistantMessages(
+        sanitizeChatMessages(state.chatMessages),
+        pluginAgent.buildStatusMessages({
+          title: "应用失败",
+          content: state.summary,
+          tone: "warning",
+        })
+      );
+      state.toast = {
+        id: Date.now(),
+        message: state.summary,
+      };
+    }
+    state.nextActions = buildNextActions(state);
+    return commitState(internals, state, storage);
+  }
+
   return {
     openPanel: openIdlePanelState,
     rerunAnalysis: computeAnalysisState,
@@ -836,6 +915,24 @@ function createAssistantRuntime(): AssistantRuntime {
           },
           storage
         );
+      if (
+        shouldAutoApplyDraftFromChatInput({
+          agentRunState: current.agentRunState,
+          input: trimmed,
+          hasDraftPlan: Boolean(internals.draftPlan),
+          draftBlocked: internals.draftBlocked,
+        })
+      ) {
+        current.chatMessages = appendUserChatMessage(
+          stripInitialWelcomeMessages(sanitizeChatMessages(current.chatMessages)),
+          trimmed
+        );
+        current.agentRunRoute = "draft";
+        current.agentRunDetail = "正在应用已确认草案";
+        current.summary = "已收到确认，正在将草案应用到原理图。";
+        commitState(internals, current, storage);
+        return applyCurrentDraftPlan();
+      }
       const llmMode = await llmModeStore.get();
       const session = await sessionStore.get();
       if (llmMode === "proxy" && !session?.accessToken) {
@@ -1193,52 +1290,7 @@ function createAssistantRuntime(): AssistantRuntime {
       }
     },
     applyDraftPlan: async (): Promise<MainPanelState> => {
-      const state = internals.currentState ?? (await computeAnalysisState());
-      const draftPlan = internals.draftPlan;
-      if (!draftPlan) {
-        state.agentRunState = "failed";
-        state.agentRunRoute = "draft";
-        state.agentRunDetail = "当前没有可应用草案";
-        state.summary = "当前没有可应用的草案，请先生成草案。";
-        state.toast = {
-          id: Date.now(),
-          message: state.summary,
-        };
-        return commitState(internals, state, storage);
-      }
-      if (internals.draftBlocked) {
-        state.agentRunState = "awaiting_confirmation";
-        state.agentRunRoute = "draft";
-        state.agentRunDetail = "草案存在高风险问题，已阻断直接应用";
-        state.summary = "草案存在高风险问题，请先修改或重新生成后再应用。";
-        state.toast = {
-          id: Date.now(),
-          message: state.summary,
-        };
-        return commitState(internals, state, storage);
-      }
-      const adapter = createEditorAdapter(resolveRuntimeChannel());
-      try {
-        const result = await adapter.applyPlan(draftPlan);
-      internals.lastApplyTransactionId = result.transactionId;
-      internals.draftBlocked = false;
-        state.agentRunState = "completed";
-        state.agentRunRoute = "draft";
-        state.agentRunDetail = "草案已应用";
-        state.summary = `草案已应用：器件 ${result.componentCount}，网络 ${result.netCount}。`;
-        state.chatMessages = pluginAgent.buildDraftAppliedMessages(result.componentCount, result.netCount);
-      } catch (error) {
-        state.agentRunState = "failed";
-        state.agentRunRoute = "draft";
-        state.agentRunDetail = error instanceof Error ? error.message : String(error);
-        state.summary = `应用草案失败：${error instanceof Error ? error.message : String(error)}`;
-        state.toast = {
-          id: Date.now(),
-          message: state.summary,
-        };
-      }
-      state.nextActions = buildNextActions(state);
-      return commitState(internals, state, storage);
+      return applyCurrentDraftPlan();
     },
     rollbackLastApply: async (): Promise<MainPanelState> => {
       const state = internals.currentState ?? (await computeAnalysisState());
@@ -1258,11 +1310,22 @@ function createAssistantRuntime(): AssistantRuntime {
         state.agentRunState = "completed";
         state.agentRunDetail = result.rolledBack ? "已回滚最近一次草案应用" : "回滚未生效";
         state.summary = result.rolledBack ? "已回滚最近一次草案应用。" : "回滚未生效。";
-        state.chatMessages = pluginAgent.buildRollbackMessages(state.summary);
+        state.chatMessages = appendAssistantMessages(
+          sanitizeChatMessages(state.chatMessages),
+          pluginAgent.buildRollbackMessages(state.summary)
+        );
       } catch (error) {
         state.agentRunState = "failed";
         state.agentRunDetail = error instanceof Error ? error.message : String(error);
         state.summary = `回滚失败：${error instanceof Error ? error.message : String(error)}`;
+        state.chatMessages = appendAssistantMessages(
+          sanitizeChatMessages(state.chatMessages),
+          pluginAgent.buildStatusMessages({
+            title: "回滚失败",
+            content: state.summary,
+            tone: "warning",
+          })
+        );
         state.toast = {
           id: Date.now(),
           message: state.summary,
@@ -1833,6 +1896,27 @@ export function finalizeDraftTurnMessages(
   draftMessages: NonNullable<MainPanelState["chatMessages"]>
 ): NonNullable<MainPanelState["chatMessages"]> {
   return replaceTrailingPendingAssistant(previousMessages, draftMessages);
+}
+
+export function appendAssistantMessages(
+  previousMessages: NonNullable<MainPanelState["chatMessages"]>,
+  nextMessages: NonNullable<MainPanelState["chatMessages"]>
+): NonNullable<MainPanelState["chatMessages"]> {
+  return [...sanitizeChatMessages(previousMessages), ...nextMessages];
+}
+
+export function appendUserChatMessage(
+  previousMessages: NonNullable<MainPanelState["chatMessages"]>,
+  content: string
+): NonNullable<MainPanelState["chatMessages"]> {
+  return [
+    ...sanitizeChatMessages(previousMessages),
+    {
+      role: "user",
+      title: "你",
+      content,
+    },
+  ];
 }
 
 function preferNonEmptyArray<T>(primary?: T[], fallback?: T[]): T[] | undefined {

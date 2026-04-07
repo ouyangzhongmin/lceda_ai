@@ -1,5 +1,8 @@
 import { previewDraftPlan } from "../apply-plan/previewDraftPlan";
 import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
+import { normalizeDraftPlan } from "../apply-plan/generateDraftPlan";
+import { resolveDraftPlanDevices } from "../apply-plan/resolveDraftPlanDevices";
+import { typedSearchLibraryDevices } from "./proHostProbe";
 import type { ApplyPlanResult } from "../adapters/editorAdapter";
 
 export interface ApiApplyPlanAdapter {
@@ -20,20 +23,27 @@ export function createApiApplyPlanAdapter(
   options?: { typedPlacementEnabled?: boolean }
 ): ApiApplyPlanAdapter {
   return {
-    preview: async (plan: DraftPlan): Promise<DraftPreview> => previewDraftPlan(plan),
+    preview: async (plan: DraftPlan): Promise<DraftPreview> => previewDraftPlan(normalizeDraftPlan(plan)),
     apply: async (plan: DraftPlan): Promise<ApplyPlanResult> => {
+      plan = normalizeDraftPlan(plan);
+      if (options?.typedPlacementEnabled && !canApplyByTypedPlacement(plan)) {
+        plan = await resolveDraftPlanDevices(plan, async (query) =>
+          typedSearchLibraryDevices({ query, scope: "system", pageSize: 5 })
+        );
+      }
       const transactionId = createTransactionId();
       if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
         const placed = await applyTypedSchematicPlan(plan);
+        const applied = placed.componentIds.length > 0 || placed.wireIds.length > 0;
         applyTransactions.set(transactionId, {
           kind: "typed_schematic",
           componentIds: placed.componentIds,
           wireIds: placed.wireIds,
         });
-        return summarizeApply(plan, transactionId, true);
+        return summarizeApply(plan, transactionId, applied, applied);
       }
       if (!invoker) {
-        return summarizeApply(plan, transactionId, false);
+        return summarizeApply(plan, transactionId, false, false);
       }
 
       const sourceRead = await tryInvokeCandidates(invoker, [
@@ -59,7 +69,7 @@ export function createApiApplyPlanAdapter(
           kind: "source",
           sourceSnapshot: sourceRead.value,
         });
-        return summarizeApply(plan, transactionId, true);
+        return summarizeApply(plan, transactionId, true, true);
       }
 
       const shapes = draftToShapes(plan);
@@ -83,7 +93,7 @@ export function createApiApplyPlanAdapter(
           ["createShape", shape.payload],
           ["createShape", shape.kind, shape.payload],
         ]);
-        if (!created.called) {
+        if (!created.called || !isSuccessfulMutationResult(created.value)) {
           throw new Error(`host api apply shape failed: cannot create shape ${shape.id}`);
         }
         if (!(existingResult.called && existingResult.value !== undefined && existingResult.value !== null)) {
@@ -95,7 +105,7 @@ export function createApiApplyPlanAdapter(
         kind: "shape",
         shapeIds: createdShapeIds,
       });
-      return summarizeApply(plan, transactionId, createdShapeIds.length > 0);
+      return summarizeApply(plan, transactionId, createdShapeIds.length > 0, createdShapeIds.length > 0);
     },
     rollback: async (transactionId: string): Promise<{ rolledBack: boolean; transactionId: string }> => {
       const tx = applyTransactions.get(transactionId);
@@ -398,15 +408,23 @@ async function deleteTypedSchematicWires(wireIds: string[]): Promise<boolean> {
 function summarizeApply(
   plan: DraftPlan,
   transactionId: string,
+  applied: boolean,
   rollbackSupported: boolean
 ): ApplyPlanResult {
   return {
-    applied: true,
+    applied,
     componentCount: plan.components.length,
     netCount: plan.nets.length,
     transactionId,
     rollbackSupported,
   };
+}
+
+function isSuccessfulMutationResult(value: unknown): boolean {
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  return true;
 }
 
 function mergeDraftIntoSource(rawSource: unknown, plan: DraftPlan): Record<string, unknown> {
