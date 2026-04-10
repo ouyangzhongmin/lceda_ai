@@ -16,6 +16,7 @@ type Config struct {
 	Redis     RedisConfig
 	SMTP      SMTPConfig
 	Memory    MemoryConfig
+	RAGFlow   RAGFlowConfig
 	LLM       LLMConfig
 	Wechat    WechatConfig
 	Knowledge KnowledgeConfig
@@ -59,6 +60,16 @@ type MemoryConfig struct {
 	EmbeddingModel    string
 	TopK              int
 	EnableFallback    *bool
+}
+
+
+type RAGFlowConfig struct {
+	Enabled          *bool
+	BaseURL          string
+	APIKey           string
+	DatasetID        string
+	EndpointTemplate string
+	TimeoutSeconds   int
 }
 
 type LLMConfig struct {
@@ -175,6 +186,14 @@ func LoadConfig() (Config, error) {
 			TopK:              topK,
 			EnableFallback:    boolPtr(resolveBool("MEMORY_ENABLE_FALLBACK", fileCfg.Memory.EnableFallback, true)),
 		},
+		RAGFlow: RAGFlowConfig{
+			Enabled:          boolPtr(resolveBool("RAGFLOW_ENABLED", fileCfg.RAGFlow.Enabled, false)),
+			BaseURL:          firstNonEmpty(os.Getenv("RAGFLOW_BASE_URL"), fileCfg.RAGFlow.BaseURL),
+			APIKey:           firstNonEmpty(os.Getenv("RAGFLOW_API_KEY"), fileCfg.RAGFlow.APIKey),
+			DatasetID:        firstNonEmpty(os.Getenv("RAGFLOW_DATASET_ID"), fileCfg.RAGFlow.DatasetID),
+			EndpointTemplate: firstNonEmpty(os.Getenv("RAGFLOW_ENDPOINT_TEMPLATE"), firstNonEmpty(fileCfg.RAGFlow.EndpointTemplate, "/api/v1/datasets/{dataset_id}/search")),
+			TimeoutSeconds:   resolveInt("RAGFLOW_TIMEOUT_SECONDS", fileCfg.RAGFlow.TimeoutSeconds, 12),
+		},
 		LLM: LLMConfig{
 			Provider:         strings.ToLower(firstNonEmpty(os.Getenv("LLM_PROVIDER"), firstNonEmpty(fileCfg.LLM.Provider, "doubao"))),
 			AMapAPIKey:       firstNonEmpty(os.Getenv("LLM_AMAP_API_KEY"), fileCfg.LLM.AMapAPIKey),
@@ -289,6 +308,14 @@ func loadFromYAMLIfPresent(path string) (Config, error) {
 			TopK              int    `yaml:"top_k"`
 			EnableFallback    *bool  `yaml:"enable_fallback"`
 		} `yaml:"memory"`
+		RAGFlow struct {
+			Enabled          *bool  `yaml:"enabled"`
+			BaseURL          string `yaml:"base_url"`
+			APIKey           string `yaml:"api_key"`
+			DatasetID        string `yaml:"dataset_id"`
+			EndpointTemplate string `yaml:"endpoint_template"`
+			TimeoutSeconds   int    `yaml:"timeout_seconds"`
+		} `yaml:"ragflow"`
 		LLM struct {
 			Provider         string `yaml:"provider"`
 			AMapAPIKey       string `yaml:"amap_api_key"`

@@ -1,7 +1,8 @@
-import type { DraftPlan, DraftPlanSelectedDevice } from "./draftPlan";
+import type { DraftPlan, DraftPlanGuidance, DraftPlanSelectedDevice } from "./draftPlan";
 
 interface GenerateDraftPlanOptions {
   selectedDevices?: DraftPlanSelectedDevice[];
+  guidance?: DraftPlanGuidance;
 }
 
 interface LegacyDraftConnection {
@@ -22,6 +23,61 @@ function toSafeProperties(value: unknown): Record<string, string> {
     result[key] = String(raw);
   }
   return result;
+}
+
+function normalizeGuidance(value: unknown): DraftPlanGuidance | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const guidance = value as DraftPlanGuidance & {
+    evidence?: Array<Record<string, unknown>>;
+    preferredSearches?: Record<string, unknown>;
+    requiredNets?: unknown[];
+    requiredConnections?: Array<Record<string, unknown>>;
+  };
+  const templateId = typeof guidance.templateId === "string" ? guidance.templateId : "";
+  const rationale = typeof guidance.rationale === "string" ? guidance.rationale : "";
+  if (!templateId || !rationale) {
+    return undefined;
+  }
+  return {
+    templateId,
+    rationale,
+    evidence: Array.isArray(guidance.evidence)
+      ? guidance.evidence
+          .map((item) => ({
+            title: typeof item.title === "string" ? item.title : "",
+            snippet: typeof item.snippet === "string" ? item.snippet : "",
+            sourceRef: typeof item.sourceRef === "string" ? item.sourceRef : "",
+          }))
+          .filter((item) => item.title || item.snippet || item.sourceRef)
+      : undefined,
+    preferredSearches:
+      guidance.preferredSearches && typeof guidance.preferredSearches === "object"
+        ? Object.fromEntries(
+            Object.entries(guidance.preferredSearches)
+              .filter(([, raw]) => typeof raw === "string" && raw.trim())
+              .map(([key, raw]) => [key, String(raw).trim()])
+          )
+        : undefined,
+    requiredNets: Array.isArray(guidance.requiredNets)
+      ? guidance.requiredNets.map((item) => String(item)).filter(Boolean)
+      : undefined,
+    requiredConnections: Array.isArray(guidance.requiredConnections)
+      ? guidance.requiredConnections
+          .map((item) => ({
+            fromComponentRef: typeof item.fromComponentRef === "string" ? item.fromComponentRef : "",
+            fromPin: typeof item.fromPin === "string" ? item.fromPin : "",
+            toComponentRef: typeof item.toComponentRef === "string" ? item.toComponentRef : "",
+            toPin: typeof item.toPin === "string" ? item.toPin : "",
+            netName: typeof item.netName === "string" ? item.netName : "",
+          }))
+          .filter(
+            (item) =>
+              item.fromComponentRef && item.fromPin && item.toComponentRef && item.toPin && item.netName
+          )
+      : undefined,
+  };
 }
 
 function buildLegacyPinId(componentId: string, pinLabel: string): string {
@@ -45,6 +101,7 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
     title?: string;
     rationale?: string;
     selectedDevices?: DraftPlanSelectedDevice[];
+    guidance?: DraftPlanGuidance;
   };
 
   const components = Array.isArray(candidate.components)
@@ -85,6 +142,7 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
         isPower: typeof net.isPower === "boolean" ? net.isPower : inferPowerNet(typeof net.name === "string" ? net.name : undefined),
       })),
       selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
+      guidance: normalizeGuidance(candidate.guidance),
     };
   }
 
@@ -137,6 +195,7 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
     pins: Array.from(pinMap.values()),
     nets: Array.from(netsByName.values()),
     selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
+      guidance: normalizeGuidance(candidate.guidance),
   };
 }
 
@@ -152,12 +211,21 @@ function withPlacement(
   };
 }
 
+function withGuidedSearch(
+  role: DraftPlanSelectedDevice["role"],
+  guidance: DraftPlanGuidance | undefined
+): Record<string, string> {
+  const query = guidance?.preferredSearches?.[role];
+  return query ? { preferred_search_query: query } : {};
+}
+
 export function generateDraftPlanFromPrompt(
   userQuery: string,
   options: GenerateDraftPlanOptions = {}
 ): DraftPlan {
   const normalized = userQuery.toLowerCase();
   const selectedDevices = options.selectedDevices ?? [];
+  const guidance = options.guidance;
   const pickSelected = (role: string): DraftPlanSelectedDevice | undefined =>
     selectedDevices.find((item) => item.role === role);
   const ldoDevice = pickSelected("ldo_regulator");
@@ -190,6 +258,7 @@ export function generateDraftPlanFromPrompt(
           properties: {
             expected_net_1: "5V",
             expected_net_2: "GND",
+            ...withGuidedSearch("power_connector", guidance),
             device_uuid: connectorDevice?.deviceUuid ?? "",
             library_uuid: connectorDevice?.libraryUuid ?? "",
             symbol_uuid: connectorDevice?.symbolUuid ?? "",
@@ -207,6 +276,7 @@ export function generateDraftPlanFromPrompt(
           properties: {
             expected_net_1: "5V",
             expected_net_2: "LED_ANODE",
+            ...withGuidedSearch("resistor", guidance),
             device_uuid: resistorDevice?.deviceUuid ?? "",
             library_uuid: resistorDevice?.libraryUuid ?? "",
             symbol_uuid: resistorDevice?.symbolUuid ?? "",
@@ -225,6 +295,7 @@ export function generateDraftPlanFromPrompt(
             expected_net_A: "LED_ANODE",
             expected_net_K: "GND",
             led_color: "red",
+            ...withGuidedSearch("led", guidance),
             device_uuid: ledDevice?.deviceUuid ?? "",
             library_uuid: ledDevice?.libraryUuid ?? "",
             symbol_uuid: ledDevice?.symbolUuid ?? "",
@@ -237,36 +308,42 @@ export function generateDraftPlanFromPrompt(
         {
           id: "draft-j1-1",
           componentId: "draft-j1",
+          pinNumber: "1",
           pinName: "5V",
           electricalType: "power_in",
         },
         {
           id: "draft-j1-2",
           componentId: "draft-j1",
+          pinNumber: "2",
           pinName: "GND",
           electricalType: "power_in",
         },
         {
           id: "draft-r1-1",
           componentId: "draft-r1",
+          pinNumber: "1",
           pinName: "1",
           electricalType: "passive",
         },
         {
           id: "draft-r1-2",
           componentId: "draft-r1",
+          pinNumber: "2",
           pinName: "2",
           electricalType: "passive",
         },
         {
           id: "draft-d1-a",
           componentId: "draft-d1",
+          pinNumber: "1",
           pinName: "A",
           electricalType: "passive",
         },
         {
           id: "draft-d1-k",
           componentId: "draft-d1",
+          pinNumber: "2",
           pinName: "K",
           electricalType: "passive",
         },
@@ -291,6 +368,7 @@ export function generateDraftPlanFromPrompt(
         },
       ],
       selectedDevices,
+      guidance,
     };
   }
 
@@ -314,6 +392,7 @@ export function generateDraftPlanFromPrompt(
             expected_net_VIN: "5V",
             expected_net_VOUT: "3V3",
             expected_net_GND: "GND",
+            ...withGuidedSearch("ldo_regulator", guidance),
             device_uuid: ldoDevice?.deviceUuid ?? "",
             library_uuid: ldoDevice?.libraryUuid ?? "",
             symbol_uuid: ldoDevice?.symbolUuid ?? "",
@@ -332,6 +411,7 @@ export function generateDraftPlanFromPrompt(
             expected_net_POS: "5V",
             expected_net_NEG: "GND",
             polarity_sensitive: "true",
+            ...withGuidedSearch("input_capacitor", guidance),
             device_uuid: inputCapacitorDevice?.deviceUuid ?? "",
             library_uuid: inputCapacitorDevice?.libraryUuid ?? "",
             symbol_uuid: inputCapacitorDevice?.symbolUuid ?? "",
@@ -350,6 +430,7 @@ export function generateDraftPlanFromPrompt(
             expected_net_POS: "3V3",
             expected_net_NEG: "GND",
             polarity_sensitive: "true",
+            ...withGuidedSearch("output_capacitor", guidance),
             device_uuid: outputCapacitorDevice?.deviceUuid ?? "",
             library_uuid: outputCapacitorDevice?.libraryUuid ?? "",
             symbol_uuid: outputCapacitorDevice?.symbolUuid ?? "",
@@ -423,6 +504,7 @@ export function generateDraftPlanFromPrompt(
         },
       ],
       selectedDevices,
+      guidance,
     };
   }
 
@@ -435,5 +517,6 @@ export function generateDraftPlanFromPrompt(
     pins: [],
     nets: [],
     selectedDevices,
+    guidance,
   };
 }

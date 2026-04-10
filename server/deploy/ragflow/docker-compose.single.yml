@@ -1,0 +1,431 @@
+name: ragflow
+services:
+  es01:
+    profiles:
+      - elasticsearch
+    environment:
+      ADMIN_SVR_HTTP_PORT: "39381"
+      API_PROXY_SCHEME: python
+      COMPOSE_PROFILES: elasticsearch,cpu
+      DEVICE: cpu
+      DOC_ENGINE: elasticsearch
+      ELASTIC_PASSWORD: change_me_elastic_password
+      ES_HOST: es01
+      ES_PORT: "21200"
+      EXPOSE_MYSQL_PORT: "23306"
+      GO_ADMIN_PORT: "39383"
+      GO_HTTP_PORT: "39384"
+      MEM_LIMIT: "4294967296"
+      MINIO_CONSOLE_PORT: "39001"
+      MINIO_HOST: minio
+      MINIO_PASSWORD: change_me_minio_password
+      MINIO_PORT: "39000"
+      MINIO_USER: rag_flow
+      MYSQL_DBNAME: rag_flow
+      MYSQL_HOST: mysql
+      MYSQL_MAX_PACKET: "1073741824"
+      MYSQL_PASSWORD: change_me_mysql_password
+      MYSQL_PORT: "3306"
+      OPENSEARCH_PASSWORD: change_me_opensearch_password_01!
+      OS_HOST: opensearch01
+      OS_PORT: "21201"
+      RAGFLOW_IMAGE: infiniflow/ragflow:v0.24.0
+      REDIS_HOST: redis
+      REDIS_PASSWORD: change_me_redis_password
+      REDIS_PORT: "26379"
+      REGISTER_ENABLED: "1"
+      STACK_VERSION: 8.11.3
+      SVR_HTTP_PORT: "39380"
+      SVR_MCP_PORT: "39382"
+      SVR_WEB_HTTP_PORT: "38080"
+      SVR_WEB_HTTPS_PORT: "38443"
+      TEI_HOST: tei
+      TEI_IMAGE_CPU: infiniflow/text-embeddings-inference:cpu-1.8
+      TEI_IMAGE_GPU: infiniflow/text-embeddings-inference:1.8
+      TEI_MODEL: Qwen/Qwen3-Embedding-0.6B
+      TEI_PORT: "26380"
+      TZ: Asia/Shanghai
+      bootstrap.memory_lock: "false"
+      cluster.routing.allocation.disk.watermark.flood_stage: 2gb
+      cluster.routing.allocation.disk.watermark.high: 3gb
+      cluster.routing.allocation.disk.watermark.low: 5gb
+      discovery.type: single-node
+      node.name: es01
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl http://localhost:9200
+      timeout: 10s
+      interval: 10s
+      retries: 120
+    image: elasticsearch:8.11.3
+    mem_limit: "4294967296"
+    networks:
+      ragflow: null
+    ports:
+      - mode: ingress
+        target: 9200
+        published: "21200"
+        protocol: tcp
+    restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - type: volume
+        source: esdata01
+        target: /usr/share/elasticsearch/data
+        volume: {}
+  minio:
+    command:
+      - server
+      - --console-address
+      - :9001
+      - /data
+    environment:
+      ADMIN_SVR_HTTP_PORT: "39381"
+      API_PROXY_SCHEME: python
+      COMPOSE_PROFILES: elasticsearch,cpu
+      DEVICE: cpu
+      DOC_ENGINE: elasticsearch
+      ELASTIC_PASSWORD: change_me_elastic_password
+      ES_HOST: es01
+      ES_PORT: "21200"
+      EXPOSE_MYSQL_PORT: "23306"
+      GO_ADMIN_PORT: "39383"
+      GO_HTTP_PORT: "39384"
+      MEM_LIMIT: "4294967296"
+      MINIO_CONSOLE_PORT: "39001"
+      MINIO_HOST: minio
+      MINIO_PASSWORD: change_me_minio_password
+      MINIO_PORT: "39000"
+      MINIO_ROOT_PASSWORD: change_me_minio_password
+      MINIO_ROOT_USER: rag_flow
+      MINIO_USER: rag_flow
+      MYSQL_DBNAME: rag_flow
+      MYSQL_HOST: mysql
+      MYSQL_MAX_PACKET: "1073741824"
+      MYSQL_PASSWORD: change_me_mysql_password
+      MYSQL_PORT: "3306"
+      OPENSEARCH_PASSWORD: change_me_opensearch_password_01!
+      OS_HOST: opensearch01
+      OS_PORT: "21201"
+      RAGFLOW_IMAGE: infiniflow/ragflow:v0.24.0
+      REDIS_HOST: redis
+      REDIS_PASSWORD: change_me_redis_password
+      REDIS_PORT: "26379"
+      REGISTER_ENABLED: "1"
+      STACK_VERSION: 8.11.3
+      SVR_HTTP_PORT: "39380"
+      SVR_MCP_PORT: "39382"
+      SVR_WEB_HTTP_PORT: "38080"
+      SVR_WEB_HTTPS_PORT: "38443"
+      TEI_HOST: tei
+      TEI_IMAGE_CPU: infiniflow/text-embeddings-inference:cpu-1.8
+      TEI_IMAGE_GPU: infiniflow/text-embeddings-inference:1.8
+      TEI_MODEL: Qwen/Qwen3-Embedding-0.6B
+      TEI_PORT: "26380"
+      TZ: Asia/Shanghai
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:9000/minio/health/live
+      timeout: 10s
+      interval: 10s
+      retries: 120
+    image: pgsty/minio:RELEASE.2026-03-25T00-00-00Z
+    networks:
+      ragflow: null
+    ports:
+      - mode: ingress
+        target: 9000
+        published: "39000"
+        protocol: tcp
+      - mode: ingress
+        target: 9001
+        published: "39001"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: minio_data
+        target: /data
+        volume: {}
+  mysql:
+    command:
+      - --max_connections=1000
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --tls_version=TLSv1.2,TLSv1.3
+      - --init-file
+      - /data/application/init.sql
+      - --binlog_expire_logs_seconds=604800
+    environment:
+      ADMIN_SVR_HTTP_PORT: "39381"
+      API_PROXY_SCHEME: python
+      COMPOSE_PROFILES: elasticsearch,cpu
+      DEVICE: cpu
+      DOC_ENGINE: elasticsearch
+      ELASTIC_PASSWORD: change_me_elastic_password
+      ES_HOST: es01
+      ES_PORT: "21200"
+      EXPOSE_MYSQL_PORT: "23306"
+      GO_ADMIN_PORT: "39383"
+      GO_HTTP_PORT: "39384"
+      MEM_LIMIT: "4294967296"
+      MINIO_CONSOLE_PORT: "39001"
+      MINIO_HOST: minio
+      MINIO_PASSWORD: change_me_minio_password
+      MINIO_PORT: "39000"
+      MINIO_USER: rag_flow
+      MYSQL_DBNAME: rag_flow
+      MYSQL_HOST: mysql
+      MYSQL_MAX_PACKET: "1073741824"
+      MYSQL_PASSWORD: change_me_mysql_password
+      MYSQL_PORT: "3306"
+      MYSQL_ROOT_PASSWORD: change_me_mysql_password
+      OPENSEARCH_PASSWORD: change_me_opensearch_password_01!
+      OS_HOST: opensearch01
+      OS_PORT: "21201"
+      RAGFLOW_IMAGE: infiniflow/ragflow:v0.24.0
+      REDIS_HOST: redis
+      REDIS_PASSWORD: change_me_redis_password
+      REDIS_PORT: "26379"
+      REGISTER_ENABLED: "1"
+      STACK_VERSION: 8.11.3
+      SVR_HTTP_PORT: "39380"
+      SVR_MCP_PORT: "39382"
+      SVR_WEB_HTTP_PORT: "38080"
+      SVR_WEB_HTTPS_PORT: "38443"
+      TEI_HOST: tei
+      TEI_IMAGE_CPU: infiniflow/text-embeddings-inference:cpu-1.8
+      TEI_IMAGE_GPU: infiniflow/text-embeddings-inference:1.8
+      TEI_MODEL: Qwen/Qwen3-Embedding-0.6B
+      TEI_PORT: "26380"
+      TZ: Asia/Shanghai
+    healthcheck:
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - -uroot
+        - -pchange_me_mysql_password
+      timeout: 10s
+      interval: 10s
+      retries: 120
+    image: mysql:8.0.39
+    networks:
+      ragflow: null
+    ports:
+      - mode: ingress
+        target: 3306
+        published: "23306"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: mysql_data
+        target: /var/lib/mysql
+        volume: {}
+      - type: bind
+        source: /Users/oyzm/workspace5/agents/lceda_ai/server/deploy/ragflow/init.sql
+        target: /data/application/init.sql
+        bind: {}
+  ragflow-cpu:
+    profiles:
+      - cpu
+    command:
+      - --enable-adminserver
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    environment:
+      ADMIN_SVR_HTTP_PORT: "39381"
+      API_PROXY_SCHEME: python
+      COMPOSE_PROFILES: elasticsearch,cpu
+      DEVICE: cpu
+      DOC_ENGINE: elasticsearch
+      ELASTIC_PASSWORD: change_me_elastic_password
+      ES_HOST: es01
+      ES_PORT: "21200"
+      EXPOSE_MYSQL_PORT: "23306"
+      GO_ADMIN_PORT: "39383"
+      GO_HTTP_PORT: "39384"
+      MEM_LIMIT: "4294967296"
+      MINIO_CONSOLE_PORT: "39001"
+      MINIO_HOST: minio
+      MINIO_PASSWORD: change_me_minio_password
+      MINIO_PORT: "39000"
+      MINIO_USER: rag_flow
+      MYSQL_DBNAME: rag_flow
+      MYSQL_HOST: mysql
+      MYSQL_MAX_PACKET: "1073741824"
+      MYSQL_PASSWORD: change_me_mysql_password
+      MYSQL_PORT: "3306"
+      OPENSEARCH_PASSWORD: change_me_opensearch_password_01!
+      OS_HOST: opensearch01
+      OS_PORT: "21201"
+      RAGFLOW_IMAGE: infiniflow/ragflow:v0.24.0
+      REDIS_HOST: redis
+      REDIS_PASSWORD: change_me_redis_password
+      REDIS_PORT: "26379"
+      REGISTER_ENABLED: "1"
+      STACK_VERSION: 8.11.3
+      SVR_HTTP_PORT: "39380"
+      SVR_MCP_PORT: "39382"
+      SVR_WEB_HTTP_PORT: "38080"
+      SVR_WEB_HTTPS_PORT: "38443"
+      TEI_HOST: tei
+      TEI_IMAGE_CPU: infiniflow/text-embeddings-inference:cpu-1.8
+      TEI_IMAGE_GPU: infiniflow/text-embeddings-inference:1.8
+      TEI_MODEL: Qwen/Qwen3-Embedding-0.6B
+      TEI_PORT: "26380"
+      TZ: Asia/Shanghai
+    extra_hosts:
+      - host.docker.internal=host-gateway
+    image: infiniflow/ragflow:v0.24.0
+    networks:
+      ragflow: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "38080"
+        protocol: tcp
+      - mode: ingress
+        target: 443
+        published: "38443"
+        protocol: tcp
+      - mode: ingress
+        target: 9380
+        published: "39380"
+        protocol: tcp
+      - mode: ingress
+        target: 9381
+        published: "39381"
+        protocol: tcp
+      - mode: ingress
+        target: 9382
+        published: "39382"
+        protocol: tcp
+      - mode: ingress
+        target: 9384
+        published: "39384"
+        protocol: tcp
+      - mode: ingress
+        target: 9383
+        published: "39383"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /Users/oyzm/workspace5/agents/lceda_ai/server/deploy/ragflow/ragflow-logs
+        target: /ragflow/logs
+        bind: {}
+      - type: bind
+        source: /Users/oyzm/workspace5/agents/lceda_ai/server/deploy/ragflow/service_conf.yaml.template
+        target: /ragflow/conf/service_conf.yaml.template
+        bind: {}
+      - type: bind
+        source: /Users/oyzm/workspace5/agents/lceda_ai/server/deploy/ragflow/entrypoint.sh
+        target: /ragflow/entrypoint.sh
+        bind: {}
+  redis:
+    command:
+      - redis-server
+      - --requirepass
+      - change_me_redis_password
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    environment:
+      ADMIN_SVR_HTTP_PORT: "39381"
+      API_PROXY_SCHEME: python
+      COMPOSE_PROFILES: elasticsearch,cpu
+      DEVICE: cpu
+      DOC_ENGINE: elasticsearch
+      ELASTIC_PASSWORD: change_me_elastic_password
+      ES_HOST: es01
+      ES_PORT: "21200"
+      EXPOSE_MYSQL_PORT: "23306"
+      GO_ADMIN_PORT: "39383"
+      GO_HTTP_PORT: "39384"
+      MEM_LIMIT: "4294967296"
+      MINIO_CONSOLE_PORT: "39001"
+      MINIO_HOST: minio
+      MINIO_PASSWORD: change_me_minio_password
+      MINIO_PORT: "39000"
+      MINIO_USER: rag_flow
+      MYSQL_DBNAME: rag_flow
+      MYSQL_HOST: mysql
+      MYSQL_MAX_PACKET: "1073741824"
+      MYSQL_PASSWORD: change_me_mysql_password
+      MYSQL_PORT: "3306"
+      OPENSEARCH_PASSWORD: change_me_opensearch_password_01!
+      OS_HOST: opensearch01
+      OS_PORT: "21201"
+      RAGFLOW_IMAGE: infiniflow/ragflow:v0.24.0
+      REDIS_HOST: redis
+      REDIS_PASSWORD: change_me_redis_password
+      REDIS_PORT: "26379"
+      REGISTER_ENABLED: "1"
+      STACK_VERSION: 8.11.3
+      SVR_HTTP_PORT: "39380"
+      SVR_MCP_PORT: "39382"
+      SVR_WEB_HTTP_PORT: "38080"
+      SVR_WEB_HTTPS_PORT: "38443"
+      TEI_HOST: tei
+      TEI_IMAGE_CPU: infiniflow/text-embeddings-inference:cpu-1.8
+      TEI_IMAGE_GPU: infiniflow/text-embeddings-inference:1.8
+      TEI_MODEL: Qwen/Qwen3-Embedding-0.6B
+      TEI_PORT: "26380"
+      TZ: Asia/Shanghai
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - -a
+        - change_me_redis_password
+        - ping
+      timeout: 10s
+      interval: 10s
+      retries: 120
+    image: valkey/valkey:8
+    networks:
+      ragflow: null
+    ports:
+      - mode: ingress
+        target: 6379
+        published: "26379"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: redis_data
+        target: /data
+        volume: {}
+networks:
+  ragflow:
+    name: ragflow_ragflow
+    driver: bridge
+volumes:
+  esdata01:
+    name: ragflow_esdata01
+    driver: local
+  minio_data:
+    name: ragflow_minio_data
+    driver: local
+  mysql_data:
+    name: ragflow_mysql_data
+    driver: local
+  redis_data:
+    name: ragflow_redis_data
+    driver: local

@@ -32,6 +32,14 @@ memory:
   top_k: 5
   enable_fallback: true
 
+ragflow:
+  enabled: true
+  base_url: "http://127.0.0.1:39380"
+  api_key: "ragflow-g8zpcvPSSi0lLtkDvaa9_940ZjJbOg1lu8qYw2rHY3k"
+  dataset_id: "6bd834b4342911f185870d318ee3a4a1"
+  endpoint_template: "/api/v1/datasets/{dataset_id}/search"
+  timeout_seconds: 12
+
 llm:
   provider: "deepseek"
   amap_api_key: "6aea7e118c9f978bff92d3cadbd9bcd6"

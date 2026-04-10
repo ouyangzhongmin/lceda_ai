@@ -19,6 +19,7 @@ import (
 	"lceda_ai/server/internal/repository/persistence"
 	pgrepo "lceda_ai/server/internal/repository/postgres"
 	qdrantrepo "lceda_ai/server/internal/repository/qdrant"
+	ragflowrepo "lceda_ai/server/internal/repository/ragflow"
 	redisrepo "lceda_ai/server/internal/repository/redis"
 	httptransport "lceda_ai/server/internal/transport/http"
 	"lceda_ai/server/internal/transport/http/handlers"
@@ -106,11 +107,13 @@ func buildServices(cfg app.Config, infra infra, repos repositories) services {
 		newAuditWriter(primaryAudit, "llm_request_logs.jsonl"),
 	)
 	vectorStore := resolveVectorStore(cfg)
+	providerName := resolveRAGProviderName(cfg)
 	ragService := ragusecase.NewService(
 		cfg.Memory.Collection,
 		qdrantrepo.NewRetrieverAdapter(vectorStore),
 		newAuditWriter(primaryAudit, "rag_citations.jsonl"),
 	)
+	ragService.SetProviderName(providerName)
 	knowledgeService := knowledgeusecase.NewService(
 		repos.knowledge,
 		newAuditWriter(primaryAudit, "knowledge_events.jsonl"),
@@ -125,6 +128,13 @@ func buildServices(cfg app.Config, infra infra, repos repositories) services {
 		knowledge:     knowledgeService,
 		knowledgeTask: knowledgeTaskService,
 	}
+}
+
+func resolveRAGProviderName(cfg app.Config) string {
+	if cfg.RAGFlow.Enabled != nil && *cfg.RAGFlow.Enabled {
+		return "ragflow"
+	}
+	return "qdrant"
 }
 
 func buildRouteHandlers(cfg app.Config, infra infra, svc services) routeHandlers {
@@ -204,6 +214,19 @@ func newAuditWriter(primary pgrepo.AuditWriter, fileName string) pgrepo.AuditWri
 
 func resolveVectorStore(cfg app.Config) qdrantrepo.VectorStore {
 	inMemory := qdrantrepo.NewInMemoryVectorStore()
+	if cfg.RAGFlow.Enabled != nil && *cfg.RAGFlow.Enabled {
+		ragflowStore := ragflowrepo.NewProvider(ragflowrepo.ProviderConfig{
+			BaseURL:          cfg.RAGFlow.BaseURL,
+			APIKey:           cfg.RAGFlow.APIKey,
+			DatasetID:        cfg.RAGFlow.DatasetID,
+			EndpointTemplate: cfg.RAGFlow.EndpointTemplate,
+			TimeoutSeconds:   cfg.RAGFlow.TimeoutSeconds,
+		})
+		if cfg.Memory.EnableFallback == nil || *cfg.Memory.EnableFallback {
+			return qdrantrepo.NewFallbackVectorStore(ragflowStore, inMemory)
+		}
+		return ragflowStore
+	}
 	if cfg.Memory.EmbeddingProvider == "qwen" && cfg.LLM.Qwen.APIKey != "" {
 		embedder := embeddings.NewOpenAICompatibleEmbedder(cfg.LLM.Qwen.Endpoint, cfg.LLM.Qwen.APIKey, cfg.Memory.EmbeddingModel)
 		qdrantStore := qdrantrepo.NewQdrantVectorStore(cfg.Memory.QdrantURL, cfg.Memory.QdrantAPIKey, cfg.Memory.Collection, embedder)

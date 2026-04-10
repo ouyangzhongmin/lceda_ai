@@ -46,6 +46,7 @@ func NewRouter(h RouteHandlers, middleware ...gin.HandlerFunc) *gin.Engine {
 	rag := router.Group("/api/v1/rag")
 	rag.POST("/search", h.Rag.Search)
 	rag.POST("/citations:build", h.Rag.BuildCitations)
+	rag.GET("/providers", h.Rag.Providers)
 
 	llm := router.Group("/api/v1/llm")
 	llm.POST("/generate", h.LLM.Generate)

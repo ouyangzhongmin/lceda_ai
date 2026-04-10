@@ -4,11 +4,15 @@ import * as assert from "node:assert/strict";
 import {
   appendAssistantMessages,
   appendUserChatMessage,
+  buildDevicePickerApplyProgressText,
+  buildDevicePickerSearchProgressText,
   finalizeDraftTurnMessages,
+  hasUnresolvedDraftDevices,
   shouldAutoApplyDraftFromChatInput,
   shouldIgnoreDuplicateSendWhileRunning,
 } from "../assistantRuntime";
 import { getAssistantCardLayout } from "../assistantCardLayout";
+import type { MainPanelState } from "../../ui/panels/mainPanel";
 
 test("shouldIgnoreDuplicateSendWhileRunning returns true for the same pending prompt in an active turn", () => {
   assert.equal(
@@ -175,4 +179,52 @@ test("getAssistantCardLayout keeps streaming thinking above the report while exe
   assert.equal(layout.showThinking, true);
   assert.equal(layout.useSplitLayout, true);
   assert.equal(layout.reportFillsRemainingHeight, false);
+});
+
+test("draftPreview state shape preserves selected device and guidance details", () => {
+  const draftPreview: MainPanelState["draftPreview"] = {
+    title: "5V LED Indicator Draft",
+    rationale: "Generated a minimal LED indicator draft based on the user request.",
+    componentRefs: ["J1", "R1", "D1"],
+    netNames: ["5V", "LED_ANODE", "GND"],
+    componentCount: 3,
+    netCount: 3,
+    selectedDeviceDetails: ["power_connector: CONN_1X2 [HDR-TH_1X2]"],
+    guidanceSummary: {
+      templateId: "led_indicator_minimal",
+      rationale: "依据知识库模板，推荐使用 2Pin 电源口 + 150Ω + 红色 LED。",
+      evidence: ["LED indicator：推荐使用 2Pin header、150Ω 限流电阻、红色 LED。 (kb://led_indicator)"],
+    },
+  };
+
+  assert.equal(draftPreview.selectedDeviceDetails?.[0], "power_connector: CONN_1X2 [HDR-TH_1X2]");
+  assert.equal(draftPreview.guidanceSummary?.templateId, "led_indicator_minimal");
+});
+
+test("hasUnresolvedDraftDevices returns true when draft contains unresolved components", () => {
+  assert.equal(
+    hasUnresolvedDraftDevices({
+      title: "draft",
+      rationale: "",
+      components: [
+        {
+          id: "draft-j1",
+          properties: {
+            device_resolution_status: "unresolved",
+          },
+        },
+      ],
+      pins: [],
+      nets: [],
+    } as any),
+    true
+  );
+});
+
+test("buildDevicePickerSearchProgressText returns expected progress text", () => {
+  assert.equal(buildDevicePickerSearchProgressText(2, 5), "正在搜索待确认器件候选（2/5）...");
+});
+
+test("buildDevicePickerApplyProgressText returns expected progress text", () => {
+  assert.equal(buildDevicePickerApplyProgressText(3, 7), "正在确认待确认器件（3/7）...");
 });

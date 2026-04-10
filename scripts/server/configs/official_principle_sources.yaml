@@ -1,0 +1,37 @@
+seed_urls:
+  - "https://www.ti.com/design-resources/seminars/power-supply-design-seminar-psds/psds-resources.html"
+  - "https://www.ti.com/lit/an/snva489c/snva489c.pdf"
+  - "https://www.ti.com/lit/an/slva689/slva689.pdf"
+  - "https://www.onsemi.com/design/technical-documentation"
+  - "https://www.onsemi.com/design/power-seminars"
+  - "https://www.onsemi.com/design/power-webinars"
+allowed_domains:
+  - "ti.com"
+  - "onsemi.com"
+include_path_keywords:
+  - "/lit/"
+  - "/an/"
+  - ".pdf"
+  - "/design"
+  - "/design-resources"
+  - "/seminars"
+  - "/power"
+  - "/technical-documentation"
+  - "/webinars"
+exclude_path_keywords:
+  - "/login"
+  - "/account"
+  - "/cart"
+  - "/myon"
+  - "/privacy"
+  - "/cookie"
+  - "/terms"
+kb_type: "principle"
+source_type: "official_doc"
+lang: "zh-CN"
+max_pages: 220
+timeout_seconds: 15
+sleep_seconds: 0.4
+min_content_chars: 220
+user_agent: "lceda-rag-crawler/0.1"
+respect_robots_txt: true

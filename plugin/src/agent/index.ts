@@ -149,6 +149,21 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       .filter(Boolean);
     return lines.length > 0 ? lines : undefined;
   };
+
+  const buildNaturalChatFallback = (result: AgentResult): string => {
+    const failedToolNotes = (result.toolTraces ?? [])
+      .filter((trace) => trace.status === "blocked")
+      .map((trace) => `${trace.toolName}: ${trace.note || "调用失败"}`);
+    const failedObservations = (result.reactEvents ?? [])
+      .filter((event) => event?.kind === "observation" && event.status === "failed")
+      .map((event) => `${event.toolName || event.label || "tool"}: ${event.outputSummary || event.text || "调用失败"}`);
+    const failedDetails = [...new Set([...failedToolNotes, ...failedObservations])].filter(Boolean);
+    if (failedDetails.length > 0) {
+      return `本轮生成失败，关键错误：${failedDetails.slice(0, 2).join("；")}。请稍后重试。`;
+    }
+    return "本轮未生成最终回复，请重试。";
+  };
+
   return {
     createToolRegistry: (adapter, options) => createAgentToolRegistry(adapter, deps, options),
     run: async (input) => {
@@ -258,7 +273,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         content:
           result.summary === "missing access token for natural chat"
             ? "当前未检测到有效登录态，无法调用在线模型。请先登录。"
-            : result.naturalReply ?? "我暂时没有生成可展示的回复。",
+            : result.naturalReply ?? buildNaturalChatFallback(result),
         toolTraces: result.toolTraces,
         executionTraces: result.executionTraces,
         uiEvents: undefined,
@@ -446,6 +461,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         input.nextSuggestions && input.nextSuggestions.length > 0
           ? `\n\n下一步建议：\n${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")}`
           : "";
+      const hasUnresolvedDevices = Boolean(preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0);
       const actions =
         input.draftRisk?.level === "blocked"
           ? [
@@ -454,16 +470,23 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
                 action: "rerun" as const,
               },
             ]
-          : [
-              {
-                label: "应用草案",
-                action: "apply_draft" as const,
-              },
-              {
-                label: "回滚应用",
-                action: "rollback" as const,
-              },
-            ];
+          : hasUnresolvedDevices
+            ? [
+                {
+                  label: "选择器件",
+                  action: "select_devices" as const,
+                },
+              ]
+            : [
+                {
+                  label: "应用草案",
+                  action: "apply_draft" as const,
+                },
+                {
+                  label: "回滚应用",
+                  action: "rollback" as const,
+                },
+              ];
       const structuredContent = buildDraftStructuredContent(input);
       return [
         {
@@ -818,6 +841,64 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       });
     }
 
+    if (preview.selectedDeviceDetails && preview.selectedDeviceDetails.length > 0) {
+      blocks.push({
+        kind: "list",
+        title: "已选器件详情",
+        items: preview.selectedDeviceDetails,
+      });
+    }
+
+    if (preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0) {
+      blocks.push({
+        kind: "list",
+        title: "待处理器件",
+        items: preview.unresolvedDeviceDetails,
+      });
+    }
+
+    if (preview.guidanceSummary) {
+      blocks.push({
+        kind: "kv",
+        title: "生成依据",
+        entries: [
+          { key: "模板", value: preview.guidanceSummary.templateId },
+          { key: "说明", value: preview.guidanceSummary.rationale },
+        ],
+      });
+      if (preview.guidanceSummary.preferredSearches && preview.guidanceSummary.preferredSearches.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "器件检索偏好",
+          items: preview.guidanceSummary.preferredSearches,
+        });
+      }
+      if (preview.guidanceSummary.requiredNets && preview.guidanceSummary.requiredNets.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "必需网络约束",
+          items: preview.guidanceSummary.requiredNets,
+        });
+      }
+      if (
+        preview.guidanceSummary.requiredConnections &&
+        preview.guidanceSummary.requiredConnections.length > 0
+      ) {
+        blocks.push({
+          kind: "list",
+          title: "必需连接约束",
+          items: preview.guidanceSummary.requiredConnections,
+        });
+      }
+      if (preview.guidanceSummary.evidence && preview.guidanceSummary.evidence.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "RAG 证据",
+          items: preview.guidanceSummary.evidence,
+        });
+      }
+    }
+
     if (input.draftRisk) {
       blocks.push({
         kind: "kv",
@@ -980,7 +1061,7 @@ function createAgentToolRegistry(
       tools.register(tool);
     }
   }
-  for (const tool of createDraftTools()) {
+  for (const tool of createDraftTools(deps.ragClient, deps.hostBridge?.searchLibraryDevices)) {
     tools.register(tool);
   }
   for (const tool of createRuleTools()) {

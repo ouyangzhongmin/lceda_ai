@@ -9,6 +9,7 @@ type Service struct {
 	collection  string
 	retriever   domainrag.Retriever
 	auditWriter AuditWriter
+	provider    string
 }
 
 type AuditWriter interface {
@@ -27,6 +28,7 @@ func NewService(collection string, retriever domainrag.Retriever, auditWriter ..
 		collection:  collection,
 		retriever:   retriever,
 		auditWriter: writer,
+		provider:    "unknown",
 	}
 }
 
@@ -60,6 +62,20 @@ func (s *Service) BuildCitationPackage(query string, topK int) (CitationPackage,
 	}
 
 	return pack, nil
+}
+
+func (s *Service) SetProviderName(provider string) {
+	if provider == "" {
+		provider = "unknown"
+	}
+	s.provider = provider
+}
+
+func (s *Service) ProviderName() string {
+	if s.provider == "" {
+		return "unknown"
+	}
+	return s.provider
 }
 
 func buildCitationLines(results []SearchResult) []string {

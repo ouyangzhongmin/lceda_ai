@@ -1,8 +1,45 @@
 import { generateDraftPlanFromPrompt } from "../../editor/apply-plan/generateDraftPlan";
+import { buildDraftGuidanceFromRag } from "../../editor/apply-plan/ragDraftGuidance";
 import { previewDraftPlan } from "../../editor/apply-plan/previewDraftPlan";
+import { resolveDraftPlanDevices } from "../../editor/apply-plan/resolveDraftPlanDevices";
+import type { RagClient } from "../../services/rag/ragClient";
 import type { AgentTool } from "./toolRegistry";
+import type { DraftPlanGuidance } from "../../editor/apply-plan/draftPlan";
+import type { LibrarySearchResultItem } from "../../editor/host/runtime";
 
-export function createDraftTools(): AgentTool[] {
+function mergeGuidanceEvidence(
+  guidance: DraftPlanGuidance | undefined,
+  citations?: Awaited<ReturnType<RagClient["buildCitations"]>>
+): DraftPlanGuidance | undefined {
+  if (!guidance) {
+    return guidance;
+  }
+  const mergedEvidence = [
+    ...(guidance.evidence ?? []),
+    ...((citations?.results ?? []).map((item) => ({
+      title: item.title,
+      snippet: item.snippet,
+      sourceRef: item.source_ref,
+    })) ?? []),
+  ];
+  const dedupedEvidence = mergedEvidence.filter((item, index, list) => {
+    const key = `${item.title}|${item.snippet}|${item.sourceRef}`;
+    return list.findIndex((candidate) => `${candidate.title}|${candidate.snippet}|${candidate.sourceRef}` === key) === index;
+  });
+  return {
+    ...guidance,
+    evidence: dedupedEvidence.length > 0 ? dedupedEvidence : guidance.evidence,
+  };
+}
+
+type SearchLibraryDevices = (input: {
+  query: string;
+  scope?: "system" | "project" | "personal" | "favorite";
+  pageSize?: number;
+  page?: number;
+}) => Promise<LibrarySearchResultItem[]>;
+
+export function createDraftTools(ragClient?: RagClient, searchLibraryDevices?: SearchLibraryDevices): AgentTool[] {
   return [
     {
       name: "draft_generate_plan",
@@ -15,6 +52,10 @@ export function createDraftTools(): AgentTool[] {
             type: "array",
             items: { type: "object" },
             description: "可选。用户已挑选的器件列表。",
+          },
+          guidance: {
+            type: "object",
+            description: "可选。来自 RAG/模板的草案约束。",
           },
         },
         required: ["userQuery"],
@@ -34,10 +75,27 @@ export function createDraftTools(): AgentTool[] {
           footprintUuid?: string;
           footprintName?: string;
         }>;
-      }) =>
-        generateDraftPlanFromPrompt(input.userQuery, {
+        guidance?: ReturnType<typeof buildDraftGuidanceFromRag>;
+      }) => {
+        const query = `${input.userQuery} 电路模板 器件选择 连接约束`;
+        const resolvedGuidance =
+          input.guidance ??
+          (ragClient
+            ? buildDraftGuidanceFromRag(input.userQuery, (await ragClient.search(query, 3)).results)
+            : undefined);
+        const citations =
+          ragClient && !input.guidance ? await ragClient.buildCitations(query, 3) : undefined;
+        let plan = generateDraftPlanFromPrompt(input.userQuery, {
           selectedDevices: input.selectedDevices,
-        }),
+          guidance: mergeGuidanceEvidence(resolvedGuidance, citations),
+        });
+        if (searchLibraryDevices) {
+          plan = await resolveDraftPlanDevices(plan, async (query) =>
+            searchLibraryDevices({ query, scope: "system", pageSize: 5 })
+          );
+        }
+        return plan;
+      },
     },
     {
       name: "draft_preview_plan",

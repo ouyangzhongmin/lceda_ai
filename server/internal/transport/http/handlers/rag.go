@@ -45,3 +45,9 @@ func (h *RagHandler) BuildCitations(c *gin.Context) {
 	}
 	ginSuccess(c, pack)
 }
+
+func (h *RagHandler) Providers(c *gin.Context) {
+	ginSuccess(c, map[string]any{
+		"provider": h.service.ProviderName(),
+	})
+}

@@ -32,3 +32,66 @@ test("resolveDraftPlanDevices fills device/library UUIDs for unresolved draft co
   assert.equal(resolved.components[2]?.properties.device_uuid, "dev-d1");
   assert.equal(resolved.selectedDevices?.length, 3);
 });
+
+test("resolveDraftPlanDevices prefers a real 2-pin connector over unrelated multi-pin headers", async () => {
+  const draft = generateDraftPlanFromPrompt("帮我设计一个点亮LED的电路");
+  const resolved = await resolveDraftPlanDevices(draft, async (query) => {
+    if (query.includes("header 2pin")) {
+      return [
+        { uuid: "wrong-j1", name: "HEADER10X2", libraryUuid: "lib-wrong", footprintName: "HEADER10X2B-2x2pin" },
+        { uuid: "right-j1", name: "HEADER 1X2", libraryUuid: "lib-right", footprintName: "HDR-TH_1X2" },
+      ];
+    }
+    return [];
+  });
+
+  assert.equal(resolved.components[0]?.properties.device_uuid, "right-j1");
+});
+
+test("resolveDraftPlanDevices prefers an exact 150R resistor over mismatched resistance values", async () => {
+  const draft = generateDraftPlanFromPrompt("帮我设计一个点亮LED的电路");
+  const resolved = await resolveDraftPlanDevices(draft, async (query) => {
+    if (query.includes("resistor")) {
+      return [
+        { uuid: "wrong-r1", name: "0805W8F1511T5E", libraryUuid: "lib-wrong", footprintName: "R0805", description: "阻值:1.5kΩ" },
+        { uuid: "right-r1", name: "0805W8F1500T5E", libraryUuid: "lib-right", footprintName: "R0805", description: "阻值:150Ω" },
+      ];
+    }
+    return [];
+  });
+
+  assert.equal(resolved.components[1]?.properties.device_uuid, "right-r1");
+});
+
+test("resolveDraftPlanDevices annotates unresolved status when library search returns no results", async () => {
+  const draft = generateDraftPlanFromPrompt("帮我设计一个点亮LED的电路");
+  const resolved = await resolveDraftPlanDevices(draft, async (query) => {
+    if (query.includes("header 2pin")) {
+      return [];
+    }
+    return [{ uuid: "ok", name: "matched", libraryUuid: "lib-ok" }];
+  });
+
+  assert.equal(resolved.components[0]?.properties.device_resolution_status, "unresolved");
+  assert.equal(resolved.components[0]?.properties.device_resolution_reason, "no_search_results");
+});
+
+test("resolveDraftPlanDevices annotates unresolved status when all connector candidates are filtered out", async () => {
+  const draft = generateDraftPlanFromPrompt("帮我设计一个点亮LED的电路");
+  const resolved = await resolveDraftPlanDevices(draft, async (query) => {
+    if (query.includes("header 2pin")) {
+      return [
+        {
+          uuid: "bad",
+          name: "Connector_Female_10x2pin",
+          libraryUuid: "lib-bad",
+          footprintName: "CONN-SMD_20P-P2.00",
+        },
+      ];
+    }
+    return [{ uuid: "ok", name: "matched", libraryUuid: "lib-ok" }];
+  });
+
+  assert.equal(resolved.components[0]?.properties.device_resolution_status, "unresolved");
+  assert.equal(resolved.components[0]?.properties.device_resolution_reason, "all_candidates_filtered");
+});

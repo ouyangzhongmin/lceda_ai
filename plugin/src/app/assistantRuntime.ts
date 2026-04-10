@@ -17,6 +17,7 @@ import { UnifiedLlmClient } from "../services/llm/unifiedLlmClient";
 import { RagClient } from "../services/rag/ragClient";
 import { LocalStorageKeyValueStore } from "../storage/keyValueStore";
 import type { MainPanelState } from "../ui/panels/mainPanel";
+import { previewDraftPlan } from "../editor/apply-plan/previewDraftPlan";
 
 const GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
 const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
@@ -236,6 +237,85 @@ export function shouldAutoApplyDraftFromChatInput(input: {
   return /^(确认|确定|应用|应用草案|好的应用|开始应用|ok|okay|yes)$/u.test(normalized);
 }
 
+export function hasUnresolvedDraftDevices(plan?: DraftPlan): boolean {
+  return Boolean(
+    plan?.components?.some((component) => component.properties?.device_resolution_status === "unresolved")
+  );
+}
+
+export function buildDevicePickerSearchProgressText(current: number, total: number): string {
+  return `正在搜索待确认器件候选（${current}/${total}）...`;
+}
+
+export function buildDevicePickerApplyProgressText(current: number, total: number): string {
+  return `正在确认待确认器件（${current}/${total}）...`;
+}
+
+function inferDraftComponentRole(refOrName: string): string {
+  const value = String(refOrName || "").toUpperCase();
+  if (value.startsWith("J")) return "power_connector";
+  if (value.startsWith("R")) return "resistor";
+  if (value.startsWith("D")) return "led";
+  if (value.startsWith("C")) return "input_capacitor";
+  if (value.startsWith("U")) return "ldo_regulator";
+  return "generic";
+}
+
+function buildDevicePickerState(plan?: DraftPlan): MainPanelState["devicePicker"] | undefined {
+  if (!plan) {
+    return undefined;
+  }
+  const selectedByComponentId = new Map(
+    (plan.selectedDevices ?? [])
+      .filter((item) => item.componentId)
+      .map((item) => [item.componentId as string, item])
+  );
+  const items = plan.components.map((component) => {
+    const ref = component.ref ?? component.id;
+    const selected = selectedByComponentId.get(component.id);
+    const status =
+      component.properties?.device_resolution_status === "unresolved" ? "unresolved" : "resolved";
+    return {
+      componentId: component.id,
+      componentRef: ref,
+      role: inferDraftComponentRole(ref),
+      query: component.properties?.preferred_search_query,
+      status,
+      reason: component.properties?.device_resolution_reason,
+      selectedDeviceLabel: selected
+        ? `${selected.name}${selected.footprintName ? ` [${selected.footprintName}]` : ""}`
+        : undefined,
+      candidates: undefined,
+    };
+  });
+  return {
+    open: false,
+    items,
+  };
+}
+
+function syncDraftPreviewState(state: MainPanelState, plan: DraftPlan | undefined): void {
+  state.draftPlan = plan;
+  if (!plan) {
+    state.draftPreview = undefined;
+    state.devicePicker = undefined;
+    return;
+  }
+  const preview = previewDraftPlan(plan);
+  state.draftPreview = {
+    title: preview.title,
+    rationale: preview.rationale,
+    componentRefs: preview.componentRefs,
+    netNames: preview.netNames,
+    componentCount: preview.componentCount,
+    netCount: preview.netCount,
+    selectedDeviceDetails: preview.selectedDeviceDetails,
+    unresolvedDeviceDetails: preview.unresolvedDeviceDetails,
+    guidanceSummary: preview.guidanceSummary,
+  };
+  state.devicePicker = buildDevicePickerState(plan);
+}
+
 function formatReactEventLine(event: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T> ? T : never): string {
   if (!event || !event.kind) return "";
   if (event.kind === "task") return `任务: ${event.text || event.label || ""}`;
@@ -296,6 +376,12 @@ export interface AssistantRuntime {
   resetSession(): Promise<MainPanelState>;
   generateDraft(prompt: string): Promise<MainPanelState>;
   applyDraftPlan(): Promise<MainPanelState>;
+  openDevicePicker(): Promise<MainPanelState>;
+  closeDevicePicker(): Promise<MainPanelState>;
+  searchDraftDeviceCandidates(componentId: string): Promise<MainPanelState>;
+  searchAllUnresolvedDraftDeviceCandidates(): Promise<MainPanelState>;
+  chooseDraftDeviceCandidate(input: { componentId: string; candidateIndex: number }): Promise<MainPanelState>;
+  chooseBestDraftDeviceCandidates(): Promise<MainPanelState>;
   rollbackLastApply(): Promise<MainPanelState>;
   saveCustomLlmConfig(input: {
     provider: string;
@@ -698,6 +784,21 @@ function createAssistantRuntime(): AssistantRuntime {
       };
       return commitState(internals, state, storage);
     }
+    if (hasUnresolvedDraftDevices(draftPlan)) {
+      state.agentRunState = "awaiting_confirmation";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "草案仍有待确认器件";
+      state.summary = "草案中仍有待确认器件，请先选择器件后再应用。";
+      state.devicePicker = {
+        ...(buildDevicePickerState(draftPlan) ?? { open: true, items: [] }),
+        open: true,
+      };
+      state.toast = {
+        id: Date.now(),
+        message: state.summary,
+      };
+      return commitState(internals, state, storage);
+    }
     const adapter = createEditorAdapter(resolveRuntimeChannel());
     try {
       const result = await adapter.applyPlan(draftPlan);
@@ -734,6 +835,111 @@ function createAssistantRuntime(): AssistantRuntime {
     }
     state.nextActions = buildNextActions(state);
     return commitState(internals, state, storage);
+  }
+
+  async function searchDraftDeviceCandidatesInternal(
+    state: MainPanelState,
+    componentId: string
+  ): Promise<{ state: MainPanelState; updated: boolean; candidateCount: number }> {
+    const plan = internals.draftPlan;
+    const bridge = resolveHostEditorBridge();
+    if (!plan || !bridge?.searchLibraryDevices) {
+      state.summary = "当前宿主不支持器件库搜索。";
+      state.toast = { id: Date.now(), message: state.summary };
+      return { state, updated: false, candidateCount: 0 };
+    }
+    const component = plan.components.find((item) => item.id === componentId);
+    const query = component?.properties?.preferred_search_query;
+    if (!component || !query) {
+      state.summary = "当前器件缺少可用搜索条件。";
+      state.toast = { id: Date.now(), message: state.summary };
+      return { state, updated: false, candidateCount: 0 };
+    }
+    const candidates = await bridge.searchLibraryDevices({ query, scope: "system", pageSize: 8 });
+    const previousPicker = state.devicePicker;
+    const picker = buildDevicePickerState(plan) ?? { open: true, items: [] };
+    picker.open = true;
+    picker.items = picker.items.map((item) => {
+      if (item.componentId !== componentId) {
+        const previousItem = previousPicker?.items.find((entry) => entry.componentId === item.componentId);
+        return previousItem?.candidates && previousItem.candidates.length > 0
+          ? { ...item, candidates: previousItem.candidates }
+          : item;
+      }
+      return {
+        ...item,
+        candidates: candidates.map((candidate) => ({
+          uuid: candidate.uuid,
+          name: candidate.name,
+          libraryUuid: candidate.libraryUuid,
+          footprintName: candidate.footprintName,
+          manufacturer: candidate.manufacturer,
+          supplier: candidate.supplier,
+          supplierId: candidate.supplierId,
+          description: candidate.description,
+        })),
+      };
+    });
+    state.devicePicker = picker;
+    return { state, updated: true, candidateCount: candidates.length };
+  }
+
+  function chooseDraftDeviceCandidateInternal(
+    state: MainPanelState,
+    input: { componentId: string; candidateIndex: number }
+  ): MainPanelState {
+    const plan = internals.draftPlan;
+    if (!plan) {
+      return state;
+    }
+    const picker = state.devicePicker ?? buildDevicePickerState(plan);
+    const item = picker?.items.find((entry) => entry.componentId === input.componentId);
+    const candidate = item?.candidates?.[input.candidateIndex];
+    const component = plan.components.find((entry) => entry.id === input.componentId);
+    if (!item || !candidate || !component) {
+      return state;
+    }
+    component.libraryId = candidate.uuid;
+    component.packageName = candidate.footprintName || component.packageName;
+    component.properties = {
+      ...component.properties,
+      device_uuid: candidate.uuid,
+      library_uuid: candidate.libraryUuid,
+      device_resolution_status: "resolved",
+      device_resolution_reason: "manual_selection",
+    };
+    const role = inferDraftComponentRole(component.ref ?? component.id);
+    plan.selectedDevices = [
+      ...(plan.selectedDevices ?? []).filter((entry) => entry.componentId !== input.componentId),
+      {
+        componentId: input.componentId,
+        componentRef: component.ref ?? component.id,
+        role,
+        query: component.properties?.preferred_search_query || "",
+        deviceUuid: candidate.uuid,
+        libraryUuid: candidate.libraryUuid,
+        name: candidate.name,
+        manufacturer: candidate.manufacturer,
+        footprintName: candidate.footprintName,
+      },
+    ];
+    internals.draftPlan = plan;
+    syncDraftPreviewState(state, plan);
+    const remainingUnresolved = hasUnresolvedDraftDevices(plan);
+    if (state.devicePicker) {
+      state.devicePicker.open = remainingUnresolved;
+    }
+    state.agentRunState = "awaiting_confirmation";
+    state.agentRunRoute = "draft";
+    state.agentRunDetail = "器件已更新";
+    state.summary = remainingUnresolved ? "已更新草案器件选择，请继续完成剩余器件确认。" : "器件已全部确认，可以应用草案。";
+    state.chatMessages = replaceTrailingPendingAssistant(
+      sanitizeChatMessages(state.chatMessages),
+      pluginAgent.buildDraftMessages({
+        draftPreview: state.draftPreview,
+      })
+    );
+    return state;
   }
 
   return {
@@ -842,15 +1048,7 @@ function createAssistantRuntime(): AssistantRuntime {
           state.agentRunDetail = result.summary;
           internals.draftPlan = result.draftPlan;
           internals.draftBlocked = result.draftRisk?.level === "blocked";
-          state.draftPlan = result.draftPlan;
-          state.draftPreview = {
-            title: result.draftPreview.title,
-            rationale: result.draftPreview.rationale,
-            componentRefs: result.draftPreview.componentRefs,
-            netNames: result.draftPreview.netNames,
-            componentCount: result.draftPreview.componentCount,
-            netCount: result.draftPreview.netCount,
-          };
+          syncDraftPreviewState(state, result.draftPlan);
           state.summary = `草案已生成：${result.draftPreview.title}，共 ${result.draftPreview.componentCount} 个器件，${result.draftPreview.netCount} 条网络。`;
           state.chatMessages = pluginAgent.buildDraftMessages({
             draftPreview: state.draftPreview,
@@ -1292,6 +1490,96 @@ function createAssistantRuntime(): AssistantRuntime {
     applyDraftPlan: async (): Promise<MainPanelState> => {
       return applyCurrentDraftPlan();
     },
+    openDevicePicker: async (): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await computeAnalysisState());
+      state.devicePicker = {
+        ...(buildDevicePickerState(internals.draftPlan) ?? { open: true, items: [] }),
+        open: true,
+      };
+      return commitState(internals, state, storage);
+    },
+    closeDevicePicker: async (): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await computeAnalysisState());
+      if (state.devicePicker) {
+        state.devicePicker = { ...state.devicePicker, open: false };
+      }
+      return commitState(internals, state, storage);
+    },
+    searchDraftDeviceCandidates: async (componentId: string): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await computeAnalysisState());
+      await searchDraftDeviceCandidatesInternal(state, componentId);
+      return commitState(internals, state, storage);
+    },
+    searchAllUnresolvedDraftDeviceCandidates: async (): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await computeAnalysisState());
+      const unresolvedItems = (state.devicePicker?.items ?? buildDevicePickerState(internals.draftPlan)?.items ?? []).filter(
+        (item) => item.status === "unresolved"
+      );
+      if (unresolvedItems.length === 0) {
+        state.summary = "当前没有待确认器件。";
+        state.toast = { id: Date.now(), message: state.summary };
+        return commitState(internals, state, storage);
+      }
+      let updatedCount = 0;
+      for (let index = 0; index < unresolvedItems.length; index += 1) {
+        const item = unresolvedItems[index]!;
+        state.summary = buildDevicePickerSearchProgressText(index + 1, unresolvedItems.length);
+        commitState(internals, state, storage);
+        const result = await searchDraftDeviceCandidatesInternal(state, item.componentId);
+        if (result.updated) {
+          updatedCount += 1;
+        }
+      }
+      const remaining = state.devicePicker?.items.filter((item) => item.status === "unresolved").length ?? 0;
+      state.summary = `已完成待确认器件候选搜索：${updatedCount}/${unresolvedItems.length}，剩余待确认 ${remaining}。`;
+      state.toast = { id: Date.now(), message: state.summary };
+      return commitState(internals, state, storage);
+    },
+    chooseDraftDeviceCandidate: async (input: { componentId: string; candidateIndex: number }): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await computeAnalysisState());
+      chooseDraftDeviceCandidateInternal(state, input);
+      return commitState(internals, state, storage);
+    },
+    chooseBestDraftDeviceCandidates: async (): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await computeAnalysisState());
+      const unresolvedItems = (state.devicePicker?.items ?? buildDevicePickerState(internals.draftPlan)?.items ?? []).filter(
+        (item) => item.status === "unresolved"
+      );
+      if (unresolvedItems.length === 0) {
+        state.summary = "当前没有待确认器件。";
+        state.toast = { id: Date.now(), message: state.summary };
+        return commitState(internals, state, storage);
+      }
+      let appliedCount = 0;
+      let skippedCount = 0;
+      let searchedCount = 0;
+      for (let index = 0; index < unresolvedItems.length; index += 1) {
+        const item = unresolvedItems[index]!;
+        state.summary = buildDevicePickerApplyProgressText(index + 1, unresolvedItems.length);
+        commitState(internals, state, storage);
+        let pickerItem = state.devicePicker?.items.find((entry) => entry.componentId === item.componentId);
+        if (!pickerItem?.candidates || pickerItem.candidates.length === 0) {
+          const searchResult = await searchDraftDeviceCandidatesInternal(state, item.componentId);
+          if (searchResult.updated) {
+            searchedCount += 1;
+          }
+          pickerItem = state.devicePicker?.items.find((entry) => entry.componentId === item.componentId);
+          if (!pickerItem?.candidates || pickerItem.candidates.length === 0) {
+            skippedCount += 1;
+            continue;
+          }
+        }
+        chooseDraftDeviceCandidateInternal(state, {
+          componentId: item.componentId,
+          candidateIndex: 0,
+        });
+        appliedCount += 1;
+      }
+      const remaining = state.devicePicker?.items.filter((item) => item.status === "unresolved").length ?? 0;
+      state.summary = `已批量确认器件：成功 ${appliedCount}，跳过 ${skippedCount}，补充搜索 ${searchedCount}，剩余待确认 ${remaining}。`;
+      state.toast = { id: Date.now(), message: state.summary };
+      return commitState(internals, state, storage);
+    },
     rollbackLastApply: async (): Promise<MainPanelState> => {
       const state = internals.currentState ?? (await computeAnalysisState());
       if (!internals.lastApplyTransactionId) {
@@ -1397,15 +1685,7 @@ function createAssistantRuntime(): AssistantRuntime {
         state.agentRunDetail = result.summary;
         internals.draftPlan = result.draftPlan;
         internals.draftBlocked = result.draftRisk?.level === "blocked";
-        state.draftPlan = result.draftPlan;
-        state.draftPreview = {
-          title: result.draftPreview.title,
-          rationale: result.draftPreview.rationale,
-          componentRefs: result.draftPreview.componentRefs,
-          netNames: result.draftPreview.netNames,
-          componentCount: result.draftPreview.componentCount,
-          netCount: result.draftPreview.netCount,
-        };
+        syncDraftPreviewState(state, result.draftPlan);
         state.summary = `草案已生成：${result.draftPreview.title}，共 ${result.draftPreview.componentCount} 个器件，${result.draftPreview.netCount} 条网络。`;
         state.chatMessages = pluginAgent.buildDraftMessages({
           draftPreview: state.draftPreview,
@@ -1446,15 +1726,7 @@ async function generateDraftStateFromResult(
   const state = internals.currentState ?? (await computeAnalysisState());
   if (result.draftPreview) {
       internals.draftPlan = result.draftPlan;
-      state.draftPlan = result.draftPlan;
-      state.draftPreview = {
-        title: result.draftPreview.title,
-        rationale: result.draftPreview.rationale,
-        componentRefs: result.draftPreview.componentRefs,
-        netNames: result.draftPreview.netNames,
-        componentCount: result.draftPreview.componentCount,
-        netCount: result.draftPreview.netCount,
-      };
+      syncDraftPreviewState(state, result.draftPlan);
       state.summary = `草案已生成：${result.draftPreview.title}，共 ${result.draftPreview.componentCount} 个器件，${result.draftPreview.netCount} 条网络。`;
       state.chatMessages = pluginAgent.buildDraftMessages({
         draftPreview: state.draftPreview,

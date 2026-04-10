@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   const storage = new MemoryKeyValueStore();
   const sessionStore = new PersistentSessionStore(storage);
   const customLlmConfigStore = new CustomLlmConfigStore(storage);
+  const ragClient = new RagClient(new FetchHttpClient(baseUrl));
   const tools = new ToolRegistry();
   for (const tool of createEditorTools(adapter)) {
     tools.register(tool);
@@ -39,12 +40,11 @@ async function main(): Promise<void> {
   for (const tool of createRuleTools()) {
     tools.register(tool);
   }
-  for (const tool of createDraftTools()) {
+  for (const tool of createDraftTools(ragClient, globalThis.LCEDA_HOST_BRIDGE?.searchLibraryDevices)) {
     tools.register(tool);
   }
   const authClient = new AuthClient(new FetchHttpClient(baseUrl));
   await runEmailLoginFlow(authClient, sessionStore, channel, email, code);
-  const ragClient = new RagClient(new FetchHttpClient(baseUrl));
   const llmClient = new LlmProxyClient(new FetchHttpClient(baseUrl));
   for (const tool of createServerTools(ragClient, llmClient, sessionStore)) {
     tools.register(tool);

@@ -2226,6 +2226,175 @@
       background: #0F172A;
     }
 
+    .message-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .message-action-btn {
+      border: 1px solid var(--border);
+      background: #F1E7D6;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font: 600 12px/1 "PingFang SC", "Microsoft YaHei", sans-serif;
+      cursor: pointer;
+    }
+
+    .device-picker-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.26);
+      backdrop-filter: blur(4px);
+      z-index: 40;
+      display: none;
+    }
+
+    .device-picker-overlay.show {
+      display: block;
+    }
+
+    .device-picker {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      bottom: 20px;
+      width: min(520px, calc(100vw - 40px));
+      background: #FFFDF8;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 24px 64px rgba(15, 23, 42, 0.20);
+      z-index: 41;
+      display: none;
+      overflow: hidden;
+    }
+
+    .device-picker.show {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .device-picker-header,
+    .device-picker-footer {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .device-picker-footer {
+      border-bottom: 0;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .device-picker-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .device-picker-subtitle {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .device-picker-body {
+      padding: 16px 18px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .device-picker-item {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .device-picker-item-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .device-picker-item-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .device-picker-status {
+      padding: 6px 8px;
+      border-radius: 999px;
+      background: #DCFCE7;
+      color: #166534;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .device-picker-status.unresolved {
+      background: #FEF3C7;
+      color: #92400E;
+    }
+
+    .device-picker-meta,
+    .device-picker-selected,
+    .device-picker-empty,
+    .device-picker-candidate-meta {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .device-picker-search-btn,
+    .device-picker-close-btn,
+    .device-picker-use-btn {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      background: #F5EFE2;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .device-picker-candidates {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .device-picker-candidate {
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 12px;
+      background: #FCFAF4;
+      padding: 10px 12px;
+    }
+
+    .device-picker-candidate-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .device-picker-candidate-actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
     #file-input {
       display: none;
     }
@@ -2347,6 +2516,21 @@
       </div>
     </aside>
 
+    <div id="device-picker-overlay" class="device-picker-overlay" aria-hidden="true"></div>
+    <aside id="device-picker" class="device-picker" aria-hidden="true">
+      <div class="device-picker-header">
+        <div class="device-picker-title">选择器件</div>
+        <div class="device-picker-subtitle">先确认未匹配或需要替换的器件，再执行应用草案。</div>
+        <div id="device-picker-summary" class="device-picker-meta">待确认：0</div>
+      </div>
+      <div id="device-picker-body" class="device-picker-body"></div>
+      <div class="device-picker-footer">
+        <button id="device-picker-search-all-btn" class="device-picker-search-btn" type="button">搜索全部待确认</button>
+        <button id="device-picker-apply-best-btn" class="device-picker-use-btn" type="button">全部使用首选候选</button>
+        <button id="device-picker-close-btn" class="device-picker-close-btn" type="button">关闭</button>
+      </div>
+    </aside>
+
     <!-- Composer -->
     <footer class="composer">
       <div class="composer-shell">
@@ -2391,6 +2575,7 @@
     let runningTicker = null;
     let stickToBottom = true;
     let lastHasStreaming = false;
+    let devicePickerBusy = false;
     const optimistic = {
       active: false,
       userText: "",
@@ -2415,6 +2600,42 @@
         runtime[method](...args);
       } catch (error) {
         console.error(`${LOG_PREFIX} runtime call failed: ${method}`, error);
+      }
+    }
+
+    function invokeRuntimeAsync(method, ...args) {
+      const runtime = getHostRuntime();
+      if (!runtime || typeof runtime[method] !== "function") {
+        console.warn(`${LOG_PREFIX} runtime method not found: ${method}`);
+        return Promise.resolve();
+      }
+      try {
+        return Promise.resolve(runtime[method](...args));
+      } catch (error) {
+        console.error(`${LOG_PREFIX} runtime call failed: ${method}`, error);
+        return Promise.resolve();
+      }
+    }
+
+    function setDevicePickerBusy(busy) {
+      devicePickerBusy = busy;
+      const panel = document.getElementById("device-picker");
+      if (!panel) return;
+      panel.classList.toggle("busy", busy);
+      panel.querySelectorAll("button").forEach((button) => {
+        const element = /** @type {HTMLButtonElement} */ (button);
+        const keepCloseEnabled = element.id === "device-picker-close-btn";
+        element.disabled = busy && !keepCloseEnabled;
+      });
+    }
+
+    async function runDevicePickerAction(method, ...args) {
+      if (devicePickerBusy) return;
+      setDevicePickerBusy(true);
+      try {
+        await invokeRuntimeAsync(method, ...args);
+      } finally {
+        setDevicePickerBusy(false);
       }
     }
 
@@ -2717,6 +2938,7 @@
         stepsHostEl: stepsHost,
         stepsToggleHostEl: stepsBtnEl,
         thinkingHostEl: thinkingHost,
+        actionsHostEl: null,
         statusEl,
         role,
         stepsRendered: false,
@@ -2728,6 +2950,13 @@
         lastWasMarkdown: false,
         lastSignature: "",
       };
+      if (role !== "user") {
+        const actionsHost = document.createElement("div");
+        actionsHost.className = "message-actions";
+        actionsHost.hidden = true;
+        card.appendChild(actionsHost);
+        dom.actionsHostEl = actionsHost;
+      }
       patchMessageDom(dom, message);
       return dom;
     }
@@ -2757,6 +2986,47 @@
         return true;
       }
       return Boolean(message && message.role === "assistant" && message.streaming);
+    }
+
+    function handleMessageAction(action, payload) {
+      switch (action) {
+        case "login":
+          invokeRuntime("startLogin");
+          return;
+        case "rerun":
+          invokeRuntime("rerunAnalysis");
+          return;
+        case "apply_draft":
+          invokeRuntime("applyDraftPlan");
+          return;
+        case "rollback":
+          invokeRuntime("rollbackLastApply");
+          return;
+        case "select_devices":
+          invokeRuntime("openDevicePicker");
+          return;
+        case "locate":
+          if (payload) invokeRuntime("locateIssue", Number(payload));
+          return;
+        default:
+          return;
+      }
+    }
+
+    function renderMessageActions(dom, message) {
+      if (!dom.actionsHostEl) return;
+      const actions = Array.isArray(message.actions) ? message.actions : [];
+      dom.actionsHostEl.innerHTML = "";
+      dom.actionsHostEl.hidden = actions.length === 0;
+      actions.forEach((item) => {
+        if (!item || !item.action) return;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "message-action-btn";
+        button.textContent = item.label || item.action;
+        button.addEventListener("click", () => handleMessageAction(item.action, item.payload));
+        dom.actionsHostEl.appendChild(button);
+      });
     }
 
     function getAssistantCardLayoutState(input) {
@@ -2929,6 +3199,7 @@
       }
 
       if (role === "assistant") {
+        renderMessageActions(dom, message);
          const stepEntries = collectStepEntries(message);
          const stepLines = stepEntries.map(formatStepEntryLine).filter(Boolean);
          const hadRenderedSteps = Boolean(dom.stepsUI && dom.stepsUI.lines.length);
@@ -3817,6 +4088,7 @@
 
       // Render messages
       renderChat(state.chatMessages || []);
+      syncDevicePicker(state);
 
       syncSettingsPanel(state);
       maybeToast(state);
@@ -3862,6 +4134,126 @@
       if (toast.id <= lastToastId) return;
       lastToastId = toast.id;
       showToast(toast.message);
+    }
+
+    function syncDevicePicker(state) {
+      const overlay = document.getElementById("device-picker-overlay");
+      const panel = document.getElementById("device-picker");
+      const body = document.getElementById("device-picker-body");
+      const summary = document.getElementById("device-picker-summary");
+      if (!overlay || !panel || !body) return;
+      const picker = state && state.devicePicker;
+      const open = Boolean(picker && picker.open);
+      overlay.classList.toggle("show", open);
+      panel.classList.toggle("show", open);
+      overlay.setAttribute("aria-hidden", open ? "false" : "true");
+      panel.setAttribute("aria-hidden", open ? "false" : "true");
+      body.innerHTML = "";
+      const unresolvedCount = Array.isArray(picker?.items)
+        ? picker.items.filter((item) => item.status === "unresolved").length
+        : 0;
+      if (summary) {
+        summary.textContent = `待确认：${unresolvedCount}`;
+      }
+      if (!open || !picker) return;
+
+      picker.items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "device-picker-item";
+
+        const head = document.createElement("div");
+        head.className = "device-picker-item-head";
+        const title = document.createElement("div");
+        title.className = "device-picker-item-title";
+        title.textContent = `${item.componentRef} / ${item.role}`;
+        const status = document.createElement("div");
+        status.className = `device-picker-status ${item.status}`;
+        status.textContent = item.status === "resolved" ? "已匹配" : "待确认";
+        head.appendChild(title);
+        head.appendChild(status);
+        card.appendChild(head);
+
+        const meta = document.createElement("div");
+        meta.className = "device-picker-meta";
+        meta.textContent = [`原因: ${item.reason || "-"}`, item.query ? `查询: ${item.query}` : ""].filter(Boolean).join("\n");
+        card.appendChild(meta);
+
+        if (item.selectedDeviceLabel) {
+          const selected = document.createElement("div");
+          selected.className = "device-picker-selected";
+          selected.textContent = `当前选择: ${item.selectedDeviceLabel}`;
+          card.appendChild(selected);
+        }
+
+        const searchBtn = document.createElement("button");
+        searchBtn.type = "button";
+        searchBtn.className = "device-picker-search-btn";
+        searchBtn.textContent = "搜索候选";
+        searchBtn.addEventListener("click", () => {
+          void runDevicePickerAction("searchDraftDeviceCandidates", item.componentId);
+        });
+        card.appendChild(searchBtn);
+
+        const candidates = Array.isArray(item.candidates) ? item.candidates : [];
+        if (item.status === "unresolved" && candidates.length > 0) {
+          const quickUseBtn = document.createElement("button");
+          quickUseBtn.type = "button";
+          quickUseBtn.className = "device-picker-use-btn";
+          quickUseBtn.textContent = "使用首选候选";
+          quickUseBtn.addEventListener("click", () => {
+            void runDevicePickerAction("chooseDraftDeviceCandidate", {
+              componentId: item.componentId,
+              candidateIndex: 0,
+            });
+          });
+          card.appendChild(quickUseBtn);
+        }
+        if (candidates.length > 0) {
+          const list = document.createElement("div");
+          list.className = "device-picker-candidates";
+          candidates.forEach((candidate, index) => {
+            const candidateCard = document.createElement("div");
+            candidateCard.className = "device-picker-candidate";
+            const candidateTitle = document.createElement("div");
+            candidateTitle.className = "device-picker-candidate-title";
+            candidateTitle.textContent = candidate.name;
+            const candidateMeta = document.createElement("div");
+            candidateMeta.className = "device-picker-candidate-meta";
+            candidateMeta.textContent = [
+              candidate.footprintName ? `封装: ${candidate.footprintName}` : "",
+              candidate.supplierId ? `LCSC: ${candidate.supplierId}` : "",
+              candidate.manufacturer ? `厂商: ${candidate.manufacturer}` : "",
+              candidate.description ? `说明: ${candidate.description}` : "",
+            ].filter(Boolean).join("\n");
+            const actions = document.createElement("div");
+            actions.className = "device-picker-candidate-actions";
+            const useBtn = document.createElement("button");
+            useBtn.type = "button";
+            useBtn.className = "device-picker-use-btn";
+            useBtn.textContent = "使用这个器件";
+            useBtn.addEventListener("click", () => {
+              void runDevicePickerAction("chooseDraftDeviceCandidate", {
+                componentId: item.componentId,
+                candidateIndex: index,
+              });
+            });
+            actions.appendChild(useBtn);
+            candidateCard.appendChild(candidateTitle);
+            candidateCard.appendChild(candidateMeta);
+            candidateCard.appendChild(actions);
+            list.appendChild(candidateCard);
+          });
+          card.appendChild(list);
+        } else if (item.status === "unresolved") {
+          const empty = document.createElement("div");
+          empty.className = "device-picker-empty";
+          empty.textContent = "尚未加载候选列表。";
+          card.appendChild(empty);
+        }
+
+        body.appendChild(card);
+      });
+      setDevicePickerBusy(devicePickerBusy);
     }
 
     function syncSettingsPanel(state) {
@@ -4030,6 +4422,29 @@
     // Start waiting
     console.log(`${LOG_PREFIX} UI initialized, waiting for runtime...`);
     bindAutoScroll();
+    const devicePickerOverlay = document.getElementById("device-picker-overlay");
+    const devicePickerSearchAllBtn = document.getElementById("device-picker-search-all-btn");
+    const devicePickerApplyBestBtn = document.getElementById("device-picker-apply-best-btn");
+    const devicePickerCloseBtn = document.getElementById("device-picker-close-btn");
+    if (devicePickerOverlay) {
+      devicePickerOverlay.addEventListener("click", () => {
+        if (devicePickerBusy) return;
+        invokeRuntime("closeDevicePicker");
+      });
+    }
+    if (devicePickerSearchAllBtn) {
+      devicePickerSearchAllBtn.addEventListener("click", () => {
+        void runDevicePickerAction("searchAllUnresolvedDraftDeviceCandidates");
+      });
+    }
+    if (devicePickerApplyBestBtn) {
+      devicePickerApplyBestBtn.addEventListener("click", () => {
+        void runDevicePickerAction("chooseBestDraftDeviceCandidates");
+      });
+    }
+    if (devicePickerCloseBtn) {
+      devicePickerCloseBtn.addEventListener("click", () => invokeRuntime("closeDevicePicker"));
+    }
     waitForRuntime();
 
     // Settings polling removed: it caused duplicate renders during streaming.
@@ -4981,6 +5396,39 @@ var edaEsbuildExportName = (() => {
     }
     return result;
   }
+  function normalizeGuidance(value) {
+    if (!value || typeof value !== "object") {
+      return void 0;
+    }
+    const guidance = value;
+    const templateId = typeof guidance.templateId === "string" ? guidance.templateId : "";
+    const rationale = typeof guidance.rationale === "string" ? guidance.rationale : "";
+    if (!templateId || !rationale) {
+      return void 0;
+    }
+    return {
+      templateId,
+      rationale,
+      evidence: Array.isArray(guidance.evidence) ? guidance.evidence.map((item) => ({
+        title: typeof item.title === "string" ? item.title : "",
+        snippet: typeof item.snippet === "string" ? item.snippet : "",
+        sourceRef: typeof item.sourceRef === "string" ? item.sourceRef : ""
+      })).filter((item) => item.title || item.snippet || item.sourceRef) : void 0,
+      preferredSearches: guidance.preferredSearches && typeof guidance.preferredSearches === "object" ? Object.fromEntries(
+        Object.entries(guidance.preferredSearches).filter(([, raw]) => typeof raw === "string" && raw.trim()).map(([key, raw]) => [key, String(raw).trim()])
+      ) : void 0,
+      requiredNets: Array.isArray(guidance.requiredNets) ? guidance.requiredNets.map((item) => String(item)).filter(Boolean) : void 0,
+      requiredConnections: Array.isArray(guidance.requiredConnections) ? guidance.requiredConnections.map((item) => ({
+        fromComponentRef: typeof item.fromComponentRef === "string" ? item.fromComponentRef : "",
+        fromPin: typeof item.fromPin === "string" ? item.fromPin : "",
+        toComponentRef: typeof item.toComponentRef === "string" ? item.toComponentRef : "",
+        toPin: typeof item.toPin === "string" ? item.toPin : "",
+        netName: typeof item.netName === "string" ? item.netName : ""
+      })).filter(
+        (item) => item.fromComponentRef && item.fromPin && item.toComponentRef && item.toPin && item.netName
+      ) : void 0
+    };
+  }
   function buildLegacyPinId(componentId, pinLabel) {
     const safe = String(pinLabel || "pin").trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
     return `${componentId}-${safe}`;
@@ -5025,7 +5473,8 @@ var edaEsbuildExportName = (() => {
           nodeIds: Array.isArray(net.nodeIds) ? net.nodeIds.map((item) => String(item)) : [],
           isPower: typeof net.isPower === "boolean" ? net.isPower : inferPowerNet(typeof net.name === "string" ? net.name : void 0)
         })),
-        selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : void 0
+        selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : void 0,
+        guidance: normalizeGuidance(candidate.guidance)
       };
     }
     const pinMap = /* @__PURE__ */ new Map();
@@ -5075,7 +5524,8 @@ var edaEsbuildExportName = (() => {
       components,
       pins: Array.from(pinMap.values()),
       nets: Array.from(netsByName.values()),
-      selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : void 0
+      selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : void 0,
+      guidance: normalizeGuidance(candidate.guidance)
     };
   }
   function withPlacement(x, y, rotation = 0) {
@@ -5085,9 +5535,14 @@ var edaEsbuildExportName = (() => {
       placement_rotation: String(rotation)
     };
   }
+  function withGuidedSearch(role, guidance) {
+    const query = guidance?.preferredSearches?.[role];
+    return query ? { preferred_search_query: query } : {};
+  }
   function generateDraftPlanFromPrompt(userQuery, options = {}) {
     const normalized = userQuery.toLowerCase();
     const selectedDevices = options.selectedDevices ?? [];
+    const guidance = options.guidance;
     const pickSelected = (role) => selectedDevices.find((item) => item.role === role);
     const ldoDevice = pickSelected("ldo_regulator");
     const inputCapacitorDevice = pickSelected("input_capacitor");
@@ -5111,6 +5566,7 @@ var edaEsbuildExportName = (() => {
             properties: {
               expected_net_1: "5V",
               expected_net_2: "GND",
+              ...withGuidedSearch("power_connector", guidance),
               device_uuid: connectorDevice?.deviceUuid ?? "",
               library_uuid: connectorDevice?.libraryUuid ?? "",
               symbol_uuid: connectorDevice?.symbolUuid ?? "",
@@ -5128,6 +5584,7 @@ var edaEsbuildExportName = (() => {
             properties: {
               expected_net_1: "5V",
               expected_net_2: "LED_ANODE",
+              ...withGuidedSearch("resistor", guidance),
               device_uuid: resistorDevice?.deviceUuid ?? "",
               library_uuid: resistorDevice?.libraryUuid ?? "",
               symbol_uuid: resistorDevice?.symbolUuid ?? "",
@@ -5146,6 +5603,7 @@ var edaEsbuildExportName = (() => {
               expected_net_A: "LED_ANODE",
               expected_net_K: "GND",
               led_color: "red",
+              ...withGuidedSearch("led", guidance),
               device_uuid: ledDevice?.deviceUuid ?? "",
               library_uuid: ledDevice?.libraryUuid ?? "",
               symbol_uuid: ledDevice?.symbolUuid ?? "",
@@ -5158,36 +5616,42 @@ var edaEsbuildExportName = (() => {
           {
             id: "draft-j1-1",
             componentId: "draft-j1",
+            pinNumber: "1",
             pinName: "5V",
             electricalType: "power_in"
           },
           {
             id: "draft-j1-2",
             componentId: "draft-j1",
+            pinNumber: "2",
             pinName: "GND",
             electricalType: "power_in"
           },
           {
             id: "draft-r1-1",
             componentId: "draft-r1",
+            pinNumber: "1",
             pinName: "1",
             electricalType: "passive"
           },
           {
             id: "draft-r1-2",
             componentId: "draft-r1",
+            pinNumber: "2",
             pinName: "2",
             electricalType: "passive"
           },
           {
             id: "draft-d1-a",
             componentId: "draft-d1",
+            pinNumber: "1",
             pinName: "A",
             electricalType: "passive"
           },
           {
             id: "draft-d1-k",
             componentId: "draft-d1",
+            pinNumber: "2",
             pinName: "K",
             electricalType: "passive"
           }
@@ -5211,7 +5675,8 @@ var edaEsbuildExportName = (() => {
             isPower: true
           }
         ],
-        selectedDevices
+        selectedDevices,
+        guidance
       };
     }
     if (normalized.includes("ldo") || normalized.includes("5v") || normalized.includes("3.3v")) {
@@ -5230,6 +5695,7 @@ var edaEsbuildExportName = (() => {
               expected_net_VIN: "5V",
               expected_net_VOUT: "3V3",
               expected_net_GND: "GND",
+              ...withGuidedSearch("ldo_regulator", guidance),
               device_uuid: ldoDevice?.deviceUuid ?? "",
               library_uuid: ldoDevice?.libraryUuid ?? "",
               symbol_uuid: ldoDevice?.symbolUuid ?? "",
@@ -5248,6 +5714,7 @@ var edaEsbuildExportName = (() => {
               expected_net_POS: "5V",
               expected_net_NEG: "GND",
               polarity_sensitive: "true",
+              ...withGuidedSearch("input_capacitor", guidance),
               device_uuid: inputCapacitorDevice?.deviceUuid ?? "",
               library_uuid: inputCapacitorDevice?.libraryUuid ?? "",
               symbol_uuid: inputCapacitorDevice?.symbolUuid ?? "",
@@ -5266,6 +5733,7 @@ var edaEsbuildExportName = (() => {
               expected_net_POS: "3V3",
               expected_net_NEG: "GND",
               polarity_sensitive: "true",
+              ...withGuidedSearch("output_capacitor", guidance),
               device_uuid: outputCapacitorDevice?.deviceUuid ?? "",
               library_uuid: outputCapacitorDevice?.libraryUuid ?? "",
               symbol_uuid: outputCapacitorDevice?.symbolUuid ?? "",
@@ -5338,7 +5806,8 @@ var edaEsbuildExportName = (() => {
             isPower: true
           }
         ],
-        selectedDevices
+        selectedDevices,
+        guidance
       };
     }
     return {
@@ -5347,26 +5816,68 @@ var edaEsbuildExportName = (() => {
       components: [],
       pins: [],
       nets: [],
-      selectedDevices
+      selectedDevices,
+      guidance
     };
   }
 
   // src/editor/apply-plan/previewDraftPlan.ts
   function previewDraftPlan(plan) {
     const normalized = normalizeDraftPlan(plan);
+    const guidance = normalized.guidance;
+    const rationaleWithGuidance = normalized.guidance?.rationale ? `${normalized.rationale} ${normalized.guidance.rationale}` : normalized.rationale;
     return {
       title: normalized.title,
-      rationale: normalized.selectedDevices && normalized.selectedDevices.length > 0 ? `${normalized.rationale} \u5DF2\u9009\u5668\u4EF6: ${normalized.selectedDevices.map((item) => `${item.role}=${item.name}`).join(", ")}` : normalized.rationale,
+      rationale: normalized.selectedDevices && normalized.selectedDevices.length > 0 ? `${rationaleWithGuidance} \u5DF2\u9009\u5668\u4EF6: ${normalized.selectedDevices.map((item) => `${item.role}=${item.name}`).join(", ")}` : rationaleWithGuidance,
       componentRefs: normalized.components.map((component) => component.ref ?? component.id),
       netNames: normalized.nets.map((net) => net.name ?? net.id),
       componentCount: normalized.components.length,
-      netCount: normalized.nets.length
+      netCount: normalized.nets.length,
+      selectedDeviceDetails: normalized.selectedDevices?.map((item) => {
+        const parts = [`${item.role}: ${item.name}`];
+        if (item.footprintName) {
+          parts.push(`[${item.footprintName}]`);
+        }
+        if (item.manufacturer) {
+          parts.push(`- ${item.manufacturer}`);
+        }
+        return parts.join(" ");
+      }),
+      unresolvedDeviceDetails: normalized.components.filter((component) => component.properties?.device_resolution_status === "unresolved").map((component) => {
+        const ref = component.ref ?? component.id;
+        const role = ref.startsWith("J") ? "power_connector" : ref.startsWith("R") ? "resistor" : ref.startsWith("D") ? "led" : ref.startsWith("C") ? "input_capacitor" : ref.startsWith("U") ? "ldo_regulator" : "generic";
+        const reason = component.properties?.device_resolution_reason || "unknown";
+        const query = component.properties?.preferred_search_query;
+        return `${ref} / ${role}: unresolved (${reason})${query ? ` query=${query}` : ""}`;
+      }),
+      guidanceSummary: guidance ? {
+        templateId: guidance.templateId,
+        rationale: guidance.rationale,
+        preferredSearches: guidance.preferredSearches ? Object.entries(guidance.preferredSearches).map(([key, value]) => `${key}: ${value}`) : void 0,
+        requiredNets: guidance.requiredNets,
+        requiredConnections: guidance.requiredConnections?.map(
+          (item) => `${item.fromComponentRef}.${item.fromPin} -> ${item.toComponentRef}.${item.toPin} @ ${item.netName}`
+        ),
+        evidence: guidance.evidence?.map(
+          (item) => `${item.title}\uFF1A${item.snippet}${item.sourceRef ? ` (${item.sourceRef})` : ""}`
+        )
+      } : void 0
     };
   }
 
   // src/editor/apply-plan/resolveDraftPlanDevices.ts
   function hasPlacementDevice(component) {
     return Boolean(component.properties?.device_uuid && component.properties?.library_uuid);
+  }
+  function withResolutionStatus(component, status, reason) {
+    return {
+      ...component,
+      properties: {
+        ...component.properties,
+        device_resolution_status: status,
+        device_resolution_reason: reason
+      }
+    };
   }
   function inferComponentRole(component) {
     const ref = String(component.ref || "").toUpperCase();
@@ -5379,6 +5890,10 @@ var edaEsbuildExportName = (() => {
     return "generic";
   }
   function buildDraftDeviceSearchQuery(component) {
+    const guidanceQuery = component.properties?.preferred_search_query;
+    if (typeof guidanceQuery === "string" && guidanceQuery.trim()) {
+      return guidanceQuery.trim();
+    }
     const role = inferComponentRole(component);
     const value = String(component.value || "").trim();
     const pkg = String(component.packageName || "").trim();
@@ -5391,9 +5906,58 @@ var edaEsbuildExportName = (() => {
     return fallback || null;
   }
   function pickBestSearchResult(component, results) {
+    const role = inferComponentRole(component);
     const pkg = String(component.packageName || "").trim().toLowerCase();
-    if (!pkg) return results[0];
-    return results.find((item) => String(item.footprintName || "").trim().toLowerCase() === pkg) || results.find((item) => String(item.footprintName || "").trim().toLowerCase().includes(pkg)) || results[0];
+    const filteredResults = role === "power_connector" ? results.filter((item) => isSuitableTwoPinConnector(item)) : results;
+    const candidates = filteredResults.length > 0 ? filteredResults : results;
+    return candidates.map((item) => ({ item, score: scoreSearchResult(component, item) })).sort((left, right) => right.score - left.score)[0]?.item;
+  }
+  function hasSuitableCandidates(component, results) {
+    const role = inferComponentRole(component);
+    if (role === "power_connector") {
+      return results.some((item) => isSuitableTwoPinConnector(item));
+    }
+    return results.length > 0;
+  }
+  function isSuitableTwoPinConnector(item) {
+    const haystack = `${item.name || ""} ${item.footprintName || ""} ${item.description || ""}`.toLowerCase();
+    if (!haystack.trim()) return false;
+    if (/(10x2|20p|20pin|32p|32pin|40p|40pin|16p|16pin)/i.test(haystack)) return false;
+    return /(1x2|2pin|2p|hdr-th_1x2|header\s*1x2|header\s*2pin|conn.*2pin)/i.test(haystack);
+  }
+  function scoreSearchResult(component, item) {
+    const role = inferComponentRole(component);
+    const pkg = String(component.packageName || "").trim().toLowerCase();
+    const value = String(component.value || "").trim().toLowerCase();
+    const haystack = `${item.name || ""} ${item.footprintName || ""} ${item.description || ""}`.toLowerCase();
+    let score = 0;
+    if (pkg) {
+      const footprint = String(item.footprintName || "").trim().toLowerCase();
+      if (footprint === pkg) score += 100;
+      else if (footprint.includes(pkg)) score += 60;
+    }
+    if (role === "power_connector") {
+      if (/(hdr-th_1x2|1x2|2pin)/i.test(haystack)) score += 120;
+    }
+    if (role === "resistor") {
+      if (matchesResistanceValue(haystack, value)) score += 140;
+    }
+    if (role === "led") {
+      if (value && haystack.includes(value)) score += 90;
+      if (/infrared|fir/i.test(haystack) && !value.includes("infrared")) score -= 120;
+    }
+    return score;
+  }
+  function matchesResistanceValue(haystack, value) {
+    if (!value) return false;
+    const normalizedValue = value.replace(/ω/gi, "ohm").replace(/\s+/g, "");
+    const normalizedHaystack = haystack.replace(/ω/gi, "ohm").replace(/\s+/g, "");
+    if (normalizedHaystack.includes(normalizedValue)) return true;
+    if (normalizedValue === "150ohm" && /\b1500\b/.test(normalizedHaystack)) return false;
+    if (normalizedValue === "150ohm" && (normalizedHaystack.includes("\u963B\u503C:150ohm") || normalizedHaystack.includes("\u963B\u503C:150"))) {
+      return true;
+    }
+    return false;
   }
   function toSelectedDevice(component, query, result) {
     return {
@@ -5414,19 +5978,46 @@ var edaEsbuildExportName = (() => {
     const components = await Promise.all(
       plan.components.map(async (component) => {
         if (hasPlacementDevice(component)) {
-          return component;
+          return withResolutionStatus(component, "resolved", "already_specified");
         }
         const query = buildDraftDeviceSearchQuery(component);
         if (!query) {
-          return component;
+          return withResolutionStatus(component, "unresolved", "missing_search_query");
         }
         const results = await searchLibraryDevices(query);
         if (!results || results.length === 0) {
-          return component;
+          return {
+            ...withResolutionStatus(component, "unresolved", "no_search_results"),
+            properties: {
+              ...component.properties,
+              preferred_search_query: query,
+              device_resolution_status: "unresolved",
+              device_resolution_reason: "no_search_results"
+            }
+          };
+        }
+        if (!hasSuitableCandidates(component, results)) {
+          return {
+            ...withResolutionStatus(component, "unresolved", "all_candidates_filtered"),
+            properties: {
+              ...component.properties,
+              preferred_search_query: query,
+              device_resolution_status: "unresolved",
+              device_resolution_reason: "all_candidates_filtered"
+            }
+          };
         }
         const picked = pickBestSearchResult(component, results);
         if (!picked?.uuid || !picked.libraryUuid) {
-          return component;
+          return {
+            ...withResolutionStatus(component, "unresolved", "no_eligible_candidate"),
+            properties: {
+              ...component.properties,
+              preferred_search_query: query,
+              device_resolution_status: "unresolved",
+              device_resolution_reason: "no_eligible_candidate"
+            }
+          };
         }
         existingSelectedDevices.push(toSelectedDevice(component, query, picked));
         return {
@@ -5435,10 +6026,13 @@ var edaEsbuildExportName = (() => {
           packageName: picked.footprintName || component.packageName,
           properties: {
             ...component.properties,
+            preferred_search_query: query,
             device_uuid: picked.uuid,
             library_uuid: picked.libraryUuid,
             symbol_uuid: picked.symbolUuid || "",
-            footprint_uuid: picked.footprintUuid || ""
+            footprint_uuid: picked.footprintUuid || "",
+            device_resolution_status: "resolved",
+            device_resolution_reason: "matched"
           }
         };
       })
@@ -5619,6 +6213,7 @@ var edaEsbuildExportName = (() => {
       if (!created) {
         continue;
       }
+      applyComponentDesignator(created, component.ref);
       const primitiveId = created.getState_PrimitiveId();
       componentIds.push(primitiveId);
       const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
@@ -5641,7 +6236,10 @@ var edaEsbuildExportName = (() => {
     for (const net of plan.nets) {
       const nodePoints = net.nodeIds.map((nodeId) => placedPins.get(nodeId)).filter((item) => Boolean(item));
       if (nodePoints.length < 2) {
-        continue;
+        const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
+        throw new Error(
+          `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
+        );
       }
       const line = buildOrthogonalPolyline(nodePoints);
       const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
@@ -5650,6 +6248,7 @@ var edaEsbuildExportName = (() => {
       }
       wireIds.push(createdWire.getState_PrimitiveId());
     }
+    validateRequiredConnections(plan, placedPins);
     return { componentIds, wireIds };
   }
   function parsePlacementNumber(value) {
@@ -5658,6 +6257,67 @@ var edaEsbuildExportName = (() => {
     }
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : void 0;
+  }
+  function applyComponentDesignator(created, ref) {
+    if (!created || !ref || typeof created !== "object") {
+      return;
+    }
+    const record = created;
+    const candidateMethodNames = [
+      "setState_Designator",
+      "setDesignator",
+      "setState_Ref"
+    ];
+    for (const methodName of candidateMethodNames) {
+      const method = record[methodName];
+      if (typeof method !== "function") {
+        continue;
+      }
+      try {
+        method.call(created, ref);
+        return;
+      } catch {
+      }
+    }
+  }
+  function validateRequiredConnections(plan, placedPins) {
+    const requiredConnections = plan.guidance?.requiredConnections;
+    if (!requiredConnections || requiredConnections.length === 0) {
+      return;
+    }
+    const componentsByRef = new Map(
+      plan.components.filter((component) => component.ref).map((component) => [String(component.ref), component.id])
+    );
+    for (const connection of requiredConnections) {
+      const fromComponentId = componentsByRef.get(connection.fromComponentRef);
+      const toComponentId = componentsByRef.get(connection.toComponentRef);
+      const fromPin = resolvePlanPin(plan, fromComponentId, connection.fromPin);
+      const toPin = resolvePlanPin(plan, toComponentId, connection.toPin);
+      const net = plan.nets.find((item) => item.name === connection.netName);
+      if (!fromComponentId || !toComponentId || !fromPin || !toPin || !net) {
+        throw new Error(
+          `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+        );
+      }
+      if (!net.nodeIds.includes(fromPin.id) || !net.nodeIds.includes(toPin.id)) {
+        throw new Error(
+          `required connection net mismatch: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+        );
+      }
+      if (!placedPins.has(fromPin.id) || !placedPins.has(toPin.id)) {
+        throw new Error(
+          `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+        );
+      }
+    }
+  }
+  function resolvePlanPin(plan, componentId, pinLabel) {
+    if (!componentId) {
+      return void 0;
+    }
+    return plan.pins.find(
+      (pin) => pin.componentId === componentId && (String(pin.pinNumber || "").trim() === pinLabel || String(pin.pinName || "").trim() === pinLabel)
+    );
   }
   function findBestMatchingPlanPin(pins, componentId, pinName, pinNumber) {
     const candidates = pins.filter((item) => item.componentId === componentId);
@@ -6716,8 +7376,86 @@ var edaEsbuildExportName = (() => {
     ];
   }
 
+  // src/editor/apply-plan/ragDraftGuidance.ts
+  function buildHaystack(results) {
+    return results.flatMap((item) => [item.title, item.snippet, item.source_ref]).filter(Boolean).join(" ").toLowerCase();
+  }
+  function buildDraftGuidanceFromRag(userQuery, results) {
+    const normalizedQuery = userQuery.toLowerCase();
+    const haystack = buildHaystack(results);
+    const looksLikeLedIndicator = /led|发光二极管|点亮|指示灯/u.test(userQuery) && !/ldo|稳压|regulator|3\.3v|3v3/u.test(userQuery);
+    const evidence = results.slice(0, 3).map((item) => ({
+      title: item.title,
+      snippet: item.snippet,
+      sourceRef: item.source_ref
+    }));
+    if (looksLikeLedIndicator) {
+      const prefersTwoPinHeader = /(2pin|1x2|两针|2 针|2pin header)/i.test(haystack) || results.length === 0;
+      const prefersRedLed = /(red|红色)/i.test(haystack) || results.length === 0;
+      const resistorHint = /(150\s*(ω|ohm)|限流电阻.*150)/i.test(haystack) ? "150\u03A9 resistor R0805" : "150\u03A9 resistor R0805";
+      return {
+        templateId: "led_indicator_minimal",
+        rationale: "RAG guidance suggests using a minimal LED indicator topology with a power connector, current-limiting resistor, and LED.",
+        evidence,
+        preferredSearches: {
+          power_connector: prefersTwoPinHeader ? "header 1x2 2pin HDR-TH_1X2" : "power connector 2pin",
+          resistor: resistorHint,
+          led: prefersRedLed ? "red LED 3mm through hole" : "LED through hole"
+        },
+        requiredNets: ["5V", "LED_ANODE", "GND"],
+        requiredConnections: [
+          { fromComponentRef: "J1", fromPin: "1", toComponentRef: "R1", toPin: "1", netName: "5V" },
+          { fromComponentRef: "R1", fromPin: "2", toComponentRef: "D1", toPin: "1", netName: "LED_ANODE" },
+          { fromComponentRef: "D1", fromPin: "2", toComponentRef: "J1", toPin: "2", netName: "GND" }
+        ]
+      };
+    }
+    if (/ldo|稳压|3\.3v|3v3/u.test(userQuery)) {
+      return {
+        templateId: "ldo_minimal",
+        rationale: "RAG guidance suggests using a minimal LDO topology with input and output capacitors.",
+        evidence,
+        preferredSearches: {
+          ldo_regulator: "ldo regulator 3.3V",
+          input_capacitor: "10uF capacitor 0603",
+          output_capacitor: "10uF capacitor 0603"
+        },
+        requiredNets: ["5V", "3V3", "GND"]
+      };
+    }
+    if (normalizedQuery.trim()) {
+      return {
+        templateId: "generic",
+        rationale: "RAG guidance available but no dedicated draft template matched; fall back to generic draft generation.",
+        evidence
+      };
+    }
+    return void 0;
+  }
+
   // src/agent/tools/draftTools.ts
-  function createDraftTools() {
+  function mergeGuidanceEvidence(guidance, citations) {
+    if (!guidance) {
+      return guidance;
+    }
+    const mergedEvidence = [
+      ...guidance.evidence ?? [],
+      ...(citations?.results ?? []).map((item) => ({
+        title: item.title,
+        snippet: item.snippet,
+        sourceRef: item.source_ref
+      })) ?? []
+    ];
+    const dedupedEvidence = mergedEvidence.filter((item, index, list) => {
+      const key = `${item.title}|${item.snippet}|${item.sourceRef}`;
+      return list.findIndex((candidate) => `${candidate.title}|${candidate.snippet}|${candidate.sourceRef}` === key) === index;
+    });
+    return {
+      ...guidance,
+      evidence: dedupedEvidence.length > 0 ? dedupedEvidence : guidance.evidence
+    };
+  }
+  function createDraftTools(ragClient, searchLibraryDevices) {
     return [
       {
         name: "draft_generate_plan",
@@ -6730,14 +7468,31 @@ var edaEsbuildExportName = (() => {
               type: "array",
               items: { type: "object" },
               description: "\u53EF\u9009\u3002\u7528\u6237\u5DF2\u6311\u9009\u7684\u5668\u4EF6\u5217\u8868\u3002"
+            },
+            guidance: {
+              type: "object",
+              description: "\u53EF\u9009\u3002\u6765\u81EA RAG/\u6A21\u677F\u7684\u8349\u6848\u7EA6\u675F\u3002"
             }
           },
           required: ["userQuery"],
           additionalProperties: true
         },
-        execute: async (input) => generateDraftPlanFromPrompt(input.userQuery, {
-          selectedDevices: input.selectedDevices
-        })
+        execute: async (input) => {
+          const query = `${input.userQuery} \u7535\u8DEF\u6A21\u677F \u5668\u4EF6\u9009\u62E9 \u8FDE\u63A5\u7EA6\u675F`;
+          const resolvedGuidance = input.guidance ?? (ragClient ? buildDraftGuidanceFromRag(input.userQuery, (await ragClient.search(query, 3)).results) : void 0);
+          const citations = ragClient && !input.guidance ? await ragClient.buildCitations(query, 3) : void 0;
+          let plan = generateDraftPlanFromPrompt(input.userQuery, {
+            selectedDevices: input.selectedDevices,
+            guidance: mergeGuidanceEvidence(resolvedGuidance, citations)
+          });
+          if (searchLibraryDevices) {
+            plan = await resolveDraftPlanDevices(
+              plan,
+              async (query2) => searchLibraryDevices({ query: query2, scope: "system", pageSize: 5 })
+            );
+          }
+          return plan;
+        }
       },
       {
         name: "draft_preview_plan",
@@ -9859,6 +10614,15 @@ ${match[2] || ""}`);
       }).filter(Boolean);
       return lines.length > 0 ? lines : void 0;
     };
+    const buildNaturalChatFallback = (result) => {
+      const failedToolNotes = (result.toolTraces ?? []).filter((trace) => trace.status === "blocked").map((trace) => `${trace.toolName}: ${trace.note || "\u8C03\u7528\u5931\u8D25"}`);
+      const failedObservations = (result.reactEvents ?? []).filter((event) => event?.kind === "observation" && event.status === "failed").map((event) => `${event.toolName || event.label || "tool"}: ${event.outputSummary || event.text || "\u8C03\u7528\u5931\u8D25"}`);
+      const failedDetails = [.../* @__PURE__ */ new Set([...failedToolNotes, ...failedObservations])].filter(Boolean);
+      if (failedDetails.length > 0) {
+        return `\u672C\u8F6E\u751F\u6210\u5931\u8D25\uFF0C\u5173\u952E\u9519\u8BEF\uFF1A${failedDetails.slice(0, 2).join("\uFF1B")}\u3002\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002`;
+      }
+      return "\u672C\u8F6E\u672A\u751F\u6210\u6700\u7EC8\u56DE\u590D\uFF0C\u8BF7\u91CD\u8BD5\u3002";
+    };
     return {
       createToolRegistry: (adapter, options) => createAgentToolRegistry(adapter, deps, options),
       run: async (input) => {
@@ -9951,7 +10715,7 @@ ${match[2] || ""}`);
         return {
           role: "assistant",
           title: "\u52A9\u624B",
-          content: result.summary === "missing access token for natural chat" ? "\u5F53\u524D\u672A\u68C0\u6D4B\u5230\u6709\u6548\u767B\u5F55\u6001\uFF0C\u65E0\u6CD5\u8C03\u7528\u5728\u7EBF\u6A21\u578B\u3002\u8BF7\u5148\u767B\u5F55\u3002" : result.naturalReply ?? "\u6211\u6682\u65F6\u6CA1\u6709\u751F\u6210\u53EF\u5C55\u793A\u7684\u56DE\u590D\u3002",
+          content: result.summary === "missing access token for natural chat" ? "\u5F53\u524D\u672A\u68C0\u6D4B\u5230\u6709\u6548\u767B\u5F55\u6001\uFF0C\u65E0\u6CD5\u8C03\u7528\u5728\u7EBF\u6A21\u578B\u3002\u8BF7\u5148\u767B\u5F55\u3002" : result.naturalReply ?? buildNaturalChatFallback(result),
           toolTraces: result.toolTraces,
           executionTraces: result.executionTraces,
           uiEvents: void 0,
@@ -10115,10 +10879,16 @@ MCP\u6458\u8981\uFF1A${input.mcpResourceReads.map((item) => `${item.title}(${ite
 
 \u4E0B\u4E00\u6B65\u5EFA\u8BAE\uFF1A
 ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : "";
+        const hasUnresolvedDevices = Boolean(preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0);
         const actions = input.draftRisk?.level === "blocked" ? [
           {
             label: "\u91CD\u65B0\u5206\u6790",
             action: "rerun"
+          }
+        ] : hasUnresolvedDevices ? [
+          {
+            label: "\u9009\u62E9\u5668\u4EF6",
+            action: "select_devices"
           }
         ] : [
           {
@@ -10438,6 +11208,58 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
           items: input.mcpResourceReads.map((item) => `${item.title}\uFF1A${item.summary}`)
         });
       }
+      if (preview.selectedDeviceDetails && preview.selectedDeviceDetails.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "\u5DF2\u9009\u5668\u4EF6\u8BE6\u60C5",
+          items: preview.selectedDeviceDetails
+        });
+      }
+      if (preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "\u5F85\u5904\u7406\u5668\u4EF6",
+          items: preview.unresolvedDeviceDetails
+        });
+      }
+      if (preview.guidanceSummary) {
+        blocks.push({
+          kind: "kv",
+          title: "\u751F\u6210\u4F9D\u636E",
+          entries: [
+            { key: "\u6A21\u677F", value: preview.guidanceSummary.templateId },
+            { key: "\u8BF4\u660E", value: preview.guidanceSummary.rationale }
+          ]
+        });
+        if (preview.guidanceSummary.preferredSearches && preview.guidanceSummary.preferredSearches.length > 0) {
+          blocks.push({
+            kind: "list",
+            title: "\u5668\u4EF6\u68C0\u7D22\u504F\u597D",
+            items: preview.guidanceSummary.preferredSearches
+          });
+        }
+        if (preview.guidanceSummary.requiredNets && preview.guidanceSummary.requiredNets.length > 0) {
+          blocks.push({
+            kind: "list",
+            title: "\u5FC5\u9700\u7F51\u7EDC\u7EA6\u675F",
+            items: preview.guidanceSummary.requiredNets
+          });
+        }
+        if (preview.guidanceSummary.requiredConnections && preview.guidanceSummary.requiredConnections.length > 0) {
+          blocks.push({
+            kind: "list",
+            title: "\u5FC5\u9700\u8FDE\u63A5\u7EA6\u675F",
+            items: preview.guidanceSummary.requiredConnections
+          });
+        }
+        if (preview.guidanceSummary.evidence && preview.guidanceSummary.evidence.length > 0) {
+          blocks.push({
+            kind: "list",
+            title: "RAG \u8BC1\u636E",
+            items: preview.guidanceSummary.evidence
+          });
+        }
+      }
       if (input.draftRisk) {
         blocks.push({
           kind: "kv",
@@ -10574,7 +11396,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
         tools.register(tool);
       }
     }
-    for (const tool of createDraftTools()) {
+    for (const tool of createDraftTools(deps.ragClient, deps.hostBridge?.searchLibraryDevices)) {
       tools.register(tool);
     }
     for (const tool of createRuleTools()) {
@@ -11575,6 +12397,74 @@ ${content}`;
     const normalized = input.input.trim().toLowerCase();
     return /^(确认|确定|应用|应用草案|好的应用|开始应用|ok|okay|yes)$/u.test(normalized);
   }
+  function hasUnresolvedDraftDevices(plan) {
+    return Boolean(
+      plan?.components?.some((component) => component.properties?.device_resolution_status === "unresolved")
+    );
+  }
+  function buildDevicePickerSearchProgressText(current, total) {
+    return `\u6B63\u5728\u641C\u7D22\u5F85\u786E\u8BA4\u5668\u4EF6\u5019\u9009\uFF08${current}/${total}\uFF09...`;
+  }
+  function buildDevicePickerApplyProgressText(current, total) {
+    return `\u6B63\u5728\u786E\u8BA4\u5F85\u786E\u8BA4\u5668\u4EF6\uFF08${current}/${total}\uFF09...`;
+  }
+  function inferDraftComponentRole(refOrName) {
+    const value = String(refOrName || "").toUpperCase();
+    if (value.startsWith("J")) return "power_connector";
+    if (value.startsWith("R")) return "resistor";
+    if (value.startsWith("D")) return "led";
+    if (value.startsWith("C")) return "input_capacitor";
+    if (value.startsWith("U")) return "ldo_regulator";
+    return "generic";
+  }
+  function buildDevicePickerState(plan) {
+    if (!plan) {
+      return void 0;
+    }
+    const selectedByComponentId = new Map(
+      (plan.selectedDevices ?? []).filter((item) => item.componentId).map((item) => [item.componentId, item])
+    );
+    const items = plan.components.map((component) => {
+      const ref = component.ref ?? component.id;
+      const selected = selectedByComponentId.get(component.id);
+      const status = component.properties?.device_resolution_status === "unresolved" ? "unresolved" : "resolved";
+      return {
+        componentId: component.id,
+        componentRef: ref,
+        role: inferDraftComponentRole(ref),
+        query: component.properties?.preferred_search_query,
+        status,
+        reason: component.properties?.device_resolution_reason,
+        selectedDeviceLabel: selected ? `${selected.name}${selected.footprintName ? ` [${selected.footprintName}]` : ""}` : void 0,
+        candidates: void 0
+      };
+    });
+    return {
+      open: false,
+      items
+    };
+  }
+  function syncDraftPreviewState(state, plan) {
+    state.draftPlan = plan;
+    if (!plan) {
+      state.draftPreview = void 0;
+      state.devicePicker = void 0;
+      return;
+    }
+    const preview = previewDraftPlan(plan);
+    state.draftPreview = {
+      title: preview.title,
+      rationale: preview.rationale,
+      componentRefs: preview.componentRefs,
+      netNames: preview.netNames,
+      componentCount: preview.componentCount,
+      netCount: preview.netCount,
+      selectedDeviceDetails: preview.selectedDeviceDetails,
+      unresolvedDeviceDetails: preview.unresolvedDeviceDetails,
+      guidanceSummary: preview.guidanceSummary
+    };
+    state.devicePicker = buildDevicePickerState(plan);
+  }
   function formatReactEventLine(event) {
     if (!event || !event.kind) return "";
     if (event.kind === "task") return `\u4EFB\u52A1: ${event.text || event.label || ""}`;
@@ -11954,6 +12844,21 @@ ${content}`;
         };
         return commitState(internals, state, storage);
       }
+      if (hasUnresolvedDraftDevices(draftPlan)) {
+        state.agentRunState = "awaiting_confirmation";
+        state.agentRunRoute = "draft";
+        state.agentRunDetail = "\u8349\u6848\u4ECD\u6709\u5F85\u786E\u8BA4\u5668\u4EF6";
+        state.summary = "\u8349\u6848\u4E2D\u4ECD\u6709\u5F85\u786E\u8BA4\u5668\u4EF6\uFF0C\u8BF7\u5148\u9009\u62E9\u5668\u4EF6\u540E\u518D\u5E94\u7528\u3002";
+        state.devicePicker = {
+          ...buildDevicePickerState(draftPlan) ?? { open: true, items: [] },
+          open: true
+        };
+        state.toast = {
+          id: Date.now(),
+          message: state.summary
+        };
+        return commitState(internals, state, storage);
+      }
       const adapter = createEditorAdapter(resolveRuntimeChannel());
       try {
         const result = await adapter.applyPlan(draftPlan);
@@ -11990,6 +12895,101 @@ ${content}`;
       }
       state.nextActions = buildNextActions(state);
       return commitState(internals, state, storage);
+    }
+    async function searchDraftDeviceCandidatesInternal(state, componentId) {
+      const plan = internals.draftPlan;
+      const bridge = resolveHostEditorBridge();
+      if (!plan || !bridge?.searchLibraryDevices) {
+        state.summary = "\u5F53\u524D\u5BBF\u4E3B\u4E0D\u652F\u6301\u5668\u4EF6\u5E93\u641C\u7D22\u3002";
+        state.toast = { id: Date.now(), message: state.summary };
+        return { state, updated: false, candidateCount: 0 };
+      }
+      const component = plan.components.find((item) => item.id === componentId);
+      const query = component?.properties?.preferred_search_query;
+      if (!component || !query) {
+        state.summary = "\u5F53\u524D\u5668\u4EF6\u7F3A\u5C11\u53EF\u7528\u641C\u7D22\u6761\u4EF6\u3002";
+        state.toast = { id: Date.now(), message: state.summary };
+        return { state, updated: false, candidateCount: 0 };
+      }
+      const candidates = await bridge.searchLibraryDevices({ query, scope: "system", pageSize: 8 });
+      const previousPicker = state.devicePicker;
+      const picker = buildDevicePickerState(plan) ?? { open: true, items: [] };
+      picker.open = true;
+      picker.items = picker.items.map((item) => {
+        if (item.componentId !== componentId) {
+          const previousItem = previousPicker?.items.find((entry) => entry.componentId === item.componentId);
+          return previousItem?.candidates && previousItem.candidates.length > 0 ? { ...item, candidates: previousItem.candidates } : item;
+        }
+        return {
+          ...item,
+          candidates: candidates.map((candidate) => ({
+            uuid: candidate.uuid,
+            name: candidate.name,
+            libraryUuid: candidate.libraryUuid,
+            footprintName: candidate.footprintName,
+            manufacturer: candidate.manufacturer,
+            supplier: candidate.supplier,
+            supplierId: candidate.supplierId,
+            description: candidate.description
+          }))
+        };
+      });
+      state.devicePicker = picker;
+      return { state, updated: true, candidateCount: candidates.length };
+    }
+    function chooseDraftDeviceCandidateInternal(state, input) {
+      const plan = internals.draftPlan;
+      if (!plan) {
+        return state;
+      }
+      const picker = state.devicePicker ?? buildDevicePickerState(plan);
+      const item = picker?.items.find((entry) => entry.componentId === input.componentId);
+      const candidate = item?.candidates?.[input.candidateIndex];
+      const component = plan.components.find((entry) => entry.id === input.componentId);
+      if (!item || !candidate || !component) {
+        return state;
+      }
+      component.libraryId = candidate.uuid;
+      component.packageName = candidate.footprintName || component.packageName;
+      component.properties = {
+        ...component.properties,
+        device_uuid: candidate.uuid,
+        library_uuid: candidate.libraryUuid,
+        device_resolution_status: "resolved",
+        device_resolution_reason: "manual_selection"
+      };
+      const role = inferDraftComponentRole(component.ref ?? component.id);
+      plan.selectedDevices = [
+        ...(plan.selectedDevices ?? []).filter((entry) => entry.componentId !== input.componentId),
+        {
+          componentId: input.componentId,
+          componentRef: component.ref ?? component.id,
+          role,
+          query: component.properties?.preferred_search_query || "",
+          deviceUuid: candidate.uuid,
+          libraryUuid: candidate.libraryUuid,
+          name: candidate.name,
+          manufacturer: candidate.manufacturer,
+          footprintName: candidate.footprintName
+        }
+      ];
+      internals.draftPlan = plan;
+      syncDraftPreviewState(state, plan);
+      const remainingUnresolved = hasUnresolvedDraftDevices(plan);
+      if (state.devicePicker) {
+        state.devicePicker.open = remainingUnresolved;
+      }
+      state.agentRunState = "awaiting_confirmation";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "\u5668\u4EF6\u5DF2\u66F4\u65B0";
+      state.summary = remainingUnresolved ? "\u5DF2\u66F4\u65B0\u8349\u6848\u5668\u4EF6\u9009\u62E9\uFF0C\u8BF7\u7EE7\u7EED\u5B8C\u6210\u5269\u4F59\u5668\u4EF6\u786E\u8BA4\u3002" : "\u5668\u4EF6\u5DF2\u5168\u90E8\u786E\u8BA4\uFF0C\u53EF\u4EE5\u5E94\u7528\u8349\u6848\u3002";
+      state.chatMessages = replaceTrailingPendingAssistant(
+        sanitizeChatMessages(state.chatMessages),
+        pluginAgent.buildDraftMessages({
+          draftPreview: state.draftPreview
+        })
+      );
+      return state;
     }
     return {
       openPanel: openIdlePanelState,
@@ -12090,15 +13090,7 @@ ${content}`;
             state.agentRunDetail = result.summary;
             internals.draftPlan = result.draftPlan;
             internals.draftBlocked = result.draftRisk?.level === "blocked";
-            state.draftPlan = result.draftPlan;
-            state.draftPreview = {
-              title: result.draftPreview.title,
-              rationale: result.draftPreview.rationale,
-              componentRefs: result.draftPreview.componentRefs,
-              netNames: result.draftPreview.netNames,
-              componentCount: result.draftPreview.componentCount,
-              netCount: result.draftPreview.netCount
-            };
+            syncDraftPreviewState(state, result.draftPlan);
             state.summary = `\u8349\u6848\u5DF2\u751F\u6210\uFF1A${result.draftPreview.title}\uFF0C\u5171 ${result.draftPreview.componentCount} \u4E2A\u5668\u4EF6\uFF0C${result.draftPreview.netCount} \u6761\u7F51\u7EDC\u3002`;
             state.chatMessages = pluginAgent.buildDraftMessages({
               draftPreview: state.draftPreview,
@@ -12491,6 +13483,96 @@ ${content}`;
       applyDraftPlan: async () => {
         return applyCurrentDraftPlan();
       },
+      openDevicePicker: async () => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        state.devicePicker = {
+          ...buildDevicePickerState(internals.draftPlan) ?? { open: true, items: [] },
+          open: true
+        };
+        return commitState(internals, state, storage);
+      },
+      closeDevicePicker: async () => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        if (state.devicePicker) {
+          state.devicePicker = { ...state.devicePicker, open: false };
+        }
+        return commitState(internals, state, storage);
+      },
+      searchDraftDeviceCandidates: async (componentId) => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        await searchDraftDeviceCandidatesInternal(state, componentId);
+        return commitState(internals, state, storage);
+      },
+      searchAllUnresolvedDraftDeviceCandidates: async () => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        const unresolvedItems = (state.devicePicker?.items ?? buildDevicePickerState(internals.draftPlan)?.items ?? []).filter(
+          (item) => item.status === "unresolved"
+        );
+        if (unresolvedItems.length === 0) {
+          state.summary = "\u5F53\u524D\u6CA1\u6709\u5F85\u786E\u8BA4\u5668\u4EF6\u3002";
+          state.toast = { id: Date.now(), message: state.summary };
+          return commitState(internals, state, storage);
+        }
+        let updatedCount = 0;
+        for (let index = 0; index < unresolvedItems.length; index += 1) {
+          const item = unresolvedItems[index];
+          state.summary = buildDevicePickerSearchProgressText(index + 1, unresolvedItems.length);
+          commitState(internals, state, storage);
+          const result = await searchDraftDeviceCandidatesInternal(state, item.componentId);
+          if (result.updated) {
+            updatedCount += 1;
+          }
+        }
+        const remaining = state.devicePicker?.items.filter((item) => item.status === "unresolved").length ?? 0;
+        state.summary = `\u5DF2\u5B8C\u6210\u5F85\u786E\u8BA4\u5668\u4EF6\u5019\u9009\u641C\u7D22\uFF1A${updatedCount}/${unresolvedItems.length}\uFF0C\u5269\u4F59\u5F85\u786E\u8BA4 ${remaining}\u3002`;
+        state.toast = { id: Date.now(), message: state.summary };
+        return commitState(internals, state, storage);
+      },
+      chooseDraftDeviceCandidate: async (input) => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        chooseDraftDeviceCandidateInternal(state, input);
+        return commitState(internals, state, storage);
+      },
+      chooseBestDraftDeviceCandidates: async () => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        const unresolvedItems = (state.devicePicker?.items ?? buildDevicePickerState(internals.draftPlan)?.items ?? []).filter(
+          (item) => item.status === "unresolved"
+        );
+        if (unresolvedItems.length === 0) {
+          state.summary = "\u5F53\u524D\u6CA1\u6709\u5F85\u786E\u8BA4\u5668\u4EF6\u3002";
+          state.toast = { id: Date.now(), message: state.summary };
+          return commitState(internals, state, storage);
+        }
+        let appliedCount = 0;
+        let skippedCount = 0;
+        let searchedCount = 0;
+        for (let index = 0; index < unresolvedItems.length; index += 1) {
+          const item = unresolvedItems[index];
+          state.summary = buildDevicePickerApplyProgressText(index + 1, unresolvedItems.length);
+          commitState(internals, state, storage);
+          let pickerItem = state.devicePicker?.items.find((entry) => entry.componentId === item.componentId);
+          if (!pickerItem?.candidates || pickerItem.candidates.length === 0) {
+            const searchResult = await searchDraftDeviceCandidatesInternal(state, item.componentId);
+            if (searchResult.updated) {
+              searchedCount += 1;
+            }
+            pickerItem = state.devicePicker?.items.find((entry) => entry.componentId === item.componentId);
+            if (!pickerItem?.candidates || pickerItem.candidates.length === 0) {
+              skippedCount += 1;
+              continue;
+            }
+          }
+          chooseDraftDeviceCandidateInternal(state, {
+            componentId: item.componentId,
+            candidateIndex: 0
+          });
+          appliedCount += 1;
+        }
+        const remaining = state.devicePicker?.items.filter((item) => item.status === "unresolved").length ?? 0;
+        state.summary = `\u5DF2\u6279\u91CF\u786E\u8BA4\u5668\u4EF6\uFF1A\u6210\u529F ${appliedCount}\uFF0C\u8DF3\u8FC7 ${skippedCount}\uFF0C\u8865\u5145\u641C\u7D22 ${searchedCount}\uFF0C\u5269\u4F59\u5F85\u786E\u8BA4 ${remaining}\u3002`;
+        state.toast = { id: Date.now(), message: state.summary };
+        return commitState(internals, state, storage);
+      },
       rollbackLastApply: async () => {
         const state = internals.currentState ?? await computeAnalysisState();
         if (!internals.lastApplyTransactionId) {
@@ -12592,15 +13674,7 @@ ${content}`;
           state.agentRunDetail = result.summary;
           internals.draftPlan = result.draftPlan;
           internals.draftBlocked = result.draftRisk?.level === "blocked";
-          state.draftPlan = result.draftPlan;
-          state.draftPreview = {
-            title: result.draftPreview.title,
-            rationale: result.draftPreview.rationale,
-            componentRefs: result.draftPreview.componentRefs,
-            netNames: result.draftPreview.netNames,
-            componentCount: result.draftPreview.componentCount,
-            netCount: result.draftPreview.netCount
-          };
+          syncDraftPreviewState(state, result.draftPlan);
           state.summary = `\u8349\u6848\u5DF2\u751F\u6210\uFF1A${result.draftPreview.title}\uFF0C\u5171 ${result.draftPreview.componentCount} \u4E2A\u5668\u4EF6\uFF0C${result.draftPreview.netCount} \u6761\u7F51\u7EDC\u3002`;
           state.chatMessages = pluginAgent.buildDraftMessages({
             draftPreview: state.draftPreview,
@@ -12636,15 +13710,7 @@ ${content}`;
       const state = internals.currentState ?? await computeAnalysisState();
       if (result.draftPreview) {
         internals.draftPlan = result.draftPlan;
-        state.draftPlan = result.draftPlan;
-        state.draftPreview = {
-          title: result.draftPreview.title,
-          rationale: result.draftPreview.rationale,
-          componentRefs: result.draftPreview.componentRefs,
-          netNames: result.draftPreview.netNames,
-          componentCount: result.draftPreview.componentCount,
-          netCount: result.draftPreview.netCount
-        };
+        syncDraftPreviewState(state, result.draftPlan);
         state.summary = `\u8349\u6848\u5DF2\u751F\u6210\uFF1A${result.draftPreview.title}\uFF0C\u5171 ${result.draftPreview.componentCount} \u4E2A\u5668\u4EF6\uFF0C${result.draftPreview.netCount} \u6761\u7F51\u7EDC\u3002`;
         state.chatMessages = pluginAgent.buildDraftMessages({
           draftPreview: state.draftPreview,

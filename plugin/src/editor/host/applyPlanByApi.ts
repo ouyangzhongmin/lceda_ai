@@ -197,6 +197,7 @@ async function applyTypedSchematicPlan(plan: DraftPlan): Promise<{ componentIds:
     if (!created) {
       continue;
     }
+    applyComponentDesignator(created, component.ref);
     const primitiveId = created.getState_PrimitiveId();
     componentIds.push(primitiveId);
     const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
@@ -222,7 +223,10 @@ async function applyTypedSchematicPlan(plan: DraftPlan): Promise<{ componentIds:
       .map((nodeId) => placedPins.get(nodeId))
       .filter((item): item is { x: number; y: number; primitiveId: string } => Boolean(item));
     if (nodePoints.length < 2) {
-      continue;
+      const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
+      throw new Error(
+        `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
+      );
     }
     const line = buildOrthogonalPolyline(nodePoints);
     const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
@@ -231,6 +235,8 @@ async function applyTypedSchematicPlan(plan: DraftPlan): Promise<{ componentIds:
     }
     wireIds.push(createdWire.getState_PrimitiveId());
   }
+
+  validateRequiredConnections(plan, placedPins);
 
   return { componentIds, wireIds };
 }
@@ -241,6 +247,87 @@ function parsePlacementNumber(value: string | undefined): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function applyComponentDesignator(created: unknown, ref: string | undefined): void {
+  if (!created || !ref || typeof created !== "object") {
+    return;
+  }
+  const record = created as Record<string, unknown>;
+  const candidateMethodNames = [
+    "setState_Designator",
+    "setDesignator",
+    "setState_Ref",
+  ];
+  for (const methodName of candidateMethodNames) {
+    const method = record[methodName];
+    if (typeof method !== "function") {
+      continue;
+    }
+    try {
+      method.call(created, ref);
+      return;
+    } catch {
+      // Try next compatible setter.
+    }
+  }
+}
+
+function validateRequiredConnections(
+  plan: DraftPlan,
+  placedPins: Map<string, { x: number; y: number; primitiveId: string }>
+): void {
+  const requiredConnections = plan.guidance?.requiredConnections;
+  if (!requiredConnections || requiredConnections.length === 0) {
+    return;
+  }
+
+  const componentsByRef = new Map(
+    plan.components
+      .filter((component) => component.ref)
+      .map((component) => [String(component.ref), component.id] as const)
+  );
+
+  for (const connection of requiredConnections) {
+    const fromComponentId = componentsByRef.get(connection.fromComponentRef);
+    const toComponentId = componentsByRef.get(connection.toComponentRef);
+    const fromPin = resolvePlanPin(plan, fromComponentId, connection.fromPin);
+    const toPin = resolvePlanPin(plan, toComponentId, connection.toPin);
+    const net = plan.nets.find((item) => item.name === connection.netName);
+
+    if (!fromComponentId || !toComponentId || !fromPin || !toPin || !net) {
+      throw new Error(
+        `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+      );
+    }
+
+    if (!net.nodeIds.includes(fromPin.id) || !net.nodeIds.includes(toPin.id)) {
+      throw new Error(
+        `required connection net mismatch: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+      );
+    }
+
+    if (!placedPins.has(fromPin.id) || !placedPins.has(toPin.id)) {
+      throw new Error(
+        `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+      );
+    }
+  }
+}
+
+function resolvePlanPin(
+  plan: DraftPlan,
+  componentId: string | undefined,
+  pinLabel: string
+): DraftPlan["pins"][number] | undefined {
+  if (!componentId) {
+    return undefined;
+  }
+  return plan.pins.find(
+    (pin) =>
+      pin.componentId === componentId &&
+      (String(pin.pinNumber || "").trim() === pinLabel || String(pin.pinName || "").trim() === pinLabel)
+  );
 }
 
 function findBestMatchingPlanPin(

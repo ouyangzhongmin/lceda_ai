@@ -1,0 +1,67 @@
+{
+  "crawled_rows_before_cleanup": 220,
+  "rows_after_cleanup": 217,
+  "pdf_source_count": 31,
+  "pdf_source_rate": 14.29,
+  "topic_distribution_top10": [
+    [
+      "interactive-block-diagrams",
+      104
+    ],
+    [
+      "download",
+      31
+    ],
+    [
+      "power-management",
+      29
+    ],
+    [
+      "power-trees",
+      15
+    ],
+    [
+      "powersolutions",
+      5
+    ],
+    [
+      "video",
+      4
+    ],
+    [
+      "about-ti",
+      4
+    ],
+    [
+      "resources",
+      2
+    ],
+    [
+      "design-resources",
+      2
+    ],
+    [
+      "current-sense-design-tool",
+      1
+    ]
+  ],
+  "vendor_distribution": [
+    [
+      "onsemi.com",
+      169
+    ],
+    [
+      "ti.com",
+      42
+    ],
+    [
+      "training.ti.com",
+      6
+    ]
+  ],
+  "cleanup_summary": {
+    "removed_low_value_files": 1,
+    "removed_duplicate_rows": 0,
+    "removed_empty_files": 0
+  }
+}

@@ -1,0 +1,74 @@
+import type { RagSearchResult } from "../../services/rag/ragClient";
+import type { DraftPlanGuidance } from "./draftPlan";
+
+function buildHaystack(results: RagSearchResult[]): string {
+  return results
+    .flatMap((item) => [item.title, item.snippet, item.source_ref])
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+export function buildDraftGuidanceFromRag(
+  userQuery: string,
+  results: RagSearchResult[]
+): DraftPlanGuidance | undefined {
+  const normalizedQuery = userQuery.toLowerCase();
+  const haystack = buildHaystack(results);
+  const looksLikeLedIndicator =
+    /led|发光二极管|点亮|指示灯/u.test(userQuery) &&
+    !/ldo|稳压|regulator|3\.3v|3v3/u.test(userQuery);
+
+  const evidence = results.slice(0, 3).map((item) => ({
+    title: item.title,
+    snippet: item.snippet,
+    sourceRef: item.source_ref,
+  }));
+
+  if (looksLikeLedIndicator) {
+    const prefersTwoPinHeader = /(2pin|1x2|两针|2 针|2pin header)/i.test(haystack) || results.length === 0;
+    const prefersRedLed = /(red|红色)/i.test(haystack) || results.length === 0;
+    const resistorHint = /(150\s*(ω|ohm)|限流电阻.*150)/i.test(haystack) ? "150Ω resistor R0805" : "150Ω resistor R0805";
+
+    return {
+      templateId: "led_indicator_minimal",
+      rationale: "RAG guidance suggests using a minimal LED indicator topology with a power connector, current-limiting resistor, and LED.",
+      evidence,
+      preferredSearches: {
+        power_connector: prefersTwoPinHeader ? "header 1x2 2pin HDR-TH_1X2" : "power connector 2pin",
+        resistor: resistorHint,
+        led: prefersRedLed ? "red LED 3mm through hole" : "LED through hole",
+      },
+      requiredNets: ["5V", "LED_ANODE", "GND"],
+      requiredConnections: [
+        { fromComponentRef: "J1", fromPin: "1", toComponentRef: "R1", toPin: "1", netName: "5V" },
+        { fromComponentRef: "R1", fromPin: "2", toComponentRef: "D1", toPin: "1", netName: "LED_ANODE" },
+        { fromComponentRef: "D1", fromPin: "2", toComponentRef: "J1", toPin: "2", netName: "GND" },
+      ],
+    };
+  }
+
+  if (/ldo|稳压|3\.3v|3v3/u.test(userQuery)) {
+    return {
+      templateId: "ldo_minimal",
+      rationale: "RAG guidance suggests using a minimal LDO topology with input and output capacitors.",
+      evidence,
+      preferredSearches: {
+        ldo_regulator: "ldo regulator 3.3V",
+        input_capacitor: "10uF capacitor 0603",
+        output_capacitor: "10uF capacitor 0603",
+      },
+      requiredNets: ["5V", "3V3", "GND"],
+    };
+  }
+
+  if (normalizedQuery.trim()) {
+    return {
+      templateId: "generic",
+      rationale: "RAG guidance available but no dedicated draft template matched; fall back to generic draft generation.",
+      evidence,
+    };
+  }
+
+  return undefined;
+}

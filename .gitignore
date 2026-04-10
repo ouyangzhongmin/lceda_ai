@@ -15,6 +15,9 @@
 *.swo
 *~
 
+wal.log*
+catalog/LOG/
+
 # Go
 *.exe
 *.exe~

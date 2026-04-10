@@ -31,6 +31,7 @@ type creditsService interface {
 type ragService interface {
 	Search(query string, topK int) ([]ragusecase.SearchResult, error)
 	BuildCitationPackage(query string, topK int) (ragusecase.CitationPackage, error)
+	ProviderName() string
 }
 
 type knowledgeService interface {

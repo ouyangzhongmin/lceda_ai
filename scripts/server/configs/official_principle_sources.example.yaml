@@ -1,0 +1,26 @@
+seed_urls:
+  - "https://www.ti.com/power-management/linear-regulators/overview.html"
+  - "https://www.analog.com/en/analog-dialogue.html"
+  - "https://www.st.com/content/st_com/en/applications.html"
+allowed_domains:
+  - "ti.com"
+  - "analog.com"
+  - "st.com"
+include_path_keywords:
+  - "/application"
+  - "/app"
+  - "/design"
+  - "/power"
+exclude_path_keywords:
+  - "/login"
+  - "/account"
+  - "/cart"
+kb_type: "principle"
+source_type: "official_doc"
+lang: "zh-CN"
+max_pages: 120
+timeout_seconds: 15
+sleep_seconds: 0.7
+min_content_chars: 220
+user_agent: "lceda-rag-crawler/0.1"
+respect_robots_txt: true

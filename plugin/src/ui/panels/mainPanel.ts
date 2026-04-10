@@ -38,8 +38,40 @@ export interface MainPanelState {
     netNames: string[];
     componentCount: number;
     netCount: number;
+    selectedDeviceDetails?: string[];
+    unresolvedDeviceDetails?: string[];
+    guidanceSummary?: {
+      templateId: string;
+      rationale: string;
+      preferredSearches?: string[];
+      requiredNets?: string[];
+      requiredConnections?: string[];
+      evidence?: string[];
+    };
   };
   draftPlan?: DraftPlan;
+  devicePicker?: {
+    open: boolean;
+    items: Array<{
+      componentId: string;
+      componentRef: string;
+      role: string;
+      query?: string;
+      status: "resolved" | "unresolved";
+      reason?: string;
+      selectedDeviceLabel?: string;
+      candidates?: Array<{
+        uuid: string;
+        name: string;
+        libraryUuid: string;
+        footprintName?: string;
+        manufacturer?: string;
+        supplier?: string;
+        supplierId?: string;
+        description?: string;
+      }>;
+    }>;
+  };
   chatMessages?: Array<{
     role: "assistant" | "user" | "system";
     title?: string;
@@ -134,7 +166,7 @@ export interface MainPanelState {
     streaming?: boolean;
     actions?: Array<{
       label: string;
-      action: "login" | "rerun" | "locate" | "apply_draft" | "rollback";
+      action: "login" | "rerun" | "locate" | "apply_draft" | "rollback" | "select_devices";
       payload?: string;
     }>;
     analysisMarkdown?: string;

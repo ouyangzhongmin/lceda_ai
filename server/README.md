@@ -41,6 +41,12 @@
   - `MEMORY_EMBEDDING_PROVIDER`
   - `MEMORY_EMBEDDING_MODEL`
   - `MEMORY_ENABLE_FALLBACK`（默认 `true`）
+  - `RAGFLOW_ENABLED`（默认 `false`）
+  - `RAGFLOW_BASE_URL`
+  - `RAGFLOW_API_KEY`
+  - `RAGFLOW_DATASET_ID`
+  - `RAGFLOW_ENDPOINT_TEMPLATE`（默认 `/api/v1/datasets/{dataset_id}/search`）
+  - `RAGFLOW_TIMEOUT_SECONDS`（默认 `12`）
   - `LLM_PROVIDER`
   - `LLM_ENABLE_FALLBACK`（默认 `true`）
   - `LLM_REQUEST_TIMEOUT_MS` / `LLM_RETRY_COUNT` / `LLM_RETRY_BACKOFF_MS`
@@ -203,4 +209,4 @@
     - `manual_retry_rejected_count`（非死信任务触发 `:retry` 的拒绝次数）
     - `claimed_message_count`（从 pending 认领处理次数）
     - `stream_message_count`（消费组新消息处理次数）
-    - `queue_pending_count`（队列当前 pending 估算值）
+  - `queue_pending_count`（队列当前 pending 估算值）
