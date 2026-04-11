@@ -17,6 +17,13 @@
 
 wal.log*
 catalog/
+catalog/LOG
+server/deploy/ragflow/data/infinity/catalog/LOG
+.npm-cache/
+.pw-cache/
+config.yaml
+drawio/
+excalidraw/
 
 # Go
 *.exe
