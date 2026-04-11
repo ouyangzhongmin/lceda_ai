@@ -16,7 +16,7 @@
 *~
 
 wal.log*
-catalog/LOG/
+catalog/
 
 # Go
 *.exe

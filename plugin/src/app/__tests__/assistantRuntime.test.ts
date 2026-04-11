@@ -6,8 +6,10 @@ import {
   appendUserChatMessage,
   buildDevicePickerApplyProgressText,
   buildDevicePickerSearchProgressText,
+  deriveSessionHistoryEntries,
   finalizeDraftTurnMessages,
   hasUnresolvedDraftDevices,
+  normalizeDevicePickerCandidates,
   shouldAutoApplyDraftFromChatInput,
   shouldIgnoreDuplicateSendWhileRunning,
 } from "../assistantRuntime";
@@ -227,4 +229,46 @@ test("buildDevicePickerSearchProgressText returns expected progress text", () =>
 
 test("buildDevicePickerApplyProgressText returns expected progress text", () => {
   assert.equal(buildDevicePickerApplyProgressText(3, 7), "正在确认待确认器件（3/7）...");
+});
+
+test("normalizeDevicePickerCandidates unwraps wrapped host payload and maps title-based fields", () => {
+  const candidates = normalizeDevicePickerCandidates({
+    success: true,
+    code: 0,
+    result: [
+      {
+        uuid: "8eee80085aeb4c14ba56d613c645ea4b",
+        title: "rps6045-47mt",
+        owner: {
+          uuid: "0819f05c4eef4c71ace90d822a990e87",
+          username: "LCSC",
+          nickname: "LCSC",
+        },
+        description: "4.7uH power inductor",
+      },
+    ],
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.uuid, "8eee80085aeb4c14ba56d613c645ea4b");
+  assert.equal(candidates[0]?.name, "rps6045-47mt");
+  assert.equal(candidates[0]?.libraryUuid, "0819f05c4eef4c71ace90d822a990e87");
+  assert.equal(candidates[0]?.description, "4.7uH power inductor");
+});
+
+test("deriveSessionHistoryEntries migrates last_state into history when session index is empty", () => {
+  const lastState: MainPanelState = {
+    loggedIn: true,
+    sessionTitle: "LED 电源检查",
+    summary: "已恢复上次会话。",
+    chatMessages: [
+      { role: "user", title: "你", content: "帮我检查 LED 供电" },
+      { role: "assistant", title: "分析结果", content: "发现限流电阻缺失。" },
+    ],
+  };
+
+  const entries = deriveSessionHistoryEntries(undefined, lastState);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]?.sessionTitle, "LED 电源检查");
+  assert.ok(entries[0]?.sessionId);
 });

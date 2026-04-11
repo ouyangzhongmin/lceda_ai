@@ -61,19 +61,6 @@ export interface AgentStepState extends AgentPlanStep {
   observation?: string;
 }
 
-export interface AgentTurnPlan {
-  intent: "chat" | "analysis" | "draft";
-  route: AgentRoute;
-  requiresContext: boolean;
-  steps: AgentPlanStep[];
-  followup?: {
-    route: AgentRoute;
-    requiresContext: boolean;
-    steps: AgentPlanStep[];
-    when?: string;
-  };
-}
-
 export interface AgentWorkingMemory {
   hasContext: boolean;
   mcpReady: boolean;
@@ -200,7 +187,5 @@ export interface AgentResult {
 
 export interface AgentTurnResult {
   route: AgentRoute;
-  intent: "chat" | "analysis" | "draft";
-  plan: AgentTurnPlan;
   result: AgentResult;
 }

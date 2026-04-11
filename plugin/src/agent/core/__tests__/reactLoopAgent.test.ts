@@ -377,6 +377,104 @@ test("runReActLoop settles tool_call react event status after tool result", asyn
   assert.equal(toolCallEvent?.status, "done");
 });
 
+test("runReActLoop blocks draft final until required draft tools are completed", async () => {
+  let llmCalls = 0;
+  const toolCalls: string[] = [];
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "帮我设计一个基于ESP32-S3的语音设备原理图" },
+    allowedTools: ["draft_generate_plan", "draft_preview_plan"],
+    listToolNames: () => ["draft_generate_plan", "draft_preview_plan", "llm_generate"],
+    invokeTool: async (toolName) => {
+      if (toolName === "llm_generate") {
+        llmCalls += 1;
+        if (llmCalls === 1) {
+          return {
+            output_text: "",
+            tool_calls: [
+              {
+                id: "call_plan",
+                type: "function",
+                function: {
+                  name: "draft_generate_plan",
+                  arguments: JSON.stringify({
+                    userQuery: "帮我设计一个基于ESP32-S3的语音设备原理图",
+                    spec: {
+                      systemType: "esp32_s3_voice_device",
+                      title: "ESP32-S3 Voice Device",
+                      rationale: "structured",
+                      components: [],
+                      nets: [],
+                      connections: [],
+                    },
+                  }),
+                },
+              },
+            ],
+          } as never;
+        }
+        if (llmCalls === 2) {
+          return {
+            output_text: '{"type":"final","route":"draft","rationale":"done","output":"no preview"}',
+          } as never;
+        }
+        if (llmCalls === 3) {
+          return {
+            output_text: "",
+            tool_calls: [
+              {
+                id: "call_preview",
+                type: "function",
+                function: {
+                  name: "draft_preview_plan",
+                  arguments: "{}",
+                },
+              },
+            ],
+          } as never;
+        }
+        return {
+          output_text: '{"type":"final","route":"draft","rationale":"done","output":"with preview"}',
+        } as never;
+      }
+      if (toolName === "draft_generate_plan") {
+        toolCalls.push("draft_generate_plan");
+        return { title: "ESP32-S3 Voice Device", components: [], pins: [], nets: [] } as never;
+      }
+      if (toolName === "draft_preview_plan") {
+        toolCalls.push("draft_preview_plan");
+        return { title: "ESP32-S3 Voice Device", componentCount: 0, netCount: 0 } as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  const result = await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+    toolDefinitions: [
+      {
+        name: "draft_generate_plan",
+        description: "根据用户需求生成最小可用的原理图草案计划",
+        parameters: { type: "object", properties: { userQuery: { type: "string" }, spec: { type: "object" } }, required: ["userQuery"], additionalProperties: true },
+      },
+      {
+        name: "draft_preview_plan",
+        description: "根据草案计划生成预览摘要",
+        parameters: { type: "object", properties: { plan: { type: "object" } }, additionalProperties: true },
+      },
+    ],
+    requiredTools: ["draft_generate_plan", "draft_preview_plan"],
+  });
+
+  assert.equal(llmCalls, 4);
+  assert.equal(result.finalRoute, "draft");
+  assert.equal(result.finalOutput, "with preview");
+  assert.deepEqual(toolCalls, ["draft_generate_plan", "draft_preview_plan"]);
+  assert.deepEqual(result.observations.map((item) => item.tool), ["draft_generate_plan", "draft_preview_plan"]);
+});
+
 test("runUnifiedReactAgent forces analysis queries to fetch context and run checks", async () => {
   const registry = new ToolRegistry();
   const llmRequestKinds: string[] = [];
@@ -875,4 +973,341 @@ test("runUnifiedReactAgent reuses persisted draftPlan for follow-up draft previe
   assert.deepEqual(previewInput, { plan: persistedDraftPlan });
   assert.equal(result.draftPreview?.title, "5V LED Indicator Draft");
   assert.deepEqual(result.draftPreview?.componentRefs, ["J1", "R1", "D1"]);
+});
+
+test("runUnifiedReactAgent can drive draft generation through rag -> draft plan with inline spec", async () => {
+  const registry = new ToolRegistry();
+  const toolCalls: string[] = [];
+  let llmCalls = 0;
+  let draftPlanInput: any;
+  let firstLlmTools: any[] = [];
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async (input: any) => {
+      if (llmCalls === 0) {
+        firstLlmTools = Array.isArray(input?.tools) ? input.tools : [];
+      }
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_rag",
+              type: "function",
+              function: { name: "rag_search", arguments: JSON.stringify({ query: "ESP32-S3 语音设备模板" }) },
+            },
+          ],
+        };
+      }
+      if (llmCalls === 2) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_plan",
+              type: "function",
+              function: {
+                name: "draft_generate_plan",
+                arguments: JSON.stringify({
+                  userQuery: "生成基于esp32-s3的小智语音聊天设备原理图",
+                  spec: {
+                    systemType: "esp32_s3_voice_device",
+                    title: "ESP32-S3 Voice Chat Device",
+                    rationale: "spec approved",
+                    components: [
+                      {
+                        id: "draft-u1",
+                        ref: "U1",
+                        role: "mcu_module",
+                        name: "ESP32-S3 Module",
+                        value: "ESP32-S3",
+                        packageName: "RF-MODULE_ESP32-S3-WROOM-1",
+                        searchQuery: "ESP32-S3-WROOM-1",
+                        pins: [{ id: "draft-u1-3v3", pinName: "3V3", electricalType: "power_in" }],
+                      },
+                    ],
+                    nets: [{ id: "net-3v3", name: "3V3", isPower: true }],
+                    connections: [{ netName: "3V3", pinIds: ["draft-u1-3v3"] }],
+                  },
+                }),
+              },
+            },
+          ],
+        };
+      }
+      if (llmCalls === 3) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_preview",
+              type: "function",
+              function: { name: "draft_preview_plan", arguments: "{}" },
+            },
+          ],
+        };
+      }
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"done","output":"ok"}',
+      };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "rag_search",
+    description: "检索知识",
+    parameters: { type: "object", properties: { query: { type: "string" } }, additionalProperties: true },
+    execute: async () => {
+      toolCalls.push("rag_search");
+      return {
+        results: [{ title: "voice ref", snippet: "ESP32-S3 + codec + USB-C", source_ref: "kb://voice" }],
+      };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "draft_generate_plan",
+    description: "生成草案计划",
+    parameters: {
+      type: "object",
+      properties: {
+        userQuery: { type: "string" },
+        spec: { type: "object" },
+        planningMode: { type: "string", enum: ["auto", "structured_spec_required"] },
+      },
+      additionalProperties: true,
+    },
+    execute: async (input: any) => {
+      toolCalls.push("draft_generate_plan");
+      draftPlanInput = input;
+      return {
+        title: input.spec.title,
+        rationale: input.spec.rationale,
+        components: [{ id: "draft-u1", ref: "U1", properties: {} }],
+        pins: [{ id: "draft-u1-3v3", componentId: "draft-u1", pinName: "3V3" }],
+        nets: [{ id: "net-3v3", name: "3V3", nodeIds: ["draft-u1-3v3"], isPower: true }],
+      };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "draft_preview_plan",
+    description: "预览草案计划",
+    parameters: { type: "object", properties: { plan: { type: "object" } }, additionalProperties: true },
+    execute: async () => {
+      toolCalls.push("draft_preview_plan");
+      return {
+        title: "ESP32-S3 Voice Chat Device",
+        rationale: "spec approved",
+        componentRefs: ["U1"],
+        netNames: ["3V3"],
+        componentCount: 1,
+        netCount: 1,
+      };
+    },
+  } satisfies AgentTool);
+
+  const { result } = await runUnifiedReactAgent({
+    userQuery: "生成基于esp32-s3的小智语音聊天设备原理图",
+    panelState: { loggedIn: true } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate", "rag_search", "draft_generate_plan", "draft_preview_plan"],
+  });
+
+  assert.equal(result.draftPreview?.title, "ESP32-S3 Voice Chat Device");
+  assert.deepEqual(toolCalls, ["rag_search", "draft_generate_plan", "draft_preview_plan"]);
+  assert.equal(draftPlanInput.planningMode, "structured_spec_required");
+  const draftTool = firstLlmTools.find((tool) => tool?.function?.name === "draft_generate_plan");
+  assert.deepEqual(draftTool?.function?.parameters?.properties?.planningMode?.enum, ["auto", "structured_spec_required"]);
+});
+
+test("runUnifiedReactAgent does not fake draft success when structured spec is missing", async () => {
+  const registry = new ToolRegistry();
+  let llmCalls = 0;
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_plan_without_spec",
+              type: "function",
+              function: {
+                name: "draft_generate_plan",
+                arguments: JSON.stringify({
+                  userQuery: "生成基于esp32-s3的小智语音聊天设备原理图",
+                }),
+              },
+            },
+          ],
+        };
+      }
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"failed as expected","output":"草案生成失败，缺少结构化 spec。"}',
+      };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "draft_generate_plan",
+    description: "生成草案计划",
+    parameters: {
+      type: "object",
+      properties: {
+        userQuery: { type: "string" },
+        spec: { type: "object" },
+        planningMode: { type: "string", enum: ["auto", "structured_spec_required"] },
+      },
+      additionalProperties: true,
+    },
+    execute: async (input: any) => {
+      if (!input.spec && input.planningMode === "structured_spec_required") {
+        throw new Error("planningMode=structured_spec_required requires llm-authored spec before draft_generate_plan");
+      }
+      return {
+        title: "unexpected success",
+        rationale: "unexpected success",
+        components: [],
+        pins: [],
+        nets: [],
+      };
+    },
+  } satisfies AgentTool);
+
+  const { result } = await runUnifiedReactAgent({
+    userQuery: "生成基于esp32-s3的小智语音聊天设备原理图",
+    panelState: { loggedIn: true } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate", "draft_generate_plan"],
+  });
+
+  assert.equal(result.draftPlan, undefined);
+  assert.equal(result.draftPreview, undefined);
+  assert.equal(result.naturalReply, undefined);
+  assert.equal(result.analysisMarkdown, undefined);
+  assert.equal(result.toolTraces?.some((item) => item.toolName === "draft_generate_plan" && item.status === "blocked"), true);
+  assert.equal(
+    result.reactEvents?.some((event) => event.kind === "observation" && event.status === "failed" && /structured_spec_required/.test(event.text)),
+    true
+  );
+});
+
+test("runUnifiedReactAgent honors explicit schematic_draft taskType over query keywords", async () => {
+  const registry = new ToolRegistry();
+  const toolCalls: string[] = [];
+  let llmCalls = 0;
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_plan",
+              type: "function",
+              function: {
+                name: "draft_generate_plan",
+                arguments: JSON.stringify({
+                  userQuery: "继续这个方案",
+                  spec: {
+                    systemType: "esp32_s3_voice_device",
+                    title: "ESP32-S3 Voice Chat Device",
+                    rationale: "spec approved",
+                    components: [],
+                    nets: [],
+                    connections: [],
+                  },
+                }),
+              },
+            },
+          ],
+        };
+      }
+      if (llmCalls === 2) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_preview",
+              type: "function",
+              function: { name: "draft_preview_plan", arguments: "{}" },
+            },
+          ],
+        };
+      }
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"done","output":"ok"}',
+      };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "draft_generate_plan",
+    description: "生成草案计划",
+    parameters: {
+      type: "object",
+      properties: {
+        userQuery: { type: "string" },
+        spec: { type: "object" },
+        planningMode: { type: "string", enum: ["auto", "structured_spec_required"] },
+      },
+      additionalProperties: true,
+    },
+    execute: async (input: any) => {
+      toolCalls.push(`draft_generate_plan:${input.planningMode}`);
+      return {
+        title: input.spec.title,
+        rationale: input.spec.rationale,
+        components: [],
+        pins: [],
+        nets: [],
+      };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "draft_preview_plan",
+    description: "预览草案计划",
+    parameters: { type: "object", properties: { plan: { type: "object" } }, additionalProperties: true },
+    execute: async () => {
+      toolCalls.push("draft_preview_plan");
+      return {
+        title: "ESP32-S3 Voice Chat Device",
+        rationale: "spec approved",
+        componentRefs: [],
+        netNames: [],
+        componentCount: 0,
+        netCount: 0,
+      };
+    },
+  } satisfies AgentTool);
+
+  const { result } = await runUnifiedReactAgent({
+    taskType: "schematic_draft",
+    userQuery: "继续这个方案",
+    panelState: { loggedIn: true } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate", "draft_generate_plan", "draft_preview_plan"],
+  });
+
+  assert.equal(result.draftPreview?.title, "ESP32-S3 Voice Chat Device");
+  assert.deepEqual(toolCalls, ["draft_generate_plan:structured_spec_required", "draft_preview_plan"]);
 });

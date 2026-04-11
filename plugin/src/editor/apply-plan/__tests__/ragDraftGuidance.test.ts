@@ -84,10 +84,14 @@ test("previewDraftPlan exposes guidance summary for downstream UI rendering", ()
   assert.equal(preview.guidanceSummary?.templateId, "led_indicator_minimal");
   assert.deepEqual(preview.guidanceSummary?.requiredNets, ["5V", "LED_ANODE", "GND"]);
   assert.equal(
-    preview.guidanceSummary?.preferredSearches?.some((item) => item.includes("power_connector")),
+    preview.guidanceSummary?.preferredSearches?.some((item) => item.includes("电源接口")),
     true
   );
-  assert.equal(preview.guidanceSummary?.evidence?.[0]?.includes("kb://led_indicator"), true);
+  assert.equal(preview.guidanceSummary?.evidence?.[0]?.includes("依据：LED indicator"), true);
+  assert.equal(
+    preview.guidanceSummary?.evidence?.[0]?.includes("来源：知识条目 led_indicator（kb://led_indicator）"),
+    true
+  );
 });
 
 test("previewDraftPlan exposes selected device details for downstream UI rendering", () => {

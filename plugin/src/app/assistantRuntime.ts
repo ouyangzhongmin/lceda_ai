@@ -22,6 +22,9 @@ import { previewDraftPlan } from "../editor/apply-plan/previewDraftPlan";
 const GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
 const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
 const PANEL_STATE_STORAGE_KEY = "lceda_ai.panel.last_state";
+const PANEL_SESSION_INDEX_STORAGE_KEY = "lceda_ai.panel.session_index";
+const PANEL_SESSION_STATE_PREFIX = "lceda_ai.panel.session.";
+const MAX_SESSION_HISTORY = 20;
 type IssueObjectType = "component" | "pin" | "net";
 const LOG_PREFIX = "[LCEDA-AI][runtime]";
 const ENABLE_VERBOSE_RUNTIME_LOGS = false;
@@ -251,6 +254,88 @@ export function buildDevicePickerApplyProgressText(current: number, total: numbe
   return `正在确认待确认器件（${current}/${total}）...`;
 }
 
+export interface SessionHistoryEntry {
+  sessionId: string;
+  sessionTitle: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DevicePickerCandidate {
+  uuid: string;
+  name: string;
+  libraryUuid: string;
+  footprintName?: string;
+  manufacturer?: string;
+  supplier?: string;
+  supplierId?: string;
+  description?: string;
+}
+
+function readSearchString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function unwrapLibrarySearchResults(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const record = payload as Record<string, unknown>;
+  if (Array.isArray(record.result)) {
+    return record.result;
+  }
+  if (Array.isArray(record.results)) {
+    return record.results;
+  }
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+  return [];
+}
+
+export function normalizeDevicePickerCandidates(payload: unknown): DevicePickerCandidate[] {
+  return unwrapLibrarySearchResults(payload)
+    .map((item) => {
+      const record = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
+      const owner =
+        typeof record.owner === "object" && record.owner !== null
+          ? (record.owner as Record<string, unknown>)
+          : undefined;
+      const uuid =
+        readSearchString(record, ["uuid", "deviceUuid", "id"]) ??
+        readSearchString(owner ?? {}, ["uuid"]);
+      if (!uuid) {
+        return undefined;
+      }
+      return {
+        uuid,
+        name:
+          readSearchString(record, ["name", "title", "symbol"]) ??
+          readSearchString(owner ?? {}, ["nickname", "username"]) ??
+          uuid,
+        libraryUuid:
+          readSearchString(record, ["libraryUuid", "library_uuid", "ownerUuid"]) ??
+          readSearchString(owner ?? {}, ["uuid"]) ??
+          "",
+        footprintName: readSearchString(record, ["footprintName", "packageName", "package"]),
+        manufacturer: readSearchString(record, ["manufacturer", "brand"]),
+        supplier: readSearchString(record, ["supplier", "ownerName"]),
+        supplierId: readSearchString(record, ["supplierId", "lcscId", "lcsc_id"]),
+        description: readSearchString(record, ["description", "desc"]),
+      } as DevicePickerCandidate;
+    })
+    .filter((item): item is DevicePickerCandidate => Boolean(item));
+}
+
 function inferDraftComponentRole(refOrName: string): string {
   const value = String(refOrName || "").toUpperCase();
   if (value.startsWith("J")) return "power_connector";
@@ -273,7 +358,7 @@ function buildDevicePickerState(plan?: DraftPlan): MainPanelState["devicePicker"
   const items = plan.components.map((component) => {
     const ref = component.ref ?? component.id;
     const selected = selectedByComponentId.get(component.id);
-    const status =
+    const status: "unresolved" | "resolved" =
       component.properties?.device_resolution_status === "unresolved" ? "unresolved" : "resolved";
     return {
       componentId: component.id,
@@ -314,6 +399,76 @@ function syncDraftPreviewState(state: MainPanelState, plan: DraftPlan | undefine
     guidanceSummary: preview.guidanceSummary,
   };
   state.devicePicker = buildDevicePickerState(plan);
+}
+
+function createSessionId(): string {
+  return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function deriveSessionTitleFromState(state?: MainPanelState): string {
+  const explicit = String(state?.sessionTitle || "").trim();
+  if (explicit) {
+    return explicit;
+  }
+  const firstUserMessage = (state?.chatMessages ?? []).find((message) => message.role === "user" && String(message.content || "").trim());
+  const inferred = distillSessionTitle(String(firstUserMessage?.content || "").trim());
+  return inferred || "未命名会话";
+}
+
+function normalizeSessionHistoryEntry(entry: unknown): SessionHistoryEntry | undefined {
+  if (!entry || typeof entry !== "object") {
+    return undefined;
+  }
+  const record = entry as Record<string, unknown>;
+  const sessionId = String(record.sessionId || "").trim();
+  if (!sessionId) {
+    return undefined;
+  }
+  const createdAt = String(record.createdAt || record.updatedAt || new Date().toISOString());
+  const updatedAt = String(record.updatedAt || createdAt);
+  return {
+    sessionId,
+    sessionTitle: String(record.sessionTitle || "未命名会话").trim() || "未命名会话",
+    createdAt,
+    updatedAt,
+  };
+}
+
+export function deriveSessionHistoryEntries(
+  rawIndex: string | undefined,
+  lastState?: MainPanelState
+): SessionHistoryEntry[] {
+  const parsedEntries = (() => {
+    if (!rawIndex) return [];
+    try {
+      const parsed = JSON.parse(rawIndex) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(normalizeSessionHistoryEntry).filter((item): item is SessionHistoryEntry => Boolean(item));
+    } catch {
+      return [];
+    }
+  })();
+  if (parsedEntries.length > 0) {
+    return parsedEntries
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .slice(0, MAX_SESSION_HISTORY);
+  }
+  if (!lastState) {
+    return [];
+  }
+  const fallbackNow = new Date().toISOString();
+  return [
+    {
+      sessionId: String((lastState as MainPanelState & { sessionId?: string }).sessionId || "").trim() || createSessionId(),
+      sessionTitle: deriveSessionTitleFromState(lastState),
+      createdAt: String((lastState as MainPanelState & { createdAt?: string }).createdAt || fallbackNow),
+      updatedAt: String((lastState as MainPanelState & { updatedAt?: string }).updatedAt || fallbackNow),
+    },
+  ];
+}
+
+function buildSessionStateStorageKey(sessionId: string): string {
+  return `${PANEL_SESSION_STATE_PREFIX}${sessionId}`;
 }
 
 function formatReactEventLine(event: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T> ? T : never): string {
@@ -390,6 +545,8 @@ export interface AssistantRuntime {
     model: string;
   }): Promise<MainPanelState>;
   setLlmMode(input: { mode: LlmMode }): Promise<MainPanelState>;
+  listSessionHistory(): Promise<SessionHistoryEntry[]>;
+  restoreSession(sessionId: string): Promise<MainPanelState>;
   syncState(): Promise<MainPanelState>;
   getLastState(): MainPanelState | null;
 }
@@ -403,6 +560,7 @@ interface RuntimeInternals {
   lastApplyTransactionId?: string;
   pendingChatInput?: string;
   activeTurnId?: number;
+  sessionId?: string;
   activeLoginSession?: {
     loginSessionId: string;
     pollToken: string;
@@ -492,8 +650,13 @@ function createAssistantRuntime(): AssistantRuntime {
   async function openIdlePanelState(): Promise<MainPanelState> {
     const restored = await restorePanelState(storage);
     if (restored) {
-        internals.draftPlan = restored.draftPlan;
-        await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
+      internals.sessionId = String((restored as MainPanelState & { sessionId?: string }).sessionId || "").trim() || undefined;
+      internals.draftPlan = restored.draftPlan;
+      internals.issueItems = (restored.issueItems ?? []).map((item) => ({
+        objectId: item.objectId,
+        objectType: item.objectType as IssueObjectType | undefined,
+      }));
+      await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
       if (
         restored.agentRunState === "planning" ||
         restored.agentRunState === "running_tools" ||
@@ -507,6 +670,10 @@ function createAssistantRuntime(): AssistantRuntime {
       return commitState(internals, restored, storage);
     }
     const state = await buildBaseState();
+    (state as MainPanelState & { sessionId?: string; createdAt?: string; updatedAt?: string }).sessionId = createSessionId();
+    (state as MainPanelState & { sessionId?: string; createdAt?: string; updatedAt?: string }).createdAt = new Date().toISOString();
+    (state as MainPanelState & { sessionId?: string; createdAt?: string; updatedAt?: string }).updatedAt = (state as MainPanelState & { updatedAt?: string }).createdAt;
+    internals.sessionId = (state as MainPanelState & { sessionId?: string }).sessionId;
     state.sessionTitle = "New Session";
     state.agentRunState = "idle";
     state.agentRunDetail = "等待用户输入";
@@ -855,7 +1022,8 @@ function createAssistantRuntime(): AssistantRuntime {
       state.toast = { id: Date.now(), message: state.summary };
       return { state, updated: false, candidateCount: 0 };
     }
-    const candidates = await bridge.searchLibraryDevices({ query, scope: "system", pageSize: 8 });
+    const rawCandidates = await bridge.searchLibraryDevices({ query, scope: "system", pageSize: 8 });
+    const candidates = normalizeDevicePickerCandidates(rawCandidates);
     const previousPicker = state.devicePicker;
     const picker = buildDevicePickerState(plan) ?? { open: true, items: [] };
     picker.open = true;
@@ -865,21 +1033,12 @@ function createAssistantRuntime(): AssistantRuntime {
         return previousItem?.candidates && previousItem.candidates.length > 0
           ? { ...item, candidates: previousItem.candidates }
           : item;
-      }
-      return {
-        ...item,
-        candidates: candidates.map((candidate) => ({
-          uuid: candidate.uuid,
-          name: candidate.name,
-          libraryUuid: candidate.libraryUuid,
-          footprintName: candidate.footprintName,
-          manufacturer: candidate.manufacturer,
-          supplier: candidate.supplier,
-          supplierId: candidate.supplierId,
-          description: candidate.description,
-        })),
-      };
-    });
+        }
+        return {
+          ...item,
+          candidates,
+        };
+      });
     state.devicePicker = picker;
     return { state, updated: true, candidateCount: candidates.length };
   }
@@ -1016,6 +1175,7 @@ function createAssistantRuntime(): AssistantRuntime {
     },
     resetSession: async (): Promise<MainPanelState> => {
       internals.currentState = null;
+      internals.sessionId = undefined;
       internals.issueItems = [];
       internals.draftPlan = undefined;
       internals.draftBlocked = undefined;
@@ -1654,6 +1814,37 @@ function createAssistantRuntime(): AssistantRuntime {
           : "已切换为自定义 LLM（无需登录）。";
       state.nextActions = buildNextActions(state);
       return commitState(internals, state, storage);
+    },
+    listSessionHistory: async (): Promise<SessionHistoryEntry[]> => {
+      return readSessionHistoryIndex(storage);
+    },
+    restoreSession: async (sessionId: string): Promise<MainPanelState> => {
+      const restored = await readSessionState(storage, sessionId);
+      if (!restored) {
+        const state = internals.currentState ?? (await openIdlePanelState());
+        state.toast = {
+          id: Date.now(),
+          message: "未找到对应历史会话。",
+        };
+        return commitState(internals, state, storage);
+      }
+      internals.sessionId = sessionId;
+      internals.draftPlan = restored.draftPlan;
+      internals.issueItems = (restored.issueItems ?? []).map((item) => ({
+        objectId: item.objectId,
+        objectType: item.objectType as IssueObjectType | undefined,
+      }));
+      await fillSettingsState(restored, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
+      restored.agentRunState =
+        restored.agentRunState === "planning" ||
+        restored.agentRunState === "running_tools" ||
+        restored.agentRunState === "waiting_llm"
+          ? "idle"
+          : restored.agentRunState;
+      restored.agentRunDetail = "已恢复历史会话";
+      restored.summary = restored.summary || "已恢复历史会话。";
+      restored.nextActions = buildNextActions(restored);
+      return commitState(internals, restored, storage);
     },
     syncState: async (): Promise<MainPanelState> => {
       if (!internals.currentState) {
@@ -2563,7 +2754,82 @@ function isWideCharacter(char: string): boolean {
   return /[^\u0000-\u00ff]/u.test(char);
 }
 
+async function readSessionHistoryIndex(storage: LocalStorageKeyValueStore): Promise<SessionHistoryEntry[]> {
+  const rawIndex = await storage.getItem(PANEL_SESSION_INDEX_STORAGE_KEY);
+  const lastState = await restorePanelStateSnapshot(storage);
+  return deriveSessionHistoryEntries(rawIndex || undefined, lastState);
+}
+
+async function writeSessionHistoryIndex(storage: LocalStorageKeyValueStore, entries: SessionHistoryEntry[]): Promise<void> {
+  await storage.setItem(PANEL_SESSION_INDEX_STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_SESSION_HISTORY)));
+}
+
+async function readSessionState(storage: LocalStorageKeyValueStore, sessionId: string): Promise<MainPanelState | undefined> {
+  try {
+    const raw = await storage.getItem(buildSessionStateStorageKey(sessionId));
+    if (!raw) {
+      return undefined;
+    }
+    const parsed = JSON.parse(raw) as MainPanelState;
+    if (!parsed || typeof parsed !== "object") {
+      return undefined;
+    }
+    parsed.chatMessages = normalizeChatMessagesForPersistence(parsed.chatMessages);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+async function upsertSessionHistoryIndex(storage: LocalStorageKeyValueStore, state: MainPanelState): Promise<void> {
+  const now = new Date().toISOString();
+  const stateWithSession = state as MainPanelState & { sessionId?: string; createdAt?: string; updatedAt?: string };
+  const sessionId = String(stateWithSession.sessionId || "").trim() || createSessionId();
+  const createdAt = String(stateWithSession.createdAt || now);
+  const updatedAt = now;
+  const sessionTitle = deriveSessionTitleFromState(state);
+  stateWithSession.sessionId = sessionId;
+  stateWithSession.createdAt = createdAt;
+  stateWithSession.updatedAt = updatedAt;
+  state.sessionTitle = sessionTitle;
+  const nextEntry: SessionHistoryEntry = {
+    sessionId,
+    sessionTitle,
+    createdAt,
+    updatedAt,
+  };
+  const existing = await readSessionHistoryIndex(storage);
+  const merged = [nextEntry, ...existing.filter((item) => item.sessionId !== sessionId)]
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .slice(0, MAX_SESSION_HISTORY);
+  await storage.setItem(buildSessionStateStorageKey(sessionId), JSON.stringify({
+    ...state,
+    sessionId,
+    sessionTitle,
+    createdAt,
+    updatedAt,
+  }));
+  await writeSessionHistoryIndex(storage, merged);
+}
+
 async function restorePanelState(storage: LocalStorageKeyValueStore): Promise<MainPanelState | undefined> {
+  const restored = await restorePanelStateSnapshot(storage);
+  if (!restored) {
+    return undefined;
+  }
+  const sessionHistory = await readSessionHistoryIndex(storage);
+  const fallbackSession = sessionHistory[0];
+  const sessionMeta = sessionHistory.find((item) => item.sessionId === String((restored as MainPanelState & { sessionId?: string }).sessionId || "").trim()) ?? fallbackSession;
+  if (sessionMeta) {
+    (restored as MainPanelState & { sessionId?: string; createdAt?: string; updatedAt?: string }).sessionId = sessionMeta.sessionId;
+    (restored as MainPanelState & { sessionId?: string; createdAt?: string; updatedAt?: string }).createdAt = sessionMeta.createdAt;
+    (restored as MainPanelState & { sessionId?: string; createdAt?: string; updatedAt?: string }).updatedAt = sessionMeta.updatedAt;
+    restored.sessionTitle = sessionMeta.sessionTitle;
+  }
+  return restored;
+}
+
+async function restorePanelStateSnapshot(storage: LocalStorageKeyValueStore): Promise<MainPanelState | undefined> {
   try {
     const raw = await storage.getItem(PANEL_STATE_STORAGE_KEY);
     if (!raw) {
@@ -2635,6 +2901,7 @@ async function persistPanelState(storage: LocalStorageKeyValueStore, state: Main
     }
     
     await storage.setItem(PANEL_STATE_STORAGE_KEY, JSON.stringify(snapshot));
+    await upsertSessionHistoryIndex(storage, snapshot);
   } catch {
     // Ignore local persistence failure.
   }

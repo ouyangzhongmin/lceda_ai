@@ -2,9 +2,10 @@ import { generateDraftPlanFromPrompt } from "../../editor/apply-plan/generateDra
 import { buildDraftGuidanceFromRag } from "../../editor/apply-plan/ragDraftGuidance";
 import { previewDraftPlan } from "../../editor/apply-plan/previewDraftPlan";
 import { resolveDraftPlanDevices } from "../../editor/apply-plan/resolveDraftPlanDevices";
+import { draftSpecToPlan, isDraftDesignSpec } from "../../editor/apply-plan/draftSpecToPlan";
 import type { RagClient } from "../../services/rag/ragClient";
 import type { AgentTool } from "./toolRegistry";
-import type { DraftPlanGuidance } from "../../editor/apply-plan/draftPlan";
+import type { DraftDesignSpec, DraftPlanGuidance, DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
 import type { LibrarySearchResultItem } from "../../editor/host/runtime";
 
 function mergeGuidanceEvidence(
@@ -39,7 +40,10 @@ type SearchLibraryDevices = (input: {
   page?: number;
 }) => Promise<LibrarySearchResultItem[]>;
 
-export function createDraftTools(ragClient?: RagClient, searchLibraryDevices?: SearchLibraryDevices): AgentTool[] {
+export function createDraftTools(
+  ragClient?: RagClient,
+  searchLibraryDevices?: SearchLibraryDevices
+): AgentTool[] {
   return [
     {
       name: "draft_generate_plan",
@@ -56,6 +60,15 @@ export function createDraftTools(ragClient?: RagClient, searchLibraryDevices?: S
           guidance: {
             type: "object",
             description: "可选。来自 RAG/模板的草案约束。",
+          },
+          spec: {
+            type: "object",
+            description: "可选。由 LLM 先行决策并生成的结构化 DraftDesignSpec。",
+          },
+          planningMode: {
+            type: "string",
+            enum: ["auto", "structured_spec_required"],
+            description: "可选。由宿主显式指定草案生成模式。",
           },
         },
         required: ["userQuery"],
@@ -76,18 +89,34 @@ export function createDraftTools(ragClient?: RagClient, searchLibraryDevices?: S
           footprintName?: string;
         }>;
         guidance?: ReturnType<typeof buildDraftGuidanceFromRag>;
+        spec?: DraftDesignSpec;
+        planningMode?: DraftPlanningMode;
       }) => {
+        if (!input.spec && input.planningMode === "structured_spec_required") {
+          throw new Error("planningMode=structured_spec_required requires llm-authored spec before draft_generate_plan");
+        }
+        if (input.spec && input.planningMode === "structured_spec_required" && !isDraftDesignSpec(input.spec)) {
+          throw new Error(
+            "planningMode=structured_spec_required requires spec to match DraftDesignSpec (components/nets/connections arrays with structured pins and pinIds)"
+          );
+        }
         const query = `${input.userQuery} 电路模板 器件选择 连接约束`;
+        const ragResults = ragClient ? (await ragClient.search(query, 3)).results : [];
         const resolvedGuidance =
           input.guidance ??
-          (ragClient
-            ? buildDraftGuidanceFromRag(input.userQuery, (await ragClient.search(query, 3)).results)
-            : undefined);
+          (ragClient ? buildDraftGuidanceFromRag(input.userQuery, ragResults) : undefined);
         const citations =
           ragClient && !input.guidance ? await ragClient.buildCitations(query, 3) : undefined;
-        let plan = generateDraftPlanFromPrompt(input.userQuery, {
+        const mergedGuidance = mergeGuidanceEvidence(resolvedGuidance, citations);
+        let plan =
+          input.spec && isDraftDesignSpec(input.spec)
+            ? draftSpecToPlan({
+                spec: input.spec,
+                guidance: mergedGuidance,
+              })
+            : generateDraftPlanFromPrompt(input.userQuery, {
           selectedDevices: input.selectedDevices,
-          guidance: mergeGuidanceEvidence(resolvedGuidance, citations),
+          guidance: mergedGuidance,
         });
         if (searchLibraryDevices) {
           plan = await resolveDraftPlanDevices(plan, async (query) =>

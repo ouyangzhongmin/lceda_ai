@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"log"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,6 +29,18 @@ func (h *RagHandler) Search(c *gin.Context) {
 		ginBadGateway(c, err)
 		return
 	}
+	log.Printf("[rag/search] query=%q top_k=%d result_cnt=%d", req.Query, req.TopK, len(results))
+	for i, r := range results {
+		log.Printf(
+			"[rag/search] hit#%d score=%.4f kb_type=%s title=%q source_ref=%q snippet=%q",
+			i+1,
+			r.Score,
+			r.KBType,
+			r.Title,
+			r.SourceRef,
+			trimForLog(r.Snippet, 220),
+		)
+	}
 	ginSuccess(c, map[string]any{"results": results})
 }
 
@@ -50,4 +65,12 @@ func (h *RagHandler) Providers(c *gin.Context) {
 	ginSuccess(c, map[string]any{
 		"provider": h.service.ProviderName(),
 	})
+}
+
+func trimForLog(text string, maxLen int) string {
+	cleaned := strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+	if maxLen <= 0 || len(cleaned) <= maxLen {
+		return cleaned
+	}
+	return cleaned[:maxLen] + "..."
 }

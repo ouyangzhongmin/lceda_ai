@@ -55,6 +55,7 @@ export interface PluginAgent {
   handleUserTurn(input: {
     userQuery: string;
     panelState: MainPanelState;
+    taskType?: AgentTaskType;
     context?: SchematicContext;
     adapter?: EditorAdapter;
     onStreamEvent?: (event: {
@@ -113,6 +114,24 @@ export interface PluginAgent {
   buildDraftAppliedMessages(componentCount: number, netCount: number): NonNullable<MainPanelState["chatMessages"]>;
   buildRollbackMessages(message: string): NonNullable<MainPanelState["chatMessages"]>;
   buildConfigSavedMessages(): NonNullable<MainPanelState["chatMessages"]>;
+}
+
+export function resolveTurnDisposition(
+  preferredTaskType: AgentTaskType | undefined,
+  result: AgentResult
+): Pick<AgentTurnResult, "route"> {
+  const fallbackRoute = result.draftPlan || result.draftPreview || result.draftValidation || result.draftRisk
+    ? "draft"
+    : result.analysisReport || result.checkResult || result.analysisMarkdown
+      ? "analysis"
+      : "chat";
+  const route =
+    preferredTaskType === "schematic_draft"
+      ? "draft"
+      : preferredTaskType === "schematic_analysis"
+        ? "analysis"
+        : fallbackRoute;
+  return { route };
 }
 
 export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
@@ -186,6 +205,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           throw new Error("panelState is required for natural_chat");
         }
         const { result } = await runUnifiedReactAgent({
+          taskType: input.type,
           userQuery: input.userQuery,
           panelState: input.panelState,
           adapter: input.adapter,
@@ -201,6 +221,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           throw new Error("context and adapter are required for schematic_analysis");
         }
         const { result } = await runUnifiedReactAgent({
+          taskType: input.type,
           userQuery: input.userQuery,
           panelState: input.panelState ?? ({} as MainPanelState),
           adapter: input.adapter,
@@ -215,6 +236,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         throw new Error("context and adapter are required for schematic_draft");
       }
       const { result } = await runUnifiedReactAgent({
+        taskType: input.type,
         userQuery: input.userQuery,
         panelState: input.panelState ?? ({} as MainPanelState),
         adapter: input.adapter,
@@ -226,6 +248,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       return result;
     },
     handleUserTurn: async (input) => {
+      const taskType = input.taskType ?? "natural_chat";
       const adapter = input.adapter;
       const tools = adapter
         ? createAgentToolRegistry(adapter, deps, { includeIssueTools: true, includeLibraryTools: true })
@@ -239,6 +262,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         .map((tool) => tool.name);
 
       const { result } = await runUnifiedReactAgent({
+        taskType,
         userQuery: input.userQuery,
         panelState: input.panelState,
         context: input.context,
@@ -247,20 +271,9 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         allowedTools,
         onStreamEvent: input.onStreamEvent,
       });
-      const route = result.draftPlan || result.draftPreview || result.draftValidation || result.draftRisk
-        ? "draft"
-        : result.analysisReport || result.checkResult || result.analysisMarkdown
-          ? "analysis"
-          : "chat";
+      const disposition = resolveTurnDisposition(taskType, result);
       return {
-        route,
-        intent: route === "draft" ? "draft" : route === "analysis" ? "analysis" : "chat",
-        plan: {
-          intent: route === "draft" ? "draft" : route === "analysis" ? "analysis" : "chat",
-          route,
-          requiresContext: false,
-          steps: [],
-        },
+        route: disposition.route,
         result,
       };
     },
@@ -893,7 +906,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       if (preview.guidanceSummary.evidence && preview.guidanceSummary.evidence.length > 0) {
         blocks.push({
           kind: "list",
-          title: "RAG 证据",
+          title: "设计依据（知识库）",
           items: preview.guidanceSummary.evidence,
         });
       }

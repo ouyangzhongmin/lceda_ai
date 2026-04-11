@@ -1,20 +1,20 @@
 {
   "crawled_rows_before_cleanup": 220,
-  "rows_after_cleanup": 217,
-  "pdf_source_count": 31,
-  "pdf_source_rate": 14.29,
+  "rows_after_cleanup": 249,
+  "pdf_source_count": 32,
+  "pdf_source_rate": 12.85,
   "topic_distribution_top10": [
     [
       "interactive-block-diagrams",
-      104
-    ],
-    [
-      "download",
-      31
+      125
     ],
     [
       "power-management",
-      29
+      35
+    ],
+    [
+      "download",
+      32
     ],
     [
       "power-trees",
@@ -25,11 +25,11 @@
       5
     ],
     [
-      "video",
-      4
+      "about-ti",
+      5
     ],
     [
-      "about-ti",
+      "video",
       4
     ],
     [
@@ -37,22 +37,22 @@
       2
     ],
     [
-      "design-resources",
+      "system-solution-guides",
       2
     ],
     [
-      "current-sense-design-tool",
-      1
+      "tools-software",
+      2
     ]
   ],
   "vendor_distribution": [
     [
       "onsemi.com",
-      169
+      193
     ],
     [
       "ti.com",
-      42
+      50
     ],
     [
       "training.ti.com",
@@ -61,7 +61,7 @@
   ],
   "cleanup_summary": {
     "removed_low_value_files": 1,
-    "removed_duplicate_rows": 0,
-    "removed_empty_files": 0
+    "removed_duplicate_rows": 185,
+    "removed_empty_files": 1
   }
 }

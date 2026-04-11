@@ -1,7 +1,8 @@
 import type { MainPanelState } from "../../ui/panels/mainPanel";
 import type { EditorAdapter } from "../../editor/adapters/editorAdapter";
 import type { SchematicContext } from "../../types/schematic";
-import type { AgentResult, AgentStepState, AgentTask, AgentWorkingMemory } from "../shared/agentTypes";
+import type { DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
+import type { AgentResult, AgentStepState, AgentTask, AgentTaskType, AgentWorkingMemory } from "../shared/agentTypes";
 import type { ReactAgentDeps, ReactAgentRunResult, ReactAgentState } from "./reactTypes";
 import { runReActLoop } from "./reactLoopAgent";
 import { buildSystemPrompt } from "../prompts/systemPrompt";
@@ -166,46 +167,102 @@ function looksLikeAnalysisQuery(userQuery: string): boolean {
   return /(分析|检查|检查看看|看看|查看|排查|定位|问题|有什么问题|有啥问题|erc|审查|review|analy[sz]e|check|inspect)/iu.test(text);
 }
 
+function looksLikeDraftQuery(userQuery: string): boolean {
+  const text = String(userQuery || "").trim().toLowerCase();
+  if (!text) return false;
+  return /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(text);
+}
+
+function isAnalysisTaskType(taskType?: AgentTaskType): boolean {
+  return taskType === "schematic_analysis";
+}
+
+function isDraftTaskType(taskType?: AgentTaskType): boolean {
+  return taskType === "schematic_draft";
+}
+
+function shouldTreatAsAnalysis(input: { taskType?: AgentTaskType; userQuery: string }): boolean {
+  return isAnalysisTaskType(input.taskType) || (!isDraftTaskType(input.taskType) && looksLikeAnalysisQuery(input.userQuery));
+}
+
+function shouldTreatAsDraft(input: { taskType?: AgentTaskType; userQuery: string }): boolean {
+  return isDraftTaskType(input.taskType) || (!shouldTreatAsAnalysis(input) && looksLikeDraftQuery(input.userQuery));
+}
+
+function requiresStructuredDraftSpec(input: { taskType?: AgentTaskType; userQuery: string }): boolean {
+  return shouldTreatAsDraft(input);
+}
+
+const STRUCTURED_SPEC_REQUIRED: DraftPlanningMode = "structured_spec_required";
+
 function buildRequiredTools(input: {
+  taskType?: AgentTaskType;
   userQuery: string;
   hasContext: boolean;
   availableToolNames: string[];
 }): string[] {
   const required: string[] = [];
   const available = new Set(input.availableToolNames);
-  if (!looksLikeAnalysisQuery(input.userQuery)) {
+  if (shouldTreatAsAnalysis(input)) {
+    if (!input.hasContext && available.has("editor_get_current_context")) {
+      required.push("editor_get_current_context");
+    }
+    if (available.has("rules_run_schematic_checks")) {
+      required.push("rules_run_schematic_checks");
+    }
     return required;
   }
-  if (!input.hasContext && available.has("editor_get_current_context")) {
-    required.push("editor_get_current_context");
-  }
-  if (available.has("rules_run_schematic_checks")) {
-    required.push("rules_run_schematic_checks");
+  if (shouldTreatAsDraft(input)) {
+    if (available.has("draft_generate_plan")) {
+      required.push("draft_generate_plan");
+    }
+    if (available.has("draft_preview_plan")) {
+      required.push("draft_preview_plan");
+    }
   }
   return required;
 }
 
 function buildDecisionToolNames(input: {
+  taskType?: AgentTaskType;
   userQuery: string;
   availableToolNames: string[];
 }): string[] {
   const names = input.availableToolNames.filter((name) => name !== "llm_generate");
-  if (!looksLikeAnalysisQuery(input.userQuery)) {
-    return names;
+  if (shouldTreatAsAnalysis(input)) {
+    const preferredOrder = [
+      "todo_list",
+      "editor_get_current_context",
+      "rules_run_schematic_checks",
+      "schematic_review",
+      "issues_locate_first",
+      "editor_describe_object",
+      "editor_locate",
+      "schematic_build_analysis_evidence",
+    ];
+    const available = new Set(names);
+    const narrowed = preferredOrder.filter((name) => available.has(name));
+    return narrowed.length > 0 ? narrowed : names;
   }
-  const preferredOrder = [
-    "todo_list",
-    "editor_get_current_context",
-    "rules_run_schematic_checks",
-    "schematic_review",
-    "issues_locate_first",
-    "editor_describe_object",
-    "editor_locate",
-    "schematic_build_analysis_evidence",
-  ];
-  const available = new Set(names);
-  const narrowed = preferredOrder.filter((name) => available.has(name));
-  return narrowed.length > 0 ? narrowed : names;
+  if (shouldTreatAsDraft(input)) {
+    const preferredOrder = [
+      "todo_list",
+      "editor_get_current_context",
+      "rag_search",
+      "rag_build_citations",
+      "library_search_devices",
+      "library_get_device",
+      "library_get_devices_by_lcsc_ids",
+      "draft_generate_plan",
+      "draft_preview_plan",
+      "rules_validate_draft",
+      "editor_preview_apply_plan",
+    ];
+    const available = new Set(names);
+    const narrowed = preferredOrder.filter((name) => available.has(name));
+    return narrowed.length > 0 ? narrowed : names;
+  }
+  return names;
 }
 
 function buildConversationHistory(panelState: MainPanelState | undefined, currentUserQuery: string): ConversationMessage[] {
@@ -254,6 +311,7 @@ function buildConversationHistory(panelState: MainPanelState | undefined, curren
 }
 
 export async function runUnifiedReactAgent(input: {
+  taskType?: AgentTaskType;
   userQuery: string;
   panelState: MainPanelState;
   context?: SchematicContext;
@@ -283,7 +341,8 @@ export async function runUnifiedReactAgent(input: {
   let mcpResourceReads: AgentResult["mcpResourceReads"] | undefined;
   let libraryInsights: AgentResult["libraryInsights"] | undefined;
 
-  const task: AgentTask = { type: "natural_chat", userQuery: input.userQuery, context: liveContext };
+  const resolvedTaskType = input.taskType ?? "natural_chat";
+  const task: AgentTask = { type: resolvedTaskType, userQuery: input.userQuery, context: liveContext };
 
   const state: ReactAgentState = {
     toolTraces: [],
@@ -304,6 +363,7 @@ export async function runUnifiedReactAgent(input: {
     .filter((t) => isAllowedToolName(t.name, input.allowedTools))
     .filter((t) => !t.requiresConfirmation);
   const decisionToolNames = buildDecisionToolNames({
+    taskType: resolvedTaskType,
     userQuery: input.userQuery,
     availableToolNames: allVisibleTools.map((tool) => tool.name),
   });
@@ -325,13 +385,16 @@ export async function runUnifiedReactAgent(input: {
     "",
     `可用工具：${toolList.map((t) => t.name).join("、")}`,
     "",
-    looksLikeAnalysisQuery(input.userQuery)
+    shouldTreatAsAnalysis({ taskType: resolvedTaskType, userQuery: input.userQuery })
       ? "这是分析类任务：先调用 editor_get_current_context，再调用 rules_run_schematic_checks；如需网表级证据，再调用 schematic_review。完成这些步骤前不要直接回答。"
+      : shouldTreatAsDraft({ taskType: resolvedTaskType, userQuery: input.userQuery })
+        ? "这是草案类任务：先补齐事实或证据，再由模型自行整理结构化 spec 并传给 draft_generate_plan；生成 plan 后必须调用 draft_preview_plan，完成这些步骤前不要直接输出 final。"
       : "如需原理图事实，先调用 editor_get_current_context；规则检查用 rules_run_schematic_checks；需要网表证据用 schematic_review。",
   ].join("\n");
   const historyMessages = buildConversationHistory(input.panelState, input.userQuery);
 
   const requiredTools = buildRequiredTools({
+    taskType: resolvedTaskType,
     userQuery: input.userQuery,
     hasContext: Boolean(liveContext),
     availableToolNames: toolList.map((tool) => tool.name),
@@ -419,7 +482,13 @@ export async function runUnifiedReactAgent(input: {
     if (toolName === "draft_generate_plan") {
       const payload = llmInput && typeof llmInput === "object" ? (llmInput as any) : {};
       const userQuery = typeof payload.userQuery === "string" ? payload.userQuery : input.userQuery;
-      return { ...payload, userQuery };
+      const planningMode =
+        typeof payload.planningMode === "string"
+          ? (payload.planningMode as DraftPlanningMode)
+          : requiresStructuredDraftSpec({ taskType: resolvedTaskType, userQuery })
+            ? STRUCTURED_SPEC_REQUIRED
+            : undefined;
+      return { ...payload, userQuery, ...(planningMode ? { planningMode } : {}) };
     }
     if (toolName === "draft_preview_plan") {
       const payload = llmInput && typeof llmInput === "object" ? (llmInput as any) : {};

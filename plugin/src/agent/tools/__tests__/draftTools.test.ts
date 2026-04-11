@@ -97,3 +97,213 @@ test("createDraftTools resolves concrete library devices before preview when sea
   assert.equal(plan.components[1]?.properties.device_uuid, "dev-r1");
   assert.equal(plan.components[2]?.properties.device_uuid, "dev-d1");
 });
+
+test("createDraftTools can convert llm-authored structured draft spec into a resolved plan", async () => {
+  const tools = createDraftTools(
+    {
+      search: async () => ({ results: [] }),
+      buildCitations: async () => ({ query: "", results: [] }),
+    } as any,
+    async (input) => {
+      if (input.query.includes("ESP32-S3")) {
+        return [
+          {
+            uuid: "dev-mcu",
+            name: "ESP32-S3-WROOM-1",
+            libraryUuid: "lib-mcu",
+            symbolUuid: "sym-mcu",
+            footprintUuid: "fp-mcu",
+            footprintName: "RF-MODULE_ESP32-S3-WROOM-1",
+          },
+        ];
+      }
+      if (input.query.includes("ES8388")) {
+        return [
+          {
+            uuid: "dev-codec",
+            name: "ES8388",
+            libraryUuid: "lib-codec",
+            symbolUuid: "sym-codec",
+            footprintUuid: "fp-codec",
+            footprintName: "QFN-28_L4.0-W4.0-P0.45-BL-EP",
+          },
+        ];
+      }
+      if (input.query.includes("USB Type-C")) {
+        return [
+          {
+            uuid: "dev-usbc",
+            name: "USB3.1TYPE-C16P",
+            libraryUuid: "lib-usbc",
+            symbolUuid: "sym-usbc",
+            footprintUuid: "fp-usbc",
+            footprintName: "USB-C-SMD_TYPE-C-16PIN",
+          },
+        ];
+      }
+      return [];
+    }
+  );
+  const tool = tools.find((item) => item.name === "draft_generate_plan");
+  if (!tool) throw new Error("draft_generate_plan missing");
+
+  const plan = await tool.execute({
+    userQuery: "生成基于esp32-s3的小智语音聊天设备原理图",
+    spec: {
+      systemType: "esp32_s3_voice_device",
+      title: "ESP32-S3 Voice Chat Device",
+      rationale: "LLM authored structured voice-device spec.",
+      components: [
+        {
+          id: "draft-u1",
+          ref: "U1",
+          role: "mcu_module",
+          name: "ESP32-S3 Module",
+          value: "ESP32-S3",
+          packageName: "RF-MODULE_ESP32-S3-WROOM-1",
+          searchQuery: "ESP32-S3-WROOM-1",
+          placement: { x: 320, y: 220 },
+          pins: [
+            { id: "draft-u1-3v3", pinName: "3V3", electricalType: "power_in" },
+            { id: "draft-u1-gnd", pinName: "GND", electricalType: "power_in" },
+            { id: "draft-u1-io40", pinName: "IO40", electricalType: "bidirectional" },
+          ],
+        },
+        {
+          id: "draft-u2",
+          ref: "U2",
+          role: "audio_codec",
+          name: "Audio Codec",
+          value: "ES8388",
+          packageName: "QFN-28_L4.0-W4.0-P0.45-BL-EP",
+          searchQuery: "ES8388 audio codec",
+          placement: { x: 520, y: 220 },
+          pins: [
+            { id: "draft-u2-dout", pinName: "DOUT", electricalType: "output" },
+            { id: "draft-u2-gnd", pinName: "GND", electricalType: "power_in" },
+          ],
+        },
+        {
+          id: "draft-j1",
+          ref: "J1",
+          role: "usb_type_c",
+          name: "USB Type-C",
+          value: "USB-C",
+          packageName: "USB-C-SMD_TYPE-C-16PIN",
+          searchQuery: "USB Type-C 接口",
+          placement: { x: 120, y: 220 },
+          pins: [
+            { id: "draft-j1-vbus", pinName: "VBUS", electricalType: "power_out" },
+            { id: "draft-j1-gnd", pinName: "GND", electricalType: "power_in" },
+          ],
+        },
+      ],
+      nets: [
+        { id: "net-3v3", name: "3V3", isPower: true },
+        { id: "net-gnd", name: "GND", isPower: true },
+        { id: "net-i2s-do", name: "I2S_DO" },
+      ],
+      connections: [
+        { netName: "3V3", pinIds: ["draft-u1-3v3"] },
+        { netName: "GND", pinIds: ["draft-u1-gnd", "draft-u2-gnd", "draft-j1-gnd"] },
+        { netName: "I2S_DO", pinIds: ["draft-u1-io40", "draft-u2-dout"] },
+      ],
+    },
+  });
+
+  assert.equal(plan.title, "ESP32-S3 Voice Chat Device");
+  assert.equal(plan.components.some((component) => component.ref === "U1"), true);
+  assert.equal(plan.components.some((component) => component.ref === "U2"), true);
+  assert.equal(plan.components.some((component) => component.ref === "J1"), true);
+  assert.equal(plan.title === "5V LED Indicator Draft", false);
+  assert.equal(plan.title === "5V to 3.3V LDO Draft", false);
+  assert.equal(plan.nets.some((net) => net.name === "I2S_DO"), true);
+});
+
+test("createDraftTools rejects structured_spec_required draft requests without llm-authored spec", async () => {
+  const tools = createDraftTools(
+    {
+      search: async () => ({ results: [] }),
+      buildCitations: async () => ({ query: "", results: [] }),
+    } as any,
+    async () => []
+  );
+  const tool = tools.find((item) => item.name === "draft_generate_plan");
+  if (!tool) throw new Error("draft_generate_plan missing");
+
+  await assert.rejects(
+    () =>
+      tool.execute({
+        userQuery: "帮我设计一个基于ESP32-S3的带锂电池及充电一体的小智语音聊天设备原理图",
+        planningMode: "structured_spec_required",
+      }),
+    /planningMode=structured_spec_required requires llm-authored spec/i
+  );
+});
+
+test("createDraftTools surfaces readable spec validation error when connection pinIds is missing", async () => {
+  const tools = createDraftTools(
+    {
+      search: async () => ({ results: [] }),
+      buildCitations: async () => ({ query: "", results: [] }),
+    } as any,
+    async () => []
+  );
+  const tool = tools.find((item) => item.name === "draft_generate_plan");
+  if (!tool) throw new Error("draft_generate_plan missing");
+
+  await assert.rejects(
+    () =>
+      tool.execute({
+        userQuery: "生成基于esp32-s3的小智语音聊天设备原理图",
+        planningMode: "structured_spec_required",
+        spec: {
+          systemType: "esp32_s3_voice_device",
+          title: "Broken Spec",
+          rationale: "broken",
+          components: [
+            {
+              id: "draft-u1",
+              ref: "U1",
+              role: "mcu_module",
+              pins: [{ id: "draft-u1-3v3", pinName: "3V3" }],
+            },
+          ],
+          nets: [{ id: "net-3v3", name: "3V3", isPower: true }],
+          connections: [{ netName: "3V3" }],
+        } as any,
+      }),
+    /invalid draft spec: connections\[0\]\.pinIds must be an array/i
+  );
+});
+
+test("createDraftTools rejects malformed structured_spec_required spec instead of silently falling back to generic draft", async () => {
+  const tools = createDraftTools(
+    {
+      search: async () => ({ results: [] }),
+      buildCitations: async () => ({ query: "", results: [] }),
+    } as any,
+    async () => []
+  );
+  const tool = tools.find((item) => item.name === "draft_generate_plan");
+  if (!tool) throw new Error("draft_generate_plan missing");
+
+  await assert.rejects(
+    () =>
+      tool.execute({
+        userQuery: "帮我设计一个基于esp32-s3的带锂电池及充电一体的小智语音聊天设备原理图",
+        planningMode: "structured_spec_required",
+        spec: {
+          systemType: "智能语音聊天设备",
+          title: "ESP32-S3锂电池充电语音设备",
+          rationale: "bad shape",
+          components: {
+            main_mcu: "ESP32-S3-WROOM-1U",
+          },
+          powerNets: ["VCC_5V", "VCC_BAT"],
+          connections: ["USB->TP4056"],
+        } as any,
+      }),
+    /planningMode=structured_spec_required requires spec to match DraftDesignSpec/i
+  );
+});

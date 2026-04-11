@@ -1,5 +1,7 @@
 import type { SchematicComponent, SchematicNet, SchematicPin } from "../../types/schematic";
 
+export type DraftPlanningMode = "auto" | "structured_spec_required";
+
 export interface DraftPlanSelectedDevice {
   componentId?: string;
   componentRef?: string;
@@ -31,6 +33,41 @@ export interface DraftPlanGuidance {
     toComponentRef: string;
     toPin: string;
     netName: string;
+  }>;
+}
+
+export interface DraftDesignSpec {
+  systemType: string;
+  title: string;
+  rationale: string;
+  components: Array<{
+    id: string;
+    ref?: string;
+    role: string;
+    name?: string;
+    value?: string;
+    packageName?: string;
+    searchQuery?: string;
+    placement?: {
+      x: number;
+      y: number;
+      rotation?: number;
+    };
+    pins: Array<{
+      id: string;
+      pinNumber?: string;
+      pinName?: string;
+      electricalType?: string;
+    }>;
+  }>;
+  nets: Array<{
+    id: string;
+    name?: string;
+    isPower?: boolean;
+  }>;
+  connections: Array<{
+    netName: string;
+    pinIds: string[];
   }>;
 }
 

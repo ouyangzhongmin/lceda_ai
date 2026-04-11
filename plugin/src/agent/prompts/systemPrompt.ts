@@ -23,7 +23,13 @@ export function buildSystemPrompt(input: {
   const skillLines = (input.skills ?? []).map((s) => `- ${s.name}: ${s.description}`);
   const contextHint = String(input.contextHint || "").trim();
   const userQuery = String(input.task.userQuery || "").trim();
-  const isAnalysisTask = /(分析|检查|检查看看|看看|查看|排查|定位|问题|有什么问题|有啥问题|erc|审查|review|analy[sz]e|check|inspect)/iu.test(userQuery);
+  const isAnalysisTask =
+    input.task.type === "schematic_analysis" ||
+    (input.task.type !== "schematic_draft" &&
+      /(分析|检查|检查看看|看看|查看|排查|定位|问题|有什么问题|有啥问题|erc|审查|review|analy[sz]e|check|inspect)/iu.test(userQuery));
+  const isDraftTask =
+    input.task.type === "schematic_draft" ||
+    (!isAnalysisTask && /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(userQuery));
 
   const analysisBlock = isAnalysisTask
     ? [
@@ -63,6 +69,78 @@ export function buildSystemPrompt(input: {
       ]
     : [];
 
+  const draftBlock = isDraftTask
+    ? [
+        "## 原理图草案任务定义",
+        "- 这是原理图草案生成任务。你的职责是先收集证据，再自己整理出结构化设计规格 `spec`，最后调用草案工具产出可预览结果。",
+        "- 对复杂系统级需求，不要把 `draft_generate_plan` 当作会替你思考的黑盒；主模型必须自己完成器件角色、主要网络、关键连接关系的决策。",
+        "",
+        "## 原理图草案工具策略",
+        "- 复杂草案请求时，应先调用事实工具补证据，例如 `editor_get_current_context`、`rag_search`、`library_search_devices`。",
+        "- 证据足够后，必须由你生成结构化 `spec`，并以 `draft_generate_plan({ userQuery, spec, planningMode: \"structured_spec_required\", ... })` 方式调用工具。",
+        "- 若已经掌握足够证据，不要只传 `userQuery` 给 `draft_generate_plan`，否则可能退化为过小模板。",
+        "- `planningMode` 只能使用工具 schema 中允许的枚举值，不要自造字符串。",
+        "- `draft_generate_plan` 之后必须调用 `draft_preview_plan`；未拿到预览前禁止输出 Final。",
+        "- 若 `draft_generate_plan` 或 `draft_preview_plan` 失败，优先说明缺失的证据或 spec 缺口，不要假装草案已经完成。",
+        "",
+        "## 结构化 spec 最低要求",
+        "- `spec` 至少应包含：`systemType`、`title`、`rationale`、`components`、`nets`、`connections`。",
+        "- `components` 应覆盖关键器件角色，例如主控、电源、充电、接口、音频输入、音频输出、用户接口。",
+        "- `nets` 与 `connections` 应覆盖主要供电轨和关键功能链路，禁止只写器件清单不写连接。",
+        "- `components` 必须是数组；每个组件至少包含：`id`、`role`、`pins`。`pins` 必须是数组，每个引脚至少包含：`id`，并尽量提供 `pinName` / `pinNumber` / `electricalType`。",
+        "- `nets` 必须是数组；每个网络至少包含：`id`，并尽量提供 `name`、`isPower`。",
+        "- `connections` 必须是数组；每条连接必须严格使用 `{ \"netName\": string, \"pinIds\": string[] }` 结构，禁止改写成 `from/to/net/description` 或字符串列表。",
+        "- 禁止自造顶层字段替代标准结构，例如：`powerNets`、`signalNets`、`key_connections`、`powerSupply`、`interfaces`。这些信息如果需要表达，必须折叠进 `components`、`nets`、`connections`。",
+        "",
+        "## 最小合法 spec 示例",
+        "```json",
+        "{",
+        "  \"systemType\": \"esp32_s3_voice_device\",",
+        "  \"title\": \"ESP32-S3 Voice Device\",",
+        "  \"rationale\": \"Portable voice device with battery charging and audio I/O.\",",
+        "  \"components\": [",
+        "    {",
+        "      \"id\": \"draft-u1\",",
+        "      \"ref\": \"U1\",",
+        "      \"role\": \"mcu_module\",",
+        "      \"name\": \"ESP32-S3-WROOM-1U\",",
+        "      \"packageName\": \"WIRELM-SMD_ESP32-S3-WROOM-1U\",",
+        "      \"searchQuery\": \"ESP32-S3-WROOM-1U\",",
+        "      \"pins\": [",
+        "        { \"id\": \"draft-u1-3v3\", \"pinName\": \"3V3\", \"electricalType\": \"power_in\" },",
+        "        { \"id\": \"draft-u1-gnd\", \"pinName\": \"GND\", \"electricalType\": \"power_in\" }",
+        "      ]",
+        "    },",
+        "    {",
+        "      \"id\": \"draft-u2\",",
+        "      \"ref\": \"U2\",",
+        "      \"role\": \"charger\",",
+        "      \"name\": \"TP4056X\",",
+        "      \"pins\": [",
+        "        { \"id\": \"draft-u2-vcc\", \"pinName\": \"VCC\", \"electricalType\": \"power_in\" },",
+        "        { \"id\": \"draft-u2-bat\", \"pinName\": \"BAT\", \"electricalType\": \"power_out\" }",
+        "      ]",
+        "    }",
+        "  ],",
+        "  \"nets\": [",
+        "    { \"id\": \"net-5v\", \"name\": \"VCC_5V\", \"isPower\": true },",
+        "    { \"id\": \"net-bat\", \"name\": \"VCC_BAT\", \"isPower\": true },",
+        "    { \"id\": \"net-gnd\", \"name\": \"GND\", \"isPower\": true }",
+        "  ],",
+        "  \"connections\": [",
+        "    { \"netName\": \"VCC_5V\", \"pinIds\": [\"draft-u2-vcc\"] },",
+        "    { \"netName\": \"VCC_BAT\", \"pinIds\": [\"draft-u2-bat\"] },",
+        "    { \"netName\": \"GND\", \"pinIds\": [\"draft-u1-gnd\"] }",
+        "  ]",
+        "}",
+        "```",
+        "",
+        "## 原理图草案最终输出要求",
+        "- 当输出 Final 且 route=`draft` 时，`output` 必须直接给出完整 Markdown，总结草案范围、关键器件、主要网络和下一步动作。",
+        "- 若证据不足以形成可靠 `spec`，必须明确写出缺失项；不要用微型 LED/LDO 模板冒充复杂系统草案。",
+      ]
+    : [];
+
   return [
     isAnalysisTask ? "你是嘉立创 EDA 专业版智能原理图审查助手。" : "你是嘉立创 EDA 专业版智能操作助手。",
     "",
@@ -87,6 +165,8 @@ export function buildSystemPrompt(input: {
     "",
     ...analysisBlock,
     ...(analysisBlock.length > 0 ? [""] : []),
+    ...draftBlock,
+    ...(draftBlock.length > 0 ? [""] : []),
     "## 文件下载规则",
     "- 若某工具返回对象包含 kind='blob' 且提供 downloadUrl，则最终 output 中必须使用 Markdown 链接输出：[文件名](downloadUrl)。",
     "",

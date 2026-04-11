@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
-import { createPluginAgent } from "../index";
+import { createPluginAgent, resolveTurnDisposition } from "../index";
 import { runComponentAttributesCheck } from "../../rules/checks/componentAttributesCheck";
 import { generateDraftPlanFromPrompt, normalizeDraftPlan } from "../../editor/apply-plan/generateDraftPlan";
 
@@ -132,6 +132,7 @@ test("normalizeDraftPlan converts legacy connections into pins and nets", () => 
   assert.deepEqual(normalized.nets.map((net) => net.nodeIds.length), [2, 2, 2]);
 });
 
+
 test("buildDraftMessages renders guidance and evidence details into structured draft content", () => {
   const agent = createAgent();
   const messages = agent.buildDraftMessages({
@@ -153,12 +154,12 @@ test("buildDraftMessages renders guidance and evidence details into structured d
         templateId: "led_indicator_minimal",
         rationale: "依据知识库模板，推荐使用 2Pin 电源口 + 150Ω + 红色 LED。",
         preferredSearches: [
-          "power_connector: header 1x2 2pin HDR-TH_1X2",
-          "resistor: 150Ω resistor R0805",
+          "电源接口：header 1x2 2pin HDR-TH_1X2",
+          "限流电阻：150Ω resistor R0805",
         ],
         requiredNets: ["5V", "LED_ANODE", "GND"],
         requiredConnections: ["J1.1 -> R1.1 @ 5V"],
-        evidence: ["LED indicator：推荐使用 2Pin header、150Ω 限流电阻、红色 LED。 (kb://led_indicator)"],
+        evidence: ["依据：LED indicator。要点：推荐使用 2Pin header、150Ω 限流电阻、红色 LED。。来源：kb://led_indicator"],
       },
     },
   });
@@ -169,7 +170,7 @@ test("buildDraftMessages renders guidance and evidence details into structured d
   assert.equal(structured.some((block) => block.kind === "list" && block.title === "待处理器件"), true);
   assert.equal(structured.some((block) => block.kind === "list" && block.title === "器件检索偏好"), true);
   assert.equal(structured.some((block) => block.kind === "list" && block.title === "必需连接约束"), true);
-  assert.equal(structured.some((block) => block.kind === "list" && block.title === "RAG 证据"), true);
+  assert.equal(structured.some((block) => block.kind === "list" && block.title === "设计依据（知识库）"), true);
   assert.deepEqual(messages[0]?.actions?.map((item) => item.action), ["select_devices"]);
 });
 
@@ -211,4 +212,41 @@ test("buildNaturalChatMessage shows tool failure details when naturalReply is em
 
   assert.equal(message.content.includes("rag_build_citations"), true);
   assert.equal(message.content.includes("Internal Server Error"), true);
+});
+
+test("resolveTurnDisposition prefers explicit schematic_draft over result fallback", () => {
+  const disposition = resolveTurnDisposition("schematic_draft", {
+    summary: "ok",
+    toolTraceNames: [],
+    naturalReply: "只是聊天文本",
+  } as any);
+
+  assert.equal(disposition.route, "draft");
+});
+
+test("resolveTurnDisposition prefers explicit schematic_analysis over result fallback", () => {
+  const disposition = resolveTurnDisposition("schematic_analysis", {
+    summary: "ok",
+    toolTraceNames: [],
+    naturalReply: "只是聊天文本",
+  } as any);
+
+  assert.equal(disposition.route, "analysis");
+});
+
+test("resolveTurnDisposition uses result fallback for natural_chat", () => {
+  const disposition = resolveTurnDisposition("natural_chat", {
+    summary: "ok",
+    toolTraceNames: [],
+    draftPreview: {
+      title: "draft",
+      rationale: "draft",
+      componentRefs: [],
+      netNames: [],
+      componentCount: 0,
+      netCount: 0,
+    },
+  } as any);
+
+  assert.equal(disposition.route, "draft");
 });

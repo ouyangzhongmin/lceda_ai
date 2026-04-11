@@ -32,7 +32,7 @@ export function buildDraftGuidanceFromRag(
 
     return {
       templateId: "led_indicator_minimal",
-      rationale: "RAG guidance suggests using a minimal LED indicator topology with a power connector, current-limiting resistor, and LED.",
+      rationale: "依据知识库检索结果，建议使用最小 LED 指示灯拓扑：电源接口 + 限流电阻 + LED。",
       evidence,
       preferredSearches: {
         power_connector: prefersTwoPinHeader ? "header 1x2 2pin HDR-TH_1X2" : "power connector 2pin",
@@ -51,7 +51,7 @@ export function buildDraftGuidanceFromRag(
   if (/ldo|稳压|3\.3v|3v3/u.test(userQuery)) {
     return {
       templateId: "ldo_minimal",
-      rationale: "RAG guidance suggests using a minimal LDO topology with input and output capacitors.",
+      rationale: "依据知识库检索结果，建议采用最小 LDO 拓扑，并配置输入/输出电容。",
       evidence,
       preferredSearches: {
         ldo_regulator: "ldo regulator 3.3V",
@@ -65,7 +65,7 @@ export function buildDraftGuidanceFromRag(
   if (normalizedQuery.trim()) {
     return {
       templateId: "generic",
-      rationale: "RAG guidance available but no dedicated draft template matched; fall back to generic draft generation.",
+      rationale: "已检索到知识依据，但未匹配到专用草案模板，回退到通用草案生成。",
       evidence,
     };
   }
