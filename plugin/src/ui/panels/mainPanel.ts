@@ -170,6 +170,7 @@ export interface MainPanelState {
       payload?: string;
     }>;
     analysisMarkdown?: string;
+    reportMarkdown?: string;
   }>;
   creditsTransactions?: Array<{
     id: string;

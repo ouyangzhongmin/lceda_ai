@@ -3,12 +3,27 @@ import type { SchematicCheckResult } from "../../rules/models/checkResult";
 import type { DraftPlan, DraftPreview } from "../../editor/apply-plan/draftPlan";
 
 export type AgentTaskType = "natural_chat" | "schematic_analysis" | "schematic_draft";
+export type DraftFollowUpIntent =
+  | "summarize_existing_draft"
+  | "revise_existing_draft"
+  | "apply_existing_draft"
+  | "analyze_existing_draft_risk";
 
 export interface AgentTask {
   type: AgentTaskType;
   userQuery: string;
   context?: SchematicContext;
   planSteps?: Array<{ kind: AgentPlanStepKind; note: string }>;
+  draftFollowUpIntent?: DraftFollowUpIntent;
+  existingDraftSummary?: {
+    title?: string;
+    rationale?: string;
+    componentRefs?: string[];
+    netNames?: string[];
+    componentCount?: number;
+    netCount?: number;
+    selectedDeviceDetails?: string[];
+  };
 }
 
 export interface AgentToolTrace {

@@ -169,6 +169,103 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     return lines.length > 0 ? lines : undefined;
   };
 
+  const buildDraftFollowUpSuggestions = (
+    suggestions?: MainPanelState["chatMessages"][number]["suggestions"]
+  ): MainPanelState["chatMessages"][number]["suggestions"] => {
+    if (Array.isArray(suggestions) && suggestions.length > 0) {
+      return suggestions;
+    }
+    return [
+      {
+        label: "列主要器件",
+        actionType: "ask_followup",
+        prompt: "给我列一下这版草案使用的主要元器件和各自作用",
+      },
+      {
+        label: "说明风险",
+        actionType: "ask_followup",
+        prompt: "这版草案还有哪些阻断风险，为什么现在不能直接应用？",
+      },
+      {
+        label: "继续修改草案",
+        actionType: "ask_followup",
+        prompt: "基于当前这版草案，不要重做整体方案，只修改我接下来指出的部分",
+      },
+    ];
+  };
+
+  const buildDraftReportMarkdown = (input: {
+    draftPreview: NonNullable<MainPanelState["draftPreview"]>;
+    draftRisk?: AgentResult["draftRisk"];
+    nextSuggestions?: AgentResult["nextSuggestions"];
+  }): string => {
+    const { draftPreview, draftRisk, nextSuggestions } = input;
+    const selectedDevices = draftPreview.selectedDeviceDetails ?? [];
+    const lines = [
+      "## 草案范围",
+      `- 标题：${draftPreview.title}`,
+      `- 说明：${draftPreview.rationale}`,
+      `- 器件数量：${draftPreview.componentCount}`,
+      `- 网络数量：${draftPreview.netCount}`,
+      "",
+      "## 关键器件",
+      ...(selectedDevices.length > 0
+        ? selectedDevices.map((item) => `- ${item}`)
+        : draftPreview.componentRefs.length > 0
+          ? draftPreview.componentRefs.map((item) => `- ${item}`)
+          : ["- 未返回关键器件详情"]),
+      "",
+      "## 主要网络",
+      ...(draftPreview.netNames.length > 0
+        ? draftPreview.netNames.map((item) => `- ${item}`)
+        : ["- 未返回网络列表"]),
+    ];
+
+    if (draftRisk) {
+      lines.push("", "## 风险结论");
+      lines.push(`- 风险等级：${draftRisk.level}`);
+      lines.push(`- 说明：${draftRisk.message}`);
+    }
+
+    lines.push("", "## 下一步");
+    if (nextSuggestions && nextSuggestions.length > 0) {
+      lines.push(...nextSuggestions.map((item, index) => `${index + 1}. ${item}`));
+    } else {
+      lines.push("1. 先人工确认关键器件与主要网络命名");
+      lines.push("2. 再决定是否应用草案或继续局部修改");
+    }
+
+    return lines.join("\n");
+  };
+
+  const summarizeDraftRationale = (value?: string): string => {
+    const text = String(value || "").trim();
+    if (!text) {
+      return "未返回草案说明。";
+    }
+    const stopMarkers = ["已检索到知识依据", "未匹配到专用草案模板", "回退到通用草案生成", "已选器件:"];
+    let end = text.length;
+    for (const marker of stopMarkers) {
+      const index = text.indexOf(marker);
+      if (index >= 0 && index < end) {
+        end = index;
+      }
+    }
+    const cleaned = text.slice(0, end).trim();
+    return cleaned || text;
+  };
+
+  const summarizeDraftList = (items: string[], overflowLabel: string): string[] => {
+    if (!Array.isArray(items) || items.length === 0) {
+      return [];
+    }
+    const limit = 3;
+    if (items.length <= limit) {
+      return items;
+    }
+    return [...items.slice(0, limit), `另有 ${items.length - limit} ${overflowLabel}未展开`];
+  };
+
   const buildNaturalChatFallback = (result: AgentResult): string => {
     const failedToolNotes = (result.toolTraces ?? [])
       .filter((trace) => trace.status === "blocked")
@@ -475,6 +572,12 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           ? `\n\n下一步建议：\n${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")}`
           : "";
       const hasUnresolvedDevices = Boolean(preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0);
+      const suggestions = buildDraftFollowUpSuggestions(input.structuredSuggestions);
+      const reportMarkdown = buildDraftReportMarkdown({
+        draftPreview: preview,
+        draftRisk: input.draftRisk,
+        nextSuggestions: input.nextSuggestions,
+      });
       const actions =
         input.draftRisk?.level === "blocked"
           ? [
@@ -518,12 +621,13 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
              toolTraces: input.toolTraces,
             executionTraces: input.executionTraces,
             uiEvents: input.uiEvents,
-            reactEvents: displayReactEvents,
-            stepTranscript: buildStepTranscript(displayReactEvents),
-            stepStates: input.stepStates,
-            workingMemory: input.workingMemory,
-            suggestions: input.structuredSuggestions,
-          actions,
+             reactEvents: displayReactEvents,
+             stepTranscript: buildStepTranscript(displayReactEvents),
+             stepStates: input.stepStates,
+             workingMemory: input.workingMemory,
+             reportMarkdown,
+              suggestions,
+            actions,
         },
       ];
     },
@@ -829,7 +933,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         title: "草案摘要",
         entries: [
           { key: "标题", value: preview.title },
-          { key: "说明", value: preview.rationale },
+          { key: "说明", value: summarizeDraftRationale(preview.rationale) },
           { key: "器件数量", value: String(preview.componentCount) },
           { key: "网络数量", value: String(preview.netCount) },
         ],
@@ -837,12 +941,18 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       {
         kind: "list",
         title: "涉及器件",
-        items: preview.componentRefs.length > 0 ? preview.componentRefs : ["未返回器件列表"],
+        items:
+          preview.componentRefs.length > 0
+            ? summarizeDraftList(preview.componentRefs, "个器件")
+            : ["未返回器件列表"],
       },
       {
         kind: "list",
         title: "涉及网络",
-        items: preview.netNames.length > 0 ? preview.netNames : ["未返回网络列表"],
+        items:
+          preview.netNames.length > 0
+            ? summarizeDraftList(preview.netNames, "条网络")
+            : ["未返回网络列表"],
       },
     ];
 

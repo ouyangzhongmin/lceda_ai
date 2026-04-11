@@ -329,6 +329,258 @@ test("runReActLoop creates stepStates when mapped tools execute", async () => {
   ]);
 });
 
+test("runUnifiedReactAgent treats draft confirmation follow-up summary as chat instead of regenerating draft", async () => {
+  const calls: string[] = [];
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => {
+      calls.push("draft_generate_plan");
+      return {};
+    },
+  } as AgentTool);
+  tools.register({
+    name: "draft_preview_plan",
+    description: "根据草案计划生成预览摘要",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => {
+      calls.push("draft_preview_plan");
+      return {};
+    },
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown) => {
+    if (name === "llm_generate") {
+      const payload = input as { messages?: Array<{ role: string; content: string }>; tools?: Array<{ function: { name: string } }> };
+      llmPayloads.push({
+        system: payload.messages?.find((item) => item.role === "system")?.content,
+        user: payload.messages?.find((item) => item.role === "user")?.content,
+        tools: payload.tools,
+      });
+      return {
+        output_text:
+          '{"type":"final","route":"chat","rationale":"reuse existing draft","output":"## 主要元器件\\n- U1\\n- U2\\n- J1"}',
+      } as any;
+    }
+    return originalInvoke(name, input);
+  }) as typeof tools.invoke;
+
+  const result = await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "给我生成一个列表展示用哪些主要的元器件",
+    panelState: {
+      loggedIn: true,
+      agentRunState: "awaiting_confirmation",
+      draftPreview: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["U1", "U2", "J1"],
+        netNames: ["5V", "VBAT", "3V3"],
+        componentCount: 3,
+        netCount: 3,
+      },
+      draftPlan: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        components: [],
+        pins: [],
+        nets: [],
+      } as DraftPlan,
+      chatMessages: [],
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["draft_generate_plan", "draft_preview_plan", "llm_generate"],
+  });
+
+  assert.equal(result.result.naturalReply?.includes("主要元器件"), true);
+  assert.deepEqual(calls, []);
+  assert.equal(
+    llmPayloads[0]?.system?.includes("## 现有草案追问任务定义"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.user?.includes("优先复用当前草案摘要直接回答"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.tools?.some((tool) => tool.function.name === "draft_generate_plan"),
+    false
+  );
+});
+
+test("runUnifiedReactAgent treats draft confirmation revision request as draft refinement", async () => {
+  const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "draft_preview_plan",
+    description: "根据草案计划生成预览摘要",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown) => {
+    if (name === "llm_generate") {
+      const payload = input as { messages?: Array<{ role: string; content: string }>; tools?: Array<{ function: { name: string } }> };
+      llmPayloads.push({
+        system: payload.messages?.find((item) => item.role === "system")?.content,
+        user: payload.messages?.find((item) => item.role === "user")?.content,
+        tools: payload.tools,
+      });
+      return {
+        output_text:
+          '{"type":"final","route":"draft","rationale":"revise existing draft","output":"## 已更新草案\\n- 新增电量计"}',
+      } as any;
+    }
+    return originalInvoke(name, input);
+  }) as typeof tools.invoke;
+
+  await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "在当前草案上增加电量计模块",
+    panelState: {
+      loggedIn: true,
+      agentRunState: "awaiting_confirmation",
+      draftPreview: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["U1", "U2", "J1"],
+        netNames: ["5V", "VBAT", "3V3"],
+        componentCount: 3,
+        netCount: 3,
+      },
+      draftPlan: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        components: [],
+        pins: [],
+        nets: [],
+      } as DraftPlan,
+      chatMessages: [],
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["draft_generate_plan", "draft_preview_plan", "llm_generate"],
+  });
+
+  assert.equal(
+    llmPayloads[0]?.system?.includes("## 现有草案修改任务定义"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.user?.includes("这是基于现有草案的修改请求"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.tools?.some((tool) => tool.function.name === "draft_generate_plan"),
+    true
+  );
+});
+
+test("runUnifiedReactAgent treats draft confirmation risk question as risk analysis follow-up", async () => {
+  const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "rules_validate_draft",
+    description: "在应用前校验生成的原理图草案",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown) => {
+    if (name === "llm_generate") {
+      const payload = input as { messages?: Array<{ role: string; content: string }>; tools?: Array<{ function: { name: string } }> };
+      llmPayloads.push({
+        system: payload.messages?.find((item) => item.role === "system")?.content,
+        user: payload.messages?.find((item) => item.role === "user")?.content,
+        tools: payload.tools,
+      });
+      return {
+        output_text:
+          '{"type":"final","route":"analysis","rationale":"review current draft risk","output":"## 风险复核\\n- 当前仍有阻断项"}',
+      } as any;
+    }
+    return originalInvoke(name, input);
+  }) as typeof tools.invoke;
+
+  await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "这版草案还有哪些风险，为什么不能直接应用？",
+    panelState: {
+      loggedIn: true,
+      agentRunState: "awaiting_confirmation",
+      draftPreview: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["U1", "U2", "J1"],
+        netNames: ["5V", "VBAT", "3V3"],
+        componentCount: 3,
+        netCount: 3,
+      },
+      draftPlan: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        components: [],
+        pins: [],
+        nets: [],
+      } as DraftPlan,
+      chatMessages: [],
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["rules_validate_draft", "draft_generate_plan", "llm_generate"],
+  });
+
+  assert.equal(
+    llmPayloads[0]?.system?.includes("## 现有草案风险复核任务定义"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.user?.includes("这是基于现有草案的风险复核请求"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.tools?.some((tool) => tool.function.name === "rules_validate_draft"),
+    true
+  );
+});
+
 test("runReActLoop settles tool_call react event status after tool result", async () => {
   const deps: ReactAgentDeps = {
     task: { type: "natural_chat", userQuery: "分析当前原理图有什么问题" },

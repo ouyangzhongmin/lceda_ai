@@ -181,6 +181,27 @@ function isDraftTaskType(taskType?: AgentTaskType): boolean {
   return taskType === "schematic_draft";
 }
 
+function looksLikeDraftFollowUpSummaryQuery(userQuery: string): boolean {
+  const text = String(userQuery || "").trim().toLowerCase();
+  if (!text) return false;
+  if (/(重新生成|重新设计|重画|修改草案|改原理图|增加模块|新增模块|替换器件|换成|重做)/iu.test(text)) {
+    return false;
+  }
+  return /(列表|清单|主要元器件|主要器件|用哪些器件|用了哪些器件|器件列表|列出|展示|总结|概述|说明|介绍)/iu.test(text);
+}
+
+function looksLikeDraftFollowUpRevisionQuery(userQuery: string): boolean {
+  const text = String(userQuery || "").trim().toLowerCase();
+  if (!text) return false;
+  return /(修改|调整|改成|换成|增加|新增|加入|补充|删掉|删除|替换|优化|重生成|重新生成|重做草案|重新设计|增加模块|新增模块)/iu.test(text);
+}
+
+function looksLikeDraftRiskAnalysisQuery(userQuery: string): boolean {
+  const text = String(userQuery || "").trim().toLowerCase();
+  if (!text) return false;
+  return /(风险|问题|隐患|还能不能用|为什么报错|哪些地方有问题|哪里不合理|阻断|校验|验证|规则检查|悬空|未连接)/iu.test(text);
+}
+
 function shouldTreatAsAnalysis(input: { taskType?: AgentTaskType; userQuery: string }): boolean {
   return isAnalysisTaskType(input.taskType) || (!isDraftTaskType(input.taskType) && looksLikeAnalysisQuery(input.userQuery));
 }
@@ -340,9 +361,38 @@ export async function runUnifiedReactAgent(input: {
   let mcpResources: AgentResult["mcpResources"] | undefined;
   let mcpResourceReads: AgentResult["mcpResourceReads"] | undefined;
   let libraryInsights: AgentResult["libraryInsights"] | undefined;
-
   const resolvedTaskType = input.taskType ?? "natural_chat";
-  const task: AgentTask = { type: resolvedTaskType, userQuery: input.userQuery, context: liveContext };
+
+  const hasExistingDraftPreview = Boolean(input.panelState.draftPreview || input.panelState.draftPlan);
+  const draftFollowUpIntent =
+    resolvedTaskType === "natural_chat" &&
+    hasExistingDraftPreview &&
+    input.panelState.agentRunState === "awaiting_confirmation" &&
+    (looksLikeDraftFollowUpRevisionQuery(input.userQuery)
+      ? "revise_existing_draft"
+      : looksLikeDraftRiskAnalysisQuery(input.userQuery)
+        ? "analyze_existing_draft_risk"
+      : looksLikeDraftFollowUpSummaryQuery(input.userQuery)
+        ? "summarize_existing_draft"
+        : undefined);
+
+  const task: AgentTask = {
+    type: resolvedTaskType,
+    userQuery: input.userQuery,
+    context: liveContext,
+    draftFollowUpIntent,
+    existingDraftSummary: draftFollowUpIntent
+      ? {
+          title: input.panelState.draftPreview?.title,
+          rationale: input.panelState.draftPreview?.rationale,
+          componentRefs: input.panelState.draftPreview?.componentRefs,
+          netNames: input.panelState.draftPreview?.netNames,
+          componentCount: input.panelState.draftPreview?.componentCount,
+          netCount: input.panelState.draftPreview?.netCount,
+          selectedDeviceDetails: input.panelState.draftPreview?.selectedDeviceDetails,
+        }
+      : undefined,
+  };
 
   const state: ReactAgentState = {
     toolTraces: [],
@@ -363,11 +413,23 @@ export async function runUnifiedReactAgent(input: {
     .filter((t) => isAllowedToolName(t.name, input.allowedTools))
     .filter((t) => !t.requiresConfirmation);
   const decisionToolNames = buildDecisionToolNames({
-    taskType: resolvedTaskType,
+    taskType:
+      draftFollowUpIntent === "revise_existing_draft"
+        ? "schematic_draft"
+        : draftFollowUpIntent === "analyze_existing_draft_risk"
+          ? "schematic_analysis"
+          : draftFollowUpIntent
+            ? "natural_chat"
+            : resolvedTaskType,
     userQuery: input.userQuery,
     availableToolNames: allVisibleTools.map((tool) => tool.name),
   });
-  const toolList = allVisibleTools.filter((tool) => decisionToolNames.includes(tool.name));
+  const toolList = allVisibleTools.filter((tool) =>
+    draftFollowUpIntent === "summarize_existing_draft"
+      ? !["draft_generate_plan", "draft_preview_plan", "rules_validate_draft", "editor_preview_apply_plan"].includes(tool.name) &&
+        decisionToolNames.includes(tool.name)
+      : decisionToolNames.includes(tool.name)
+  );
 
   const system = buildSystemPrompt({
     task,
@@ -385,16 +447,30 @@ export async function runUnifiedReactAgent(input: {
     "",
     `可用工具：${toolList.map((t) => t.name).join("、")}`,
     "",
+    draftFollowUpIntent === "summarize_existing_draft"
+      ? "这是基于现有草案的追问：优先复用当前草案摘要直接回答；除非用户明确要求重生成或修改草案，否则不要调用 draft_generate_plan / draft_preview_plan / rules_validate_draft。"
+      : draftFollowUpIntent === "revise_existing_draft"
+        ? "这是基于现有草案的修改请求：优先继承当前草案，只修改用户明确提出的部分；允许调用 draft_generate_plan 和 draft_preview_plan，但不要把整个系统从零重做。"
+      : draftFollowUpIntent === "analyze_existing_draft_risk"
+        ? "这是基于现有草案的风险复核请求：优先说明当前草案的问题、阻断项和待补充内容；可调用 rules_validate_draft，但不要无必要重生成草案。"
+      :
     shouldTreatAsAnalysis({ taskType: resolvedTaskType, userQuery: input.userQuery })
       ? "这是分析类任务：先调用 editor_get_current_context，再调用 rules_run_schematic_checks；如需网表级证据，再调用 schematic_review。完成这些步骤前不要直接回答。"
       : shouldTreatAsDraft({ taskType: resolvedTaskType, userQuery: input.userQuery })
         ? "这是草案类任务：先补齐事实或证据，再由模型自行整理结构化 spec 并传给 draft_generate_plan；生成 plan 后必须调用 draft_preview_plan，完成这些步骤前不要直接输出 final。"
-      : "如需原理图事实，先调用 editor_get_current_context；规则检查用 rules_run_schematic_checks；需要网表证据用 schematic_review。",
+        : "如需原理图事实，先调用 editor_get_current_context；规则检查用 rules_run_schematic_checks；需要网表证据用 schematic_review。",
   ].join("\n");
   const historyMessages = buildConversationHistory(input.panelState, input.userQuery);
 
   const requiredTools = buildRequiredTools({
-    taskType: resolvedTaskType,
+    taskType:
+      draftFollowUpIntent === "revise_existing_draft"
+        ? "schematic_draft"
+        : draftFollowUpIntent === "analyze_existing_draft_risk"
+          ? "schematic_analysis"
+          : draftFollowUpIntent
+            ? "natural_chat"
+            : resolvedTaskType,
     userQuery: input.userQuery,
     hasContext: Boolean(liveContext),
     availableToolNames: toolList.map((tool) => tool.name),

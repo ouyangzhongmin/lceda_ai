@@ -30,6 +30,9 @@ export function buildSystemPrompt(input: {
   const isDraftTask =
     input.task.type === "schematic_draft" ||
     (!isAnalysisTask && /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(userQuery));
+  const isDraftFollowUpSummary = input.task.draftFollowUpIntent === "summarize_existing_draft";
+  const isDraftFollowUpRevision = input.task.draftFollowUpIntent === "revise_existing_draft";
+  const isDraftFollowUpRiskAnalysis = input.task.draftFollowUpIntent === "analyze_existing_draft_risk";
 
   const analysisBlock = isAnalysisTask
     ? [
@@ -141,6 +144,60 @@ export function buildSystemPrompt(input: {
       ]
     : [];
 
+  const draftFollowUpBlock = isDraftFollowUpSummary
+    ? [
+        "## 现有草案追问任务定义",
+        "- 当前已经存在一版草案和预览；这轮任务是基于现有草案回答追问，而不是重新生成草案。",
+        "- 若用户要求列出主要器件、总结网络、解释模块、比较当前草案内容，应优先复用现有草案摘要直接回答。",
+        "- 只有当用户明确要求“重新生成草案”、“修改连接关系”、“新增模块”、“替换器件并重出草案”时，才重新进入 draft_generate_plan。",
+        "- 在这种 follow-up 模式下，不要因为用户句子里出现“生成”二字就自动重新生成草案。",
+        "- 若现有草案摘要已足够回答，本轮不要调用 `draft_generate_plan`、`draft_preview_plan`、`rules_validate_draft`。",
+        "- 如需补充事实，可优先调用低成本工具；但不要无必要重复整条草案链路。",
+        "",
+        "## 当前已存在草案摘要",
+        `- 标题：${input.task.existingDraftSummary?.title || "未知"}`,
+        `- 说明：${input.task.existingDraftSummary?.rationale || "未知"}`,
+        `- 器件数：${String(input.task.existingDraftSummary?.componentCount ?? 0)}`,
+        `- 网络数：${String(input.task.existingDraftSummary?.netCount ?? 0)}`,
+        `- 器件位号：${(input.task.existingDraftSummary?.componentRefs ?? []).join("、") || "未知"}`,
+        `- 主要网络：${(input.task.existingDraftSummary?.netNames ?? []).join("、") || "未知"}`,
+        `- 已选器件：${(input.task.existingDraftSummary?.selectedDeviceDetails ?? []).join("；") || "未知"}`,
+      ]
+    : [];
+
+  const draftRevisionBlock = isDraftFollowUpRevision
+    ? [
+        "## 现有草案修改任务定义",
+        "- 当前已经存在一版草案和预览；这轮任务是基于现有草案做修改，而不是从零开始重新构思全部系统。",
+        "- 应优先继承当前草案中的已确认器件、网络和结构，只对用户明确要求修改的部分做增删改。",
+        "- 若用户要求新增模块、替换器件、调整连接或修正网络命名，可进入 `draft_generate_plan`，但必须把它视为“修改现有草案”。",
+        "- 不要丢失当前草案中未被用户要求修改的已确认内容。",
+        "- 生成新的 plan 后仍必须调用 `draft_preview_plan`；如需验证再调用 `rules_validate_draft`。",
+        "",
+        "## 当前已存在草案摘要",
+        `- 标题：${input.task.existingDraftSummary?.title || "未知"}`,
+        `- 说明：${input.task.existingDraftSummary?.rationale || "未知"}`,
+        `- 器件位号：${(input.task.existingDraftSummary?.componentRefs ?? []).join("、") || "未知"}`,
+        `- 主要网络：${(input.task.existingDraftSummary?.netNames ?? []).join("、") || "未知"}`,
+      ]
+    : [];
+
+  const draftRiskFollowUpBlock = isDraftFollowUpRiskAnalysis
+    ? [
+        "## 现有草案风险复核任务定义",
+        "- 当前已经存在一版草案和预览；这轮任务是对现有草案做风险复核或问题说明，而不是重新生成草案。",
+        "- 应优先基于现有草案摘要与已有验证结果回答风险、缺失连接、悬空引脚、待确认点。",
+        "- 若需要补充验证，可调用 `rules_validate_draft`；不要无必要重新调用 `draft_generate_plan`。",
+        "- 输出重点应是：当前草案的主要风险、影响、是否阻断应用、下一步该补什么。",
+        "",
+        "## 当前已存在草案摘要",
+        `- 标题：${input.task.existingDraftSummary?.title || "未知"}`,
+        `- 说明：${input.task.existingDraftSummary?.rationale || "未知"}`,
+        `- 器件位号：${(input.task.existingDraftSummary?.componentRefs ?? []).join("、") || "未知"}`,
+        `- 主要网络：${(input.task.existingDraftSummary?.netNames ?? []).join("、") || "未知"}`,
+      ]
+    : [];
+
   return [
     isAnalysisTask ? "你是嘉立创 EDA 专业版智能原理图审查助手。" : "你是嘉立创 EDA 专业版智能操作助手。",
     "",
@@ -165,6 +222,12 @@ export function buildSystemPrompt(input: {
     "",
     ...analysisBlock,
     ...(analysisBlock.length > 0 ? [""] : []),
+    ...draftFollowUpBlock,
+    ...(draftFollowUpBlock.length > 0 ? [""] : []),
+    ...draftRevisionBlock,
+    ...(draftRevisionBlock.length > 0 ? [""] : []),
+    ...draftRiskFollowUpBlock,
+    ...(draftRiskFollowUpBlock.length > 0 ? [""] : []),
     ...draftBlock,
     ...(draftBlock.length > 0 ? [""] : []),
     "## 文件下载规则",

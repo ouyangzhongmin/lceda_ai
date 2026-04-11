@@ -208,22 +208,38 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 44px;
-      padding: 10px 16px;
-      border: 2px solid #1f2937;
+      min-height: 46px;
+      height: 46px;
+      padding: 0 18px;
+      border: 0;
       border-radius: 999px;
       background: #ffffff;
       color: #111827;
       font: inherit;
       font-size: 14px;
       font-weight: 700;
+      line-height: 1;
+      vertical-align: middle;
       cursor: pointer;
-      transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+      appearance: none;
+      -webkit-appearance: none;
+      box-shadow:
+        0 0 0 1px rgba(148, 163, 184, 0.32),
+        0 8px 20px rgba(15, 23, 42, 0.08);
+      transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+    }
+
+    .welcome-action-btn > span {
+      display: inline-block;
+      line-height: 1;
+      transform: translateY(1px);
     }
 
     .welcome-action-btn:hover {
       background: #f8fafc;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+      box-shadow:
+        0 0 0 1px rgba(148, 163, 184, 0.38),
+        0 10px 24px rgba(15, 23, 42, 0.1);
       transform: translateY(-1px);
     }
 
@@ -582,9 +598,11 @@
       min-height: 0;
       padding: 14px;
       border-radius: 22px;
-      border: 2px solid #1f2937;
+      border: 0;
       background: #f6f7f9;
-      box-shadow: none;
+      box-shadow:
+        0 0 0 1px rgba(148, 163, 184, 0.18),
+        0 10px 24px rgba(15, 23, 42, 0.05);
     }
 
     .message.assistant.assistant-split-layout {
@@ -679,9 +697,10 @@
       flex: 0 0 auto;
       padding: 12px 16px;
       border-radius: 18px;
-      border: 2px solid #1f2937;
+      border: 1px solid #a5b4c7;
       background: #ffffff;
       color: #111827;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
     }
 
     .assistant-head-simple {
@@ -711,7 +730,7 @@
     .assistant-head-left {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       min-width: 0;
     }
 
@@ -725,19 +744,24 @@
     .assistant-status-pill {
       display: inline-flex;
       align-items: center;
-      height: 32px;
-      padding: 0 12px;
-      border-radius: 12px;
-      border: 2px solid #1f2937;
-      background: #ffffff;
-      color: #111827;
-      font-size: 13px;
+      justify-content: center;
+      min-height: 0;
+      height: auto;
+      padding: 0;
+      border-radius: 0;
+      border: 0;
+      background: transparent;
+      color: #64748b;
+      font-size: 14px;
       font-weight: 700;
+      line-height: 1;
+      vertical-align: middle;
       white-space: nowrap;
+      box-shadow: none;
     }
 
     .assistant-status-pill.working {
-      color: #1d4ed8;
+      color: #2563eb;
     }
 
     .assistant-status-pill.done {
@@ -756,40 +780,45 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 104px;
-      border: 2px solid #1f2937;
-      border-radius: 12px;
-      background: #ffffff;
-      color: #111827;
+      gap: 6px;
+      min-width: 0;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: #334155;
       font: inherit;
       font-size: 13px;
-      font-weight: 700;
-      padding: 7px 12px;
+      font-weight: 600;
+      line-height: 1;
+      padding: 2px 0;
       cursor: pointer;
       white-space: nowrap;
-      transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+      box-shadow: none;
+      transition: color 180ms ease, transform 180ms ease;
     }
 
     .assistant-steps-toggle:hover {
-      background: #f3f4f6;
+      color: #0f172a;
     }
 
     .assistant-steps-toggle::after {
-      content: "展开";
-      margin-left: 8px;
+      content: "▾";
+      margin-left: 0;
       font-size: 12px;
       color: #6b7280;
+      transition: transform 180ms ease;
     }
 
     .assistant-steps-toggle[data-open="true"]::after {
-      content: "收起";
+      transform: rotate(180deg);
     }
 
     .assistant-steps-simple {
       display: flex;
       flex: 0 0 auto;
       flex-direction: column;
-      border: 2px solid #1f2937;
+      border: 0;
       border-radius: 16px;
       background: #ffffff;
       padding: 8px;
@@ -798,6 +827,9 @@
       min-height: 120px;
       max-height: var(--chat-pane-half);
       overflow: hidden;
+      box-shadow:
+        inset 0 0 0 1px rgba(148, 163, 184, 0.18),
+        0 6px 16px rgba(15, 23, 42, 0.05);
     }
 
     .message.assistant.assistant-split-layout .assistant-steps-simple {
@@ -2811,7 +2843,9 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = "welcome-action-btn";
-        button.textContent = prompt;
+        const label = document.createElement("span");
+        label.textContent = prompt;
+        button.appendChild(label);
         button.disabled = Boolean(isBusy);
         button.addEventListener("click", () => fillPromptInput(prompt));
         actions.appendChild(button);
@@ -3074,6 +3108,7 @@
         resolveMessageRole(message),
         message.title || "",
         message.content || "",
+        message.reportMarkdown || "",
         message.streaming ? "1" : "0",
         message.tone || "",
         reactEventsCount,
@@ -3235,13 +3270,15 @@
       // ChatGPT-style append: if the new text extends the old text, append only the delta.
       // If the message includes structuredContent, render it as a proper report layout (no markdown conversion).
       const structured = Array.isArray(message.structuredContent) ? message.structuredContent : null;
+      const reportMarkdown = typeof message.reportMarkdown === "string" ? message.reportMarkdown.trim() : "";
       if (structured && structured.length > 0) {
         dom.contentEl.classList.remove("md");
         dom.contentEl.classList.add("structured");
-        const signature = buildStructuredSignature(structured);
+        const signature = `${buildStructuredSignature(structured)}|md:${reportMarkdown.length}`;
         if (dom.lastText !== signature) {
           renderStructuredContentDom(dom.contentEl, structured, {
             contextCompaction: Boolean(message && message.contextCompaction),
+            reportMarkdown,
           });
           dom.lastText = signature;
         }
@@ -3294,9 +3331,11 @@
 
       if (role === "assistant") {
         const hasStructuredContent = Boolean(structured && structured.length > 0);
+        const hasReportMarkdown = reportMarkdown.length > 0;
         const visibleText = String(nextText || "").trim();
         const shouldHideContent =
           !hasStructuredContent &&
+          !hasReportMarkdown &&
           (visibleText === "" || visibleText === "正在思考...");
         dom.contentEl.hidden = shouldHideContent;
       }
@@ -3377,8 +3416,10 @@
             if (event.kind === "task" && /^迭代\s+\d+$/u.test(String(event.label || "").trim())) {
               return false;
             }
-            if (event.kind !== "thought") return true;
-            return String(event.text || "").trim().length > 0;
+            if (event.kind === "thought") {
+              return false;
+            }
+            return true;
           })
           .map((event) => ({
             kind: event.kind,
@@ -4105,6 +4146,27 @@
       root.className = "report-root";
       host.appendChild(root);
       renderStructuredBlocksInto(root, blocks);
+      if (options && typeof options.reportMarkdown === "string" && options.reportMarkdown.trim()) {
+        const section = document.createElement("div");
+        section.className = "report-section full";
+        const head = document.createElement("div");
+        head.className = "report-title";
+        const h3 = document.createElement("h3");
+        h3.textContent = "详细说明";
+        const tag = document.createElement("span");
+        tag.className = "report-tag";
+        tag.textContent = "Markdown";
+        head.appendChild(h3);
+        head.appendChild(tag);
+        section.appendChild(head);
+        const body = document.createElement("div");
+        body.className = "assistant-summary md";
+        body.style.maxHeight = "none";
+        body.style.overflow = "visible";
+        body.innerHTML = renderMarkdown(options.reportMarkdown);
+        section.appendChild(body);
+        root.appendChild(section);
+      }
     }
 
     function renderStructuredBlocksInto(root, blocks) {
@@ -6447,68 +6509,69 @@ var edaEsbuildExportName = (() => {
     const placedPins = /* @__PURE__ */ new Map();
     const gridX = 140;
     const gridY = 100;
-    for (const [index, component] of plan.components.entries()) {
-      const deviceUuid = component.properties.device_uuid;
-      const libraryUuid = component.properties.library_uuid;
-      if (!deviceUuid || !libraryUuid) {
-        continue;
-      }
-      const x = parsePlacementNumber(component.properties.placement_x) ?? 200 + index % 3 * gridX;
-      const y = parsePlacementNumber(component.properties.placement_y) ?? 200 + Math.floor(index / 3) * gridY;
-      const rotation = parsePlacementNumber(component.properties.placement_rotation) ?? 0;
-      const created = await eda.sch_PrimitiveComponent.create(
-        {
-          uuid: deviceUuid,
-          libraryUuid
-        },
-        x,
-        y,
-        void 0,
-        rotation,
-        false,
-        true,
-        true
-      );
-      if (!created) {
-        continue;
-      }
-      applyComponentDesignator(created, component.ref);
-      const primitiveId = created.getState_PrimitiveId();
-      componentIds.push(primitiveId);
-      const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
-      if (pins) {
-        for (const pin of pins) {
-          const pinName = pin.getState_PinName();
-          const pinNumber = pin.getState_PinNumber();
-          const planPin = findBestMatchingPlanPin(plan.pins, component.id, pinName, pinNumber);
-          if (!planPin) {
-            continue;
+    try {
+      for (const [index, component] of plan.components.entries()) {
+        const deviceUuid = component.properties.device_uuid;
+        const libraryUuid = component.properties.library_uuid;
+        if (!deviceUuid || !libraryUuid) {
+          continue;
+        }
+        const x = parsePlacementNumber(component.properties.placement_x) ?? 200 + index % 3 * gridX;
+        const y = parsePlacementNumber(component.properties.placement_y) ?? 200 + Math.floor(index / 3) * gridY;
+        const rotation = parsePlacementNumber(component.properties.placement_rotation) ?? 0;
+        const created = await eda.sch_PrimitiveComponent.create(
+          {
+            uuid: deviceUuid,
+            libraryUuid
+          },
+          x,
+          y,
+          void 0,
+          rotation,
+          false,
+          true,
+          true
+        );
+        if (!created) {
+          continue;
+        }
+        applyComponentDesignator(created, component.ref);
+        const primitiveId = created.getState_PrimitiveId();
+        componentIds.push(primitiveId);
+        const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+        if (pins) {
+          for (const pin of pins) {
+            const pinName = pin.getState_PinName();
+            const pinNumber = pin.getState_PinNumber();
+            const planPin = findBestMatchingPlanPin(plan.pins, component.id, pinName, pinNumber);
+            if (!planPin) {
+              continue;
+            }
+            placedPins.set(planPin.id, {
+              x: pin.getState_X(),
+              y: pin.getState_Y(),
+              primitiveId: pin.getState_PrimitiveId()
+            });
           }
-          placedPins.set(planPin.id, {
-            x: pin.getState_X(),
-            y: pin.getState_Y(),
-            primitiveId: pin.getState_PrimitiveId()
-          });
         }
       }
-    }
-    for (const net of plan.nets) {
-      const nodePoints = net.nodeIds.map((nodeId) => placedPins.get(nodeId)).filter((item) => Boolean(item));
-      if (nodePoints.length < 2) {
-        const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
-        throw new Error(
-          `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
-        );
+      validateMappedNets(plan, placedPins);
+      validateRequiredConnections(plan, placedPins);
+      for (const net of plan.nets) {
+        const nodePoints = net.nodeIds.map((nodeId) => placedPins.get(nodeId)).filter((item) => Boolean(item));
+        const line = buildOrthogonalPolyline(nodePoints);
+        const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
+        if (!createdWire) {
+          continue;
+        }
+        wireIds.push(createdWire.getState_PrimitiveId());
       }
-      const line = buildOrthogonalPolyline(nodePoints);
-      const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
-      if (!createdWire) {
-        continue;
-      }
-      wireIds.push(createdWire.getState_PrimitiveId());
+      return { componentIds, wireIds };
+    } catch (error) {
+      await deleteTypedSchematicWires(wireIds);
+      await deleteTypedSchematicComponents(componentIds);
+      throw error;
     }
-    validateRequiredConnections(plan, placedPins);
-    return { componentIds, wireIds };
   }
   function parsePlacementNumber(value) {
     if (!value) {
@@ -6566,6 +6629,17 @@ var edaEsbuildExportName = (() => {
       if (!placedPins.has(fromPin.id) || !placedPins.has(toPin.id)) {
         throw new Error(
           `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+        );
+      }
+    }
+  }
+  function validateMappedNets(plan, placedPins) {
+    for (const net of plan.nets) {
+      const nodePoints = net.nodeIds.map((nodeId) => placedPins.get(nodeId)).filter((item) => Boolean(item));
+      if (nodePoints.length < 2) {
+        const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
+        throw new Error(
+          `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
         );
       }
     }
@@ -7717,8 +7791,103 @@ var edaEsbuildExportName = (() => {
       }
     });
   }
-  function toPlacementProperties(spec) {
-    const placement = spec.placement;
+  function normalizeNetName(name, netId) {
+    const raw = String(name || netId || "").trim();
+    if (!raw) {
+      return "NET";
+    }
+    const normalized = raw.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!normalized) {
+      return "NET";
+    }
+    if (normalized === "VCC_5V" || normalized === "USB_5V" || normalized === "VBUS_5V") {
+      return "5V";
+    }
+    if (normalized === "VCC_3V3" || normalized === "3_3V" || normalized === "3V3_SYS" || normalized === "VDD_3V3") {
+      return "3V3";
+    }
+    if (normalized === "VBAT_SYS" || normalized === "VCC_BAT" || normalized === "BATTERY" || normalized === "BAT") {
+      return "VBAT";
+    }
+    if (normalized === "I2S_WS") {
+      return "I2S_LRCK";
+    }
+    return normalized;
+  }
+  function componentRoleBucket(role, ref) {
+    const normalized = String(role || ref || "").trim().toLowerCase();
+    if (/power|charger|charge|battery|ldo|regulator|buck|boost|usb|typec|type-c/.test(normalized)) {
+      return "power";
+    }
+    if (/mcu|soc|main|esp32|controller|processor/.test(normalized)) {
+      return "core";
+    }
+    if (/audio|codec|microphone|mic|speaker|amp/.test(normalized)) {
+      return "audio";
+    }
+    if (/button|key|led|display|user|sensor/.test(normalized)) {
+      return "ui";
+    }
+    return "io";
+  }
+  function defaultPlacementForComponent(component, indexInBucket) {
+    const bucket = componentRoleBucket(component.role, component.ref);
+    const normalizedRole = String(component.role || "").trim().toLowerCase();
+    const presets = {
+      power: { baseX: 180, baseY: 180, dx: 0, dy: 140 },
+      core: { baseX: 520, baseY: 260, dx: 0, dy: 160 },
+      audio: { baseX: 860, baseY: 220, dx: 320, dy: 140 },
+      ui: { baseX: 520, baseY: 540, dx: 200, dy: 120 },
+      io: { baseX: 180, baseY: 520, dx: 220, dy: 120 }
+    };
+    const preset = presets[bucket];
+    if (bucket === "audio") {
+      if (/codec/.test(normalizedRole)) {
+        return { x: 860, y: 220, rotation: 0 };
+      }
+      if (/microphone|mic/.test(normalizedRole)) {
+        return { x: 1180, y: 160, rotation: 0 };
+      }
+      if (/speaker|amp/.test(normalizedRole)) {
+        return { x: 1180, y: 300, rotation: 0 };
+      }
+      const column = Math.floor(indexInBucket / 2);
+      const row = indexInBucket % 2;
+      return {
+        x: preset.baseX + column * preset.dx,
+        y: preset.baseY + row * preset.dy - column * 60,
+        rotation: 0
+      };
+    }
+    return {
+      x: preset.baseX + Math.floor(indexInBucket / 3) * preset.dx,
+      y: preset.baseY + indexInBucket % 3 * preset.dy,
+      rotation: 0
+    };
+  }
+  function buildPlacementMap(spec) {
+    const counters = {
+      power: 0,
+      core: 0,
+      audio: 0,
+      ui: 0,
+      io: 0
+    };
+    const placements = /* @__PURE__ */ new Map();
+    for (const component of spec.components) {
+      if (component.placement) {
+        placements.set(component.id, component.placement);
+        continue;
+      }
+      const bucket = componentRoleBucket(component.role, component.ref);
+      const index = counters[bucket];
+      counters[bucket] += 1;
+      placements.set(component.id, defaultPlacementForComponent(component, index));
+    }
+    return placements;
+  }
+  function toPlacementPropertiesFromMap(component, placements) {
+    const placement = placements.get(component.id);
     if (!placement) {
       return {};
     }
@@ -7733,7 +7902,7 @@ var edaEsbuildExportName = (() => {
       (connection) => connection.pinIds.filter((pinId) => component.pins.some((pin) => pin.id === pinId)).map((pinId) => {
         const pin = component.pins.find((item) => item.id === pinId);
         const suffix = String(pin?.pinName || pin?.pinNumber || pinId).replace(/[^a-zA-Z0-9]+/g, "_").toUpperCase();
-        return [`expected_net_${suffix}`, connection.netName];
+        return [`expected_net_${suffix}`, normalizeNetName(connection.netName, connection.netName)];
       })
     );
     return Object.fromEntries(pinNetPairs);
@@ -7741,6 +7910,15 @@ var edaEsbuildExportName = (() => {
   function draftSpecToPlan(input) {
     const { spec, guidance } = input;
     assertValidDraftSpec(spec);
+    const placements = buildPlacementMap(spec);
+    const normalizedConnections = spec.connections.map((connection) => ({
+      ...connection,
+      netName: normalizeNetName(connection.netName, connection.netName)
+    }));
+    const normalizedNets = spec.nets.map((net) => ({
+      ...net,
+      name: normalizeNetName(net.name, net.id)
+    }));
     return {
       title: spec.title,
       rationale: spec.rationale,
@@ -7756,7 +7934,7 @@ var edaEsbuildExportName = (() => {
         properties: {
           role: component.role,
           ...component.searchQuery ? { preferred_search_query: component.searchQuery } : {},
-          ...toPlacementProperties(component),
+          ...toPlacementPropertiesFromMap(component, placements),
           ...toExpectedNetProperties(component, spec)
         }
       })),
@@ -7767,14 +7945,14 @@ var edaEsbuildExportName = (() => {
           pinNumber: pin.pinNumber,
           pinName: pin.pinName,
           electricalType: pin.electricalType,
-          netName: spec.connections.find((connection) => connection.pinIds.includes(pin.id))?.netName
+          netName: normalizedConnections.find((connection) => connection.pinIds.includes(pin.id))?.netName
         }))
       ),
-      nets: spec.nets.map((net) => ({
+      nets: normalizedNets.map((net) => ({
         id: net.id,
         name: net.name,
         isPower: net.isPower,
-        nodeIds: spec.connections.find((connection) => connection.netName === String(net.name || net.id))?.pinIds ?? []
+        nodeIds: normalizedConnections.find((connection) => connection.netName === String(net.name || net.id))?.pinIds ?? []
       })),
       guidance
     };
@@ -8611,7 +8789,7 @@ var edaEsbuildExportName = (() => {
       };
     });
     const scoreNet = (entry) => {
-      const raw = normalizeNetName(entry.networkName);
+      const raw = normalizeNetName2(entry.networkName);
       let score = 0;
       if (/^(GND|AGND|DGND)(_|$|\d)/.test(raw)) score += 1e4;
       if (/^(3V3|5V|1V8|VBUS|VBAT|VIN|VOUT|VCC|AVDD|DVDD|VSYS|SYS)(_|$|\d)/.test(raw)) score += 9e3;
@@ -9202,11 +9380,11 @@ var edaEsbuildExportName = (() => {
     const name = raw.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
     return /^(GND|AGND|DGND)(_|$|\d)/.test(name) || /^(3V3|5V|1V8|VBUS|VBAT|VIN|VOUT|GND|VCC|AVDD|DVDD|VSYS|SYS)(_|$|\d)/.test(name);
   }
-  function normalizeNetName(value) {
+  function normalizeNetName2(value) {
     return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
   }
   function netPriorityScore(net) {
-    const name = normalizeNetName(net.name || net.id);
+    const name = normalizeNetName2(net.name || net.id);
     if (!name) return 0;
     if (/^(GND|AGND|DGND)(_|$|\d)/.test(name)) return 1e4;
     if (/^(3V3|5V|VBUS|VBAT|VIN|VCC|VSYS|SYS)(_|$|\d)/.test(name)) return 9e3;
@@ -9233,7 +9411,7 @@ var edaEsbuildExportName = (() => {
     const sorted = all.filter((net) => Boolean(net.name) || (pinCount.get(net.id) ?? 0) > 1).sort((a, b) => score(b) - score(a));
     const picked = [];
     for (const net of sorted) {
-      const key = normalizeNetName(net.name || net.id) || net.id;
+      const key = normalizeNetName2(net.name || net.id) || net.id;
       if (seen.has(key)) continue;
       seen.add(key);
       picked.push(net);
@@ -10414,6 +10592,9 @@ var edaEsbuildExportName = (() => {
     const userQuery = String(input.task.userQuery || "").trim();
     const isAnalysisTask = input.task.type === "schematic_analysis" || input.task.type !== "schematic_draft" && /(分析|检查|检查看看|看看|查看|排查|定位|问题|有什么问题|有啥问题|erc|审查|review|analy[sz]e|check|inspect)/iu.test(userQuery);
     const isDraftTask = input.task.type === "schematic_draft" || !isAnalysisTask && /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(userQuery);
+    const isDraftFollowUpSummary = input.task.draftFollowUpIntent === "summarize_existing_draft";
+    const isDraftFollowUpRevision = input.task.draftFollowUpIntent === "revise_existing_draft";
+    const isDraftFollowUpRiskAnalysis = input.task.draftFollowUpIntent === "analyze_existing_draft_risk";
     const analysisBlock = isAnalysisTask ? [
       "## \u539F\u7406\u56FE\u5BA1\u67E5\u4EFB\u52A1\u5B9A\u4E49",
       "- \u8FD9\u662F\u539F\u7406\u56FE\u5BA1\u67E5/\u95EE\u9898\u5206\u6790\u4EFB\u52A1\u3002\u4F60\u7684\u804C\u8D23\u4E0D\u662F\u6CDB\u6CDB\u89E3\u91CA\u7535\u8DEF\uFF0C\u800C\u662F\u57FA\u4E8E\u5DE5\u5177\u8FD4\u56DE\u7684\u6570\u636E\u8F93\u51FA\u5DE5\u7A0B\u5BA1\u67E5\u62A5\u544A\u3002",
@@ -10518,6 +10699,51 @@ var edaEsbuildExportName = (() => {
       "- \u5F53\u8F93\u51FA Final \u4E14 route=`draft` \u65F6\uFF0C`output` \u5FC5\u987B\u76F4\u63A5\u7ED9\u51FA\u5B8C\u6574 Markdown\uFF0C\u603B\u7ED3\u8349\u6848\u8303\u56F4\u3001\u5173\u952E\u5668\u4EF6\u3001\u4E3B\u8981\u7F51\u7EDC\u548C\u4E0B\u4E00\u6B65\u52A8\u4F5C\u3002",
       "- \u82E5\u8BC1\u636E\u4E0D\u8DB3\u4EE5\u5F62\u6210\u53EF\u9760 `spec`\uFF0C\u5FC5\u987B\u660E\u786E\u5199\u51FA\u7F3A\u5931\u9879\uFF1B\u4E0D\u8981\u7528\u5FAE\u578B LED/LDO \u6A21\u677F\u5192\u5145\u590D\u6742\u7CFB\u7EDF\u8349\u6848\u3002"
     ] : [];
+    const draftFollowUpBlock = isDraftFollowUpSummary ? [
+      "## \u73B0\u6709\u8349\u6848\u8FFD\u95EE\u4EFB\u52A1\u5B9A\u4E49",
+      "- \u5F53\u524D\u5DF2\u7ECF\u5B58\u5728\u4E00\u7248\u8349\u6848\u548C\u9884\u89C8\uFF1B\u8FD9\u8F6E\u4EFB\u52A1\u662F\u57FA\u4E8E\u73B0\u6709\u8349\u6848\u56DE\u7B54\u8FFD\u95EE\uFF0C\u800C\u4E0D\u662F\u91CD\u65B0\u751F\u6210\u8349\u6848\u3002",
+      "- \u82E5\u7528\u6237\u8981\u6C42\u5217\u51FA\u4E3B\u8981\u5668\u4EF6\u3001\u603B\u7ED3\u7F51\u7EDC\u3001\u89E3\u91CA\u6A21\u5757\u3001\u6BD4\u8F83\u5F53\u524D\u8349\u6848\u5185\u5BB9\uFF0C\u5E94\u4F18\u5148\u590D\u7528\u73B0\u6709\u8349\u6848\u6458\u8981\u76F4\u63A5\u56DE\u7B54\u3002",
+      "- \u53EA\u6709\u5F53\u7528\u6237\u660E\u786E\u8981\u6C42\u201C\u91CD\u65B0\u751F\u6210\u8349\u6848\u201D\u3001\u201C\u4FEE\u6539\u8FDE\u63A5\u5173\u7CFB\u201D\u3001\u201C\u65B0\u589E\u6A21\u5757\u201D\u3001\u201C\u66FF\u6362\u5668\u4EF6\u5E76\u91CD\u51FA\u8349\u6848\u201D\u65F6\uFF0C\u624D\u91CD\u65B0\u8FDB\u5165 draft_generate_plan\u3002",
+      "- \u5728\u8FD9\u79CD follow-up \u6A21\u5F0F\u4E0B\uFF0C\u4E0D\u8981\u56E0\u4E3A\u7528\u6237\u53E5\u5B50\u91CC\u51FA\u73B0\u201C\u751F\u6210\u201D\u4E8C\u5B57\u5C31\u81EA\u52A8\u91CD\u65B0\u751F\u6210\u8349\u6848\u3002",
+      "- \u82E5\u73B0\u6709\u8349\u6848\u6458\u8981\u5DF2\u8DB3\u591F\u56DE\u7B54\uFF0C\u672C\u8F6E\u4E0D\u8981\u8C03\u7528 `draft_generate_plan`\u3001`draft_preview_plan`\u3001`rules_validate_draft`\u3002",
+      "- \u5982\u9700\u8865\u5145\u4E8B\u5B9E\uFF0C\u53EF\u4F18\u5148\u8C03\u7528\u4F4E\u6210\u672C\u5DE5\u5177\uFF1B\u4F46\u4E0D\u8981\u65E0\u5FC5\u8981\u91CD\u590D\u6574\u6761\u8349\u6848\u94FE\u8DEF\u3002",
+      "",
+      "## \u5F53\u524D\u5DF2\u5B58\u5728\u8349\u6848\u6458\u8981",
+      `- \u6807\u9898\uFF1A${input.task.existingDraftSummary?.title || "\u672A\u77E5"}`,
+      `- \u8BF4\u660E\uFF1A${input.task.existingDraftSummary?.rationale || "\u672A\u77E5"}`,
+      `- \u5668\u4EF6\u6570\uFF1A${String(input.task.existingDraftSummary?.componentCount ?? 0)}`,
+      `- \u7F51\u7EDC\u6570\uFF1A${String(input.task.existingDraftSummary?.netCount ?? 0)}`,
+      `- \u5668\u4EF6\u4F4D\u53F7\uFF1A${(input.task.existingDraftSummary?.componentRefs ?? []).join("\u3001") || "\u672A\u77E5"}`,
+      `- \u4E3B\u8981\u7F51\u7EDC\uFF1A${(input.task.existingDraftSummary?.netNames ?? []).join("\u3001") || "\u672A\u77E5"}`,
+      `- \u5DF2\u9009\u5668\u4EF6\uFF1A${(input.task.existingDraftSummary?.selectedDeviceDetails ?? []).join("\uFF1B") || "\u672A\u77E5"}`
+    ] : [];
+    const draftRevisionBlock = isDraftFollowUpRevision ? [
+      "## \u73B0\u6709\u8349\u6848\u4FEE\u6539\u4EFB\u52A1\u5B9A\u4E49",
+      "- \u5F53\u524D\u5DF2\u7ECF\u5B58\u5728\u4E00\u7248\u8349\u6848\u548C\u9884\u89C8\uFF1B\u8FD9\u8F6E\u4EFB\u52A1\u662F\u57FA\u4E8E\u73B0\u6709\u8349\u6848\u505A\u4FEE\u6539\uFF0C\u800C\u4E0D\u662F\u4ECE\u96F6\u5F00\u59CB\u91CD\u65B0\u6784\u601D\u5168\u90E8\u7CFB\u7EDF\u3002",
+      "- \u5E94\u4F18\u5148\u7EE7\u627F\u5F53\u524D\u8349\u6848\u4E2D\u7684\u5DF2\u786E\u8BA4\u5668\u4EF6\u3001\u7F51\u7EDC\u548C\u7ED3\u6784\uFF0C\u53EA\u5BF9\u7528\u6237\u660E\u786E\u8981\u6C42\u4FEE\u6539\u7684\u90E8\u5206\u505A\u589E\u5220\u6539\u3002",
+      "- \u82E5\u7528\u6237\u8981\u6C42\u65B0\u589E\u6A21\u5757\u3001\u66FF\u6362\u5668\u4EF6\u3001\u8C03\u6574\u8FDE\u63A5\u6216\u4FEE\u6B63\u7F51\u7EDC\u547D\u540D\uFF0C\u53EF\u8FDB\u5165 `draft_generate_plan`\uFF0C\u4F46\u5FC5\u987B\u628A\u5B83\u89C6\u4E3A\u201C\u4FEE\u6539\u73B0\u6709\u8349\u6848\u201D\u3002",
+      "- \u4E0D\u8981\u4E22\u5931\u5F53\u524D\u8349\u6848\u4E2D\u672A\u88AB\u7528\u6237\u8981\u6C42\u4FEE\u6539\u7684\u5DF2\u786E\u8BA4\u5185\u5BB9\u3002",
+      "- \u751F\u6210\u65B0\u7684 plan \u540E\u4ECD\u5FC5\u987B\u8C03\u7528 `draft_preview_plan`\uFF1B\u5982\u9700\u9A8C\u8BC1\u518D\u8C03\u7528 `rules_validate_draft`\u3002",
+      "",
+      "## \u5F53\u524D\u5DF2\u5B58\u5728\u8349\u6848\u6458\u8981",
+      `- \u6807\u9898\uFF1A${input.task.existingDraftSummary?.title || "\u672A\u77E5"}`,
+      `- \u8BF4\u660E\uFF1A${input.task.existingDraftSummary?.rationale || "\u672A\u77E5"}`,
+      `- \u5668\u4EF6\u4F4D\u53F7\uFF1A${(input.task.existingDraftSummary?.componentRefs ?? []).join("\u3001") || "\u672A\u77E5"}`,
+      `- \u4E3B\u8981\u7F51\u7EDC\uFF1A${(input.task.existingDraftSummary?.netNames ?? []).join("\u3001") || "\u672A\u77E5"}`
+    ] : [];
+    const draftRiskFollowUpBlock = isDraftFollowUpRiskAnalysis ? [
+      "## \u73B0\u6709\u8349\u6848\u98CE\u9669\u590D\u6838\u4EFB\u52A1\u5B9A\u4E49",
+      "- \u5F53\u524D\u5DF2\u7ECF\u5B58\u5728\u4E00\u7248\u8349\u6848\u548C\u9884\u89C8\uFF1B\u8FD9\u8F6E\u4EFB\u52A1\u662F\u5BF9\u73B0\u6709\u8349\u6848\u505A\u98CE\u9669\u590D\u6838\u6216\u95EE\u9898\u8BF4\u660E\uFF0C\u800C\u4E0D\u662F\u91CD\u65B0\u751F\u6210\u8349\u6848\u3002",
+      "- \u5E94\u4F18\u5148\u57FA\u4E8E\u73B0\u6709\u8349\u6848\u6458\u8981\u4E0E\u5DF2\u6709\u9A8C\u8BC1\u7ED3\u679C\u56DE\u7B54\u98CE\u9669\u3001\u7F3A\u5931\u8FDE\u63A5\u3001\u60AC\u7A7A\u5F15\u811A\u3001\u5F85\u786E\u8BA4\u70B9\u3002",
+      "- \u82E5\u9700\u8981\u8865\u5145\u9A8C\u8BC1\uFF0C\u53EF\u8C03\u7528 `rules_validate_draft`\uFF1B\u4E0D\u8981\u65E0\u5FC5\u8981\u91CD\u65B0\u8C03\u7528 `draft_generate_plan`\u3002",
+      "- \u8F93\u51FA\u91CD\u70B9\u5E94\u662F\uFF1A\u5F53\u524D\u8349\u6848\u7684\u4E3B\u8981\u98CE\u9669\u3001\u5F71\u54CD\u3001\u662F\u5426\u963B\u65AD\u5E94\u7528\u3001\u4E0B\u4E00\u6B65\u8BE5\u8865\u4EC0\u4E48\u3002",
+      "",
+      "## \u5F53\u524D\u5DF2\u5B58\u5728\u8349\u6848\u6458\u8981",
+      `- \u6807\u9898\uFF1A${input.task.existingDraftSummary?.title || "\u672A\u77E5"}`,
+      `- \u8BF4\u660E\uFF1A${input.task.existingDraftSummary?.rationale || "\u672A\u77E5"}`,
+      `- \u5668\u4EF6\u4F4D\u53F7\uFF1A${(input.task.existingDraftSummary?.componentRefs ?? []).join("\u3001") || "\u672A\u77E5"}`,
+      `- \u4E3B\u8981\u7F51\u7EDC\uFF1A${(input.task.existingDraftSummary?.netNames ?? []).join("\u3001") || "\u672A\u77E5"}`
+    ] : [];
     return [
       isAnalysisTask ? "\u4F60\u662F\u5609\u7ACB\u521B EDA \u4E13\u4E1A\u7248\u667A\u80FD\u539F\u7406\u56FE\u5BA1\u67E5\u52A9\u624B\u3002" : "\u4F60\u662F\u5609\u7ACB\u521B EDA \u4E13\u4E1A\u7248\u667A\u80FD\u64CD\u4F5C\u52A9\u624B\u3002",
       "",
@@ -10542,6 +10768,12 @@ var edaEsbuildExportName = (() => {
       "",
       ...analysisBlock,
       ...analysisBlock.length > 0 ? [""] : [],
+      ...draftFollowUpBlock,
+      ...draftFollowUpBlock.length > 0 ? [""] : [],
+      ...draftRevisionBlock,
+      ...draftRevisionBlock.length > 0 ? [""] : [],
+      ...draftRiskFollowUpBlock,
+      ...draftRiskFollowUpBlock.length > 0 ? [""] : [],
       ...draftBlock,
       ...draftBlock.length > 0 ? [""] : [],
       "## \u6587\u4EF6\u4E0B\u8F7D\u89C4\u5219",
@@ -10686,6 +10918,24 @@ ${match[2] || ""}`);
   function isDraftTaskType(taskType) {
     return taskType === "schematic_draft";
   }
+  function looksLikeDraftFollowUpSummaryQuery(userQuery) {
+    const text = String(userQuery || "").trim().toLowerCase();
+    if (!text) return false;
+    if (/(重新生成|重新设计|重画|修改草案|改原理图|增加模块|新增模块|替换器件|换成|重做)/iu.test(text)) {
+      return false;
+    }
+    return /(列表|清单|主要元器件|主要器件|用哪些器件|用了哪些器件|器件列表|列出|展示|总结|概述|说明|介绍)/iu.test(text);
+  }
+  function looksLikeDraftFollowUpRevisionQuery(userQuery) {
+    const text = String(userQuery || "").trim().toLowerCase();
+    if (!text) return false;
+    return /(修改|调整|改成|换成|增加|新增|加入|补充|删掉|删除|替换|优化|重生成|重新生成|重做草案|重新设计|增加模块|新增模块)/iu.test(text);
+  }
+  function looksLikeDraftRiskAnalysisQuery(userQuery) {
+    const text = String(userQuery || "").trim().toLowerCase();
+    if (!text) return false;
+    return /(风险|问题|隐患|还能不能用|为什么报错|哪些地方有问题|哪里不合理|阻断|校验|验证|规则检查|悬空|未连接)/iu.test(text);
+  }
   function shouldTreatAsAnalysis(input) {
     return isAnalysisTaskType(input.taskType) || !isDraftTaskType(input.taskType) && looksLikeAnalysisQuery(input.userQuery);
   }
@@ -10794,7 +11044,23 @@ ${match[2] || ""}`);
     let mcpResourceReads;
     let libraryInsights;
     const resolvedTaskType = input.taskType ?? "natural_chat";
-    const task = { type: resolvedTaskType, userQuery: input.userQuery, context: liveContext };
+    const hasExistingDraftPreview = Boolean(input.panelState.draftPreview || input.panelState.draftPlan);
+    const draftFollowUpIntent = resolvedTaskType === "natural_chat" && hasExistingDraftPreview && input.panelState.agentRunState === "awaiting_confirmation" && (looksLikeDraftFollowUpRevisionQuery(input.userQuery) ? "revise_existing_draft" : looksLikeDraftRiskAnalysisQuery(input.userQuery) ? "analyze_existing_draft_risk" : looksLikeDraftFollowUpSummaryQuery(input.userQuery) ? "summarize_existing_draft" : void 0);
+    const task = {
+      type: resolvedTaskType,
+      userQuery: input.userQuery,
+      context: liveContext,
+      draftFollowUpIntent,
+      existingDraftSummary: draftFollowUpIntent ? {
+        title: input.panelState.draftPreview?.title,
+        rationale: input.panelState.draftPreview?.rationale,
+        componentRefs: input.panelState.draftPreview?.componentRefs,
+        netNames: input.panelState.draftPreview?.netNames,
+        componentCount: input.panelState.draftPreview?.componentCount,
+        netCount: input.panelState.draftPreview?.netCount,
+        selectedDeviceDetails: input.panelState.draftPreview?.selectedDeviceDetails
+      } : void 0
+    };
     const state = {
       toolTraces: [],
       stepStates: [],
@@ -10807,11 +11073,13 @@ ${match[2] || ""}`);
     const baseContextHint = buildContextHint(input.context, input.panelState);
     const allVisibleTools = input.tools.list().filter((t) => isAllowedToolName(t.name, input.allowedTools)).filter((t) => !t.requiresConfirmation);
     const decisionToolNames = buildDecisionToolNames({
-      taskType: resolvedTaskType,
+      taskType: draftFollowUpIntent === "revise_existing_draft" ? "schematic_draft" : draftFollowUpIntent === "analyze_existing_draft_risk" ? "schematic_analysis" : draftFollowUpIntent ? "natural_chat" : resolvedTaskType,
       userQuery: input.userQuery,
       availableToolNames: allVisibleTools.map((tool) => tool.name)
     });
-    const toolList = allVisibleTools.filter((tool) => decisionToolNames.includes(tool.name));
+    const toolList = allVisibleTools.filter(
+      (tool) => draftFollowUpIntent === "summarize_existing_draft" ? !["draft_generate_plan", "draft_preview_plan", "rules_validate_draft", "editor_preview_apply_plan"].includes(tool.name) && decisionToolNames.includes(tool.name) : decisionToolNames.includes(tool.name)
+    );
     const system = buildSystemPrompt({
       task,
       tools: toolList,
@@ -10827,11 +11095,11 @@ ${match[2] || ""}`);
       "",
       `\u53EF\u7528\u5DE5\u5177\uFF1A${toolList.map((t) => t.name).join("\u3001")}`,
       "",
-      shouldTreatAsAnalysis({ taskType: resolvedTaskType, userQuery: input.userQuery }) ? "\u8FD9\u662F\u5206\u6790\u7C7B\u4EFB\u52A1\uFF1A\u5148\u8C03\u7528 editor_get_current_context\uFF0C\u518D\u8C03\u7528 rules_run_schematic_checks\uFF1B\u5982\u9700\u7F51\u8868\u7EA7\u8BC1\u636E\uFF0C\u518D\u8C03\u7528 schematic_review\u3002\u5B8C\u6210\u8FD9\u4E9B\u6B65\u9AA4\u524D\u4E0D\u8981\u76F4\u63A5\u56DE\u7B54\u3002" : shouldTreatAsDraft({ taskType: resolvedTaskType, userQuery: input.userQuery }) ? "\u8FD9\u662F\u8349\u6848\u7C7B\u4EFB\u52A1\uFF1A\u5148\u8865\u9F50\u4E8B\u5B9E\u6216\u8BC1\u636E\uFF0C\u518D\u7531\u6A21\u578B\u81EA\u884C\u6574\u7406\u7ED3\u6784\u5316 spec \u5E76\u4F20\u7ED9 draft_generate_plan\uFF1B\u751F\u6210 plan \u540E\u5FC5\u987B\u8C03\u7528 draft_preview_plan\uFF0C\u5B8C\u6210\u8FD9\u4E9B\u6B65\u9AA4\u524D\u4E0D\u8981\u76F4\u63A5\u8F93\u51FA final\u3002" : "\u5982\u9700\u539F\u7406\u56FE\u4E8B\u5B9E\uFF0C\u5148\u8C03\u7528 editor_get_current_context\uFF1B\u89C4\u5219\u68C0\u67E5\u7528 rules_run_schematic_checks\uFF1B\u9700\u8981\u7F51\u8868\u8BC1\u636E\u7528 schematic_review\u3002"
+      draftFollowUpIntent === "summarize_existing_draft" ? "\u8FD9\u662F\u57FA\u4E8E\u73B0\u6709\u8349\u6848\u7684\u8FFD\u95EE\uFF1A\u4F18\u5148\u590D\u7528\u5F53\u524D\u8349\u6848\u6458\u8981\u76F4\u63A5\u56DE\u7B54\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\u91CD\u751F\u6210\u6216\u4FEE\u6539\u8349\u6848\uFF0C\u5426\u5219\u4E0D\u8981\u8C03\u7528 draft_generate_plan / draft_preview_plan / rules_validate_draft\u3002" : draftFollowUpIntent === "revise_existing_draft" ? "\u8FD9\u662F\u57FA\u4E8E\u73B0\u6709\u8349\u6848\u7684\u4FEE\u6539\u8BF7\u6C42\uFF1A\u4F18\u5148\u7EE7\u627F\u5F53\u524D\u8349\u6848\uFF0C\u53EA\u4FEE\u6539\u7528\u6237\u660E\u786E\u63D0\u51FA\u7684\u90E8\u5206\uFF1B\u5141\u8BB8\u8C03\u7528 draft_generate_plan \u548C draft_preview_plan\uFF0C\u4F46\u4E0D\u8981\u628A\u6574\u4E2A\u7CFB\u7EDF\u4ECE\u96F6\u91CD\u505A\u3002" : draftFollowUpIntent === "analyze_existing_draft_risk" ? "\u8FD9\u662F\u57FA\u4E8E\u73B0\u6709\u8349\u6848\u7684\u98CE\u9669\u590D\u6838\u8BF7\u6C42\uFF1A\u4F18\u5148\u8BF4\u660E\u5F53\u524D\u8349\u6848\u7684\u95EE\u9898\u3001\u963B\u65AD\u9879\u548C\u5F85\u8865\u5145\u5185\u5BB9\uFF1B\u53EF\u8C03\u7528 rules_validate_draft\uFF0C\u4F46\u4E0D\u8981\u65E0\u5FC5\u8981\u91CD\u751F\u6210\u8349\u6848\u3002" : shouldTreatAsAnalysis({ taskType: resolvedTaskType, userQuery: input.userQuery }) ? "\u8FD9\u662F\u5206\u6790\u7C7B\u4EFB\u52A1\uFF1A\u5148\u8C03\u7528 editor_get_current_context\uFF0C\u518D\u8C03\u7528 rules_run_schematic_checks\uFF1B\u5982\u9700\u7F51\u8868\u7EA7\u8BC1\u636E\uFF0C\u518D\u8C03\u7528 schematic_review\u3002\u5B8C\u6210\u8FD9\u4E9B\u6B65\u9AA4\u524D\u4E0D\u8981\u76F4\u63A5\u56DE\u7B54\u3002" : shouldTreatAsDraft({ taskType: resolvedTaskType, userQuery: input.userQuery }) ? "\u8FD9\u662F\u8349\u6848\u7C7B\u4EFB\u52A1\uFF1A\u5148\u8865\u9F50\u4E8B\u5B9E\u6216\u8BC1\u636E\uFF0C\u518D\u7531\u6A21\u578B\u81EA\u884C\u6574\u7406\u7ED3\u6784\u5316 spec \u5E76\u4F20\u7ED9 draft_generate_plan\uFF1B\u751F\u6210 plan \u540E\u5FC5\u987B\u8C03\u7528 draft_preview_plan\uFF0C\u5B8C\u6210\u8FD9\u4E9B\u6B65\u9AA4\u524D\u4E0D\u8981\u76F4\u63A5\u8F93\u51FA final\u3002" : "\u5982\u9700\u539F\u7406\u56FE\u4E8B\u5B9E\uFF0C\u5148\u8C03\u7528 editor_get_current_context\uFF1B\u89C4\u5219\u68C0\u67E5\u7528 rules_run_schematic_checks\uFF1B\u9700\u8981\u7F51\u8868\u8BC1\u636E\u7528 schematic_review\u3002"
     ].join("\n");
     const historyMessages = buildConversationHistory(input.panelState, input.userQuery);
     const requiredTools = buildRequiredTools({
-      taskType: resolvedTaskType,
+      taskType: draftFollowUpIntent === "revise_existing_draft" ? "schematic_draft" : draftFollowUpIntent === "analyze_existing_draft_risk" ? "schematic_analysis" : draftFollowUpIntent ? "natural_chat" : resolvedTaskType,
       userQuery: input.userQuery,
       hasContext: Boolean(liveContext),
       availableToolNames: toolList.map((tool) => tool.name)
@@ -11118,6 +11386,84 @@ ${match[2] || ""}`);
       }).filter(Boolean);
       return lines.length > 0 ? lines : void 0;
     };
+    const buildDraftFollowUpSuggestions = (suggestions) => {
+      if (Array.isArray(suggestions) && suggestions.length > 0) {
+        return suggestions;
+      }
+      return [
+        {
+          label: "\u5217\u4E3B\u8981\u5668\u4EF6",
+          actionType: "ask_followup",
+          prompt: "\u7ED9\u6211\u5217\u4E00\u4E0B\u8FD9\u7248\u8349\u6848\u4F7F\u7528\u7684\u4E3B\u8981\u5143\u5668\u4EF6\u548C\u5404\u81EA\u4F5C\u7528"
+        },
+        {
+          label: "\u8BF4\u660E\u98CE\u9669",
+          actionType: "ask_followup",
+          prompt: "\u8FD9\u7248\u8349\u6848\u8FD8\u6709\u54EA\u4E9B\u963B\u65AD\u98CE\u9669\uFF0C\u4E3A\u4EC0\u4E48\u73B0\u5728\u4E0D\u80FD\u76F4\u63A5\u5E94\u7528\uFF1F"
+        },
+        {
+          label: "\u7EE7\u7EED\u4FEE\u6539\u8349\u6848",
+          actionType: "ask_followup",
+          prompt: "\u57FA\u4E8E\u5F53\u524D\u8FD9\u7248\u8349\u6848\uFF0C\u4E0D\u8981\u91CD\u505A\u6574\u4F53\u65B9\u6848\uFF0C\u53EA\u4FEE\u6539\u6211\u63A5\u4E0B\u6765\u6307\u51FA\u7684\u90E8\u5206"
+        }
+      ];
+    };
+    const buildDraftReportMarkdown = (input) => {
+      const { draftPreview, draftRisk, nextSuggestions } = input;
+      const selectedDevices = draftPreview.selectedDeviceDetails ?? [];
+      const lines = [
+        "## \u8349\u6848\u8303\u56F4",
+        `- \u6807\u9898\uFF1A${draftPreview.title}`,
+        `- \u8BF4\u660E\uFF1A${draftPreview.rationale}`,
+        `- \u5668\u4EF6\u6570\u91CF\uFF1A${draftPreview.componentCount}`,
+        `- \u7F51\u7EDC\u6570\u91CF\uFF1A${draftPreview.netCount}`,
+        "",
+        "## \u5173\u952E\u5668\u4EF6",
+        ...selectedDevices.length > 0 ? selectedDevices.map((item) => `- ${item}`) : draftPreview.componentRefs.length > 0 ? draftPreview.componentRefs.map((item) => `- ${item}`) : ["- \u672A\u8FD4\u56DE\u5173\u952E\u5668\u4EF6\u8BE6\u60C5"],
+        "",
+        "## \u4E3B\u8981\u7F51\u7EDC",
+        ...draftPreview.netNames.length > 0 ? draftPreview.netNames.map((item) => `- ${item}`) : ["- \u672A\u8FD4\u56DE\u7F51\u7EDC\u5217\u8868"]
+      ];
+      if (draftRisk) {
+        lines.push("", "## \u98CE\u9669\u7ED3\u8BBA");
+        lines.push(`- \u98CE\u9669\u7B49\u7EA7\uFF1A${draftRisk.level}`);
+        lines.push(`- \u8BF4\u660E\uFF1A${draftRisk.message}`);
+      }
+      lines.push("", "## \u4E0B\u4E00\u6B65");
+      if (nextSuggestions && nextSuggestions.length > 0) {
+        lines.push(...nextSuggestions.map((item, index) => `${index + 1}. ${item}`));
+      } else {
+        lines.push("1. \u5148\u4EBA\u5DE5\u786E\u8BA4\u5173\u952E\u5668\u4EF6\u4E0E\u4E3B\u8981\u7F51\u7EDC\u547D\u540D");
+        lines.push("2. \u518D\u51B3\u5B9A\u662F\u5426\u5E94\u7528\u8349\u6848\u6216\u7EE7\u7EED\u5C40\u90E8\u4FEE\u6539");
+      }
+      return lines.join("\n");
+    };
+    const summarizeDraftRationale = (value) => {
+      const text = String(value || "").trim();
+      if (!text) {
+        return "\u672A\u8FD4\u56DE\u8349\u6848\u8BF4\u660E\u3002";
+      }
+      const stopMarkers = ["\u5DF2\u68C0\u7D22\u5230\u77E5\u8BC6\u4F9D\u636E", "\u672A\u5339\u914D\u5230\u4E13\u7528\u8349\u6848\u6A21\u677F", "\u56DE\u9000\u5230\u901A\u7528\u8349\u6848\u751F\u6210", "\u5DF2\u9009\u5668\u4EF6:"];
+      let end = text.length;
+      for (const marker of stopMarkers) {
+        const index = text.indexOf(marker);
+        if (index >= 0 && index < end) {
+          end = index;
+        }
+      }
+      const cleaned = text.slice(0, end).trim();
+      return cleaned || text;
+    };
+    const summarizeDraftList = (items, overflowLabel) => {
+      if (!Array.isArray(items) || items.length === 0) {
+        return [];
+      }
+      const limit = 3;
+      if (items.length <= limit) {
+        return items;
+      }
+      return [...items.slice(0, limit), `\u53E6\u6709 ${items.length - limit} ${overflowLabel}\u672A\u5C55\u5F00`];
+    };
     const buildNaturalChatFallback = (result) => {
       const failedToolNotes = (result.toolTraces ?? []).filter((trace) => trace.status === "blocked").map((trace) => `${trace.toolName}: ${trace.note || "\u8C03\u7528\u5931\u8D25"}`);
       const failedObservations = (result.reactEvents ?? []).filter((event) => event?.kind === "observation" && event.status === "failed").map((event) => `${event.toolName || event.label || "tool"}: ${event.outputSummary || event.text || "\u8C03\u7528\u5931\u8D25"}`);
@@ -11382,6 +11728,12 @@ MCP\u6458\u8981\uFF1A${input.mcpResourceReads.map((item) => `${item.title}(${ite
 \u4E0B\u4E00\u6B65\u5EFA\u8BAE\uFF1A
 ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : "";
         const hasUnresolvedDevices = Boolean(preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0);
+        const suggestions = buildDraftFollowUpSuggestions(input.structuredSuggestions);
+        const reportMarkdown = buildDraftReportMarkdown({
+          draftPreview: preview,
+          draftRisk: input.draftRisk,
+          nextSuggestions: input.nextSuggestions
+        });
         const actions = input.draftRisk?.level === "blocked" ? [
           {
             label: "\u91CD\u65B0\u5206\u6790",
@@ -11431,7 +11783,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
             stepTranscript: buildStepTranscript(displayReactEvents),
             stepStates: input.stepStates,
             workingMemory: input.workingMemory,
-            suggestions: input.structuredSuggestions,
+            reportMarkdown,
+            suggestions,
             actions
           }
         ];
@@ -11687,7 +12040,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
           title: "\u8349\u6848\u6458\u8981",
           entries: [
             { key: "\u6807\u9898", value: preview.title },
-            { key: "\u8BF4\u660E", value: preview.rationale },
+            { key: "\u8BF4\u660E", value: summarizeDraftRationale(preview.rationale) },
             { key: "\u5668\u4EF6\u6570\u91CF", value: String(preview.componentCount) },
             { key: "\u7F51\u7EDC\u6570\u91CF", value: String(preview.netCount) }
           ]
@@ -11695,12 +12048,12 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
         {
           kind: "list",
           title: "\u6D89\u53CA\u5668\u4EF6",
-          items: preview.componentRefs.length > 0 ? preview.componentRefs : ["\u672A\u8FD4\u56DE\u5668\u4EF6\u5217\u8868"]
+          items: preview.componentRefs.length > 0 ? summarizeDraftList(preview.componentRefs, "\u4E2A\u5668\u4EF6") : ["\u672A\u8FD4\u56DE\u5668\u4EF6\u5217\u8868"]
         },
         {
           kind: "list",
           title: "\u6D89\u53CA\u7F51\u7EDC",
-          items: preview.netNames.length > 0 ? preview.netNames : ["\u672A\u8FD4\u56DE\u7F51\u7EDC\u5217\u8868"]
+          items: preview.netNames.length > 0 ? summarizeDraftList(preview.netNames, "\u6761\u7F51\u7EDC") : ["\u672A\u8FD4\u56DE\u7F51\u7EDC\u5217\u8868"]
         }
       ];
       if (input.mcpResourceReads && input.mcpResourceReads.length > 0) {
@@ -12453,6 +12806,46 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
       await hostBridge.openExternal(url);
     }
   };
+
+  // src/services/auth/loginPolling.ts
+  async function waitLoginSuccess(authClient, loginSession, options) {
+    const startedAt = Date.now();
+    const maxConsecutiveErrors = Math.max(1, options.maxConsecutiveErrors ?? 3);
+    let consecutiveErrors = 0;
+    while (Date.now() - startedAt < options.timeoutMs) {
+      const waitSeconds = Math.max(1, Math.min(20, Math.floor(options.waitIntervalMs / 1e3)));
+      let status;
+      try {
+        status = await authClient.getLoginSession(
+          loginSession.login_session_id,
+          loginSession.poll_token,
+          waitSeconds
+        );
+        consecutiveErrors = 0;
+      } catch (error) {
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          throw error;
+        }
+        continue;
+      }
+      if (status.status === "success") {
+        return status;
+      }
+      if (status.status === "failed" || status.status === "expired" || status.status === "cancelled") {
+        throw new Error(`browser login ended with status: ${status.status}`);
+      }
+      if (waitSeconds <= 0) {
+        await delay(options.waitIntervalMs);
+      }
+    }
+    throw new Error("browser login polling timed out");
+  }
+  function delay(ms) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  }
 
   // src/services/auth/sessionStore.ts
   var PersistentSessionStore = class {
@@ -14007,8 +14400,6 @@ ${content}`;
             touch();
           });
           if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
-            console.log(`${LOG_PREFIX} sendChat.plan`, turn.plan);
-            console.log(`${LOG_PREFIX} sendChat.intent`, { intent: turn.intent });
             console.log(`${LOG_PREFIX} sendChat.route`, { route: turn.route });
             console.log(`${LOG_PREFIX} sendChat.react.trace`, turn.result.executionTraces ?? []);
           }
@@ -14021,7 +14412,6 @@ ${content}`;
             userMessages: nextMessages,
             requestedRoute: plan.route,
             finalRoute: turn.route,
-            plan: turn.plan,
             result: turn.result
           });
           if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
@@ -14396,7 +14786,7 @@ ${content}`;
         return drafted;
       }
       const analyzed = await buildAnalysisStateFromTurnResult(input.baseState, input.result);
-      const replannedFromDraft = input.plan.route === "analysis" && input.plan.intent === "analysis" && input.requestedRoute === "draft";
+      const replannedFromDraft = input.requestedRoute === "draft";
       analyzed.agentRunRoute = "analysis";
       analyzed.agentRunState = "completed";
       analyzed.agentRunDetail = replannedFromDraft ? `draft blocked -> analysis: ${input.result.summary}` : input.result.summary;
@@ -14814,59 +15204,62 @@ ${content}`;
     if (!active) {
       return;
     }
-    for (let i = 0; i < 40; i += 1) {
+    try {
+      const status = await waitLoginSuccess(
+        authClient,
+        {
+          login_session_id: active.loginSessionId,
+          poll_token: active.pollToken,
+          login_url: "",
+          expires_at: "",
+          interval_seconds: 15
+        },
+        {
+          waitIntervalMs: 15e3,
+          timeoutMs: 10 * 6e4,
+          maxConsecutiveErrors: 3
+        }
+      );
       if (active.stopped) {
         return;
       }
-      try {
-        const status = await authClient.getLoginSession(active.loginSessionId, active.pollToken, 15);
-        if (status.status === "success" && status.exchange_token) {
-          const tokenData = await authClient.exchangeToken(active.loginSessionId, status.exchange_token);
-          await sessionStore.set(toSession(tokenData));
-          const state2 = internals.currentState ?? {
-            loggedIn: false
-          };
-          await fillSettingsState(state2, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
-          state2.summary = `\u767B\u5F55\u6210\u529F\uFF0C\u6B22\u8FCE\u56DE\u6765 ${tokenData.user.display_name || tokenData.user.email}\u3002`;
-          state2.nextActions = buildNextActions(state2);
-          commitState(internals, state2, storage);
-          active.stopped = true;
-          if (internals.pendingChatInput) {
-            void retryPendingChatAfterLogin(internals, chatOrchestrator, storage);
-          }
-          return;
-        }
-        if (status.status === "failed" || status.status === "expired" || status.status === "cancelled") {
-          const state2 = internals.currentState ?? {
-            loggedIn: false
-          };
-          state2.loginStatus = `\u767B\u5F55\u672A\u5B8C\u6210\uFF08${status.status}\uFF09`;
-          state2.summary = "\u6D4F\u89C8\u5668\u767B\u5F55\u4F1A\u8BDD\u5DF2\u7ED3\u675F\uFF0C\u8BF7\u91CD\u65B0\u53D1\u8D77\u767B\u5F55\u3002";
-          state2.nextActions = buildNextActions(state2);
-          commitState(internals, state2, storage);
-          active.stopped = true;
-          return;
-        }
-      } catch (error) {
-        const state2 = internals.currentState ?? {
-          loggedIn: false
-        };
-        state2.loginStatus = "\u767B\u5F55\u8F6E\u8BE2\u5931\u8D25";
-        state2.summary = `\u767B\u5F55\u72B6\u6001\u540C\u6B65\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
-        state2.nextActions = buildNextActions(state2);
-        commitState(internals, state2, storage);
-        active.stopped = true;
-        return;
+      if (!status.exchange_token) {
+        throw new Error("\u767B\u5F55\u6210\u529F\u4F46\u7F3A\u5C11 exchange token");
       }
+      const tokenData = await authClient.exchangeToken(active.loginSessionId, status.exchange_token);
+      await sessionStore.set(toSession(tokenData));
+      const state = internals.currentState ?? {
+        loggedIn: false
+      };
+      await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
+      state.summary = `\u767B\u5F55\u6210\u529F\uFF0C\u6B22\u8FCE\u56DE\u6765 ${tokenData.user.display_name || tokenData.user.email}\u3002`;
+      state.nextActions = buildNextActions(state);
+      commitState(internals, state, storage);
+      active.stopped = true;
+      if (internals.pendingChatInput) {
+        void retryPendingChatAfterLogin(internals, chatOrchestrator, storage);
+      }
+      return;
+    } catch (error) {
+      const state = internals.currentState ?? {
+        loggedIn: false
+      };
+      if (error instanceof Error && /browser login ended with status:/i.test(error.message)) {
+        const status = error.message.replace(/^.*status:\s*/i, "").trim();
+        state.loginStatus = `\u767B\u5F55\u672A\u5B8C\u6210\uFF08${status}\uFF09`;
+        state.summary = "\u6D4F\u89C8\u5668\u767B\u5F55\u4F1A\u8BDD\u5DF2\u7ED3\u675F\uFF0C\u8BF7\u91CD\u65B0\u53D1\u8D77\u767B\u5F55\u3002";
+      } else if (error instanceof Error && /timed out/i.test(error.message)) {
+        state.loginStatus = "\u767B\u5F55\u7B49\u5F85\u8D85\u65F6";
+        state.summary = "\u767B\u5F55\u7B49\u5F85\u8D85\u65F6\uFF0C\u8BF7\u5728\u6D4F\u89C8\u5668\u5B8C\u6210\u540E\u91CD\u65B0\u70B9\u51FB\u767B\u5F55\u3002";
+      } else {
+        state.loginStatus = "\u767B\u5F55\u8F6E\u8BE2\u5931\u8D25";
+        state.summary = `\u767B\u5F55\u72B6\u6001\u540C\u6B65\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
+      }
+      state.nextActions = buildNextActions(state);
+      commitState(internals, state, storage);
+      active.stopped = true;
+      return;
     }
-    const state = internals.currentState ?? {
-      loggedIn: false
-    };
-    state.loginStatus = "\u767B\u5F55\u7B49\u5F85\u8D85\u65F6";
-    state.summary = "\u767B\u5F55\u7B49\u5F85\u8D85\u65F6\uFF0C\u8BF7\u5728\u6D4F\u89C8\u5668\u5B8C\u6210\u540E\u91CD\u65B0\u70B9\u51FB\u767B\u5F55\u3002";
-    state.nextActions = buildNextActions(state);
-    commitState(internals, state, storage);
-    active.stopped = true;
   }
   async function retryPendingChatAfterLogin(internals, chatOrchestrator2, storage) {
     const pendingInput = internals.pendingChatInput?.trim();

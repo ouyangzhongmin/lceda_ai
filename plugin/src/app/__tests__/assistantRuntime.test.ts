@@ -109,6 +109,18 @@ test("shouldAutoApplyDraftFromChatInput returns false when no draft is pending c
   );
 });
 
+test("draft confirmation follow-up summary requests should not auto-apply", () => {
+  assert.equal(
+    shouldAutoApplyDraftFromChatInput({
+      agentRunState: "awaiting_confirmation",
+      input: "给我生成一个列表展示用哪些主要的元器件",
+      hasDraftPlan: true,
+      draftBlocked: false,
+    }),
+    false
+  );
+});
+
 test("appendAssistantMessages preserves prior chat history when adding apply result", () => {
   const history = [
     { role: "user" as const, title: "你", content: "帮我设计一个点亮LED的电路" },

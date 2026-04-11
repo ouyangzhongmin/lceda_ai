@@ -174,6 +174,145 @@ test("buildDraftMessages renders guidance and evidence details into structured d
   assert.deepEqual(messages[0]?.actions?.map((item) => item.action), ["select_devices"]);
 });
 
+test("buildDraftMessages includes markdown detail report alongside structured summary", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "U3"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+      selectedDeviceDetails: [
+        "mcu_module: ESP32-S3-WROOM-1U",
+        "charger: TP4056",
+      ],
+    },
+    draftRisk: {
+      level: "warning",
+      issueCount: 2,
+      highSeverityCount: 0,
+      message: "存在待确认连接，暂不建议直接应用。",
+    },
+    nextSuggestions: ["先检查电源链路", "确认音频器件选型"],
+  });
+
+  assert.equal(typeof messages[0]?.reportMarkdown, "string");
+  assert.equal(messages[0]?.reportMarkdown?.includes("## 草案范围"), true);
+  assert.equal(messages[0]?.reportMarkdown?.includes("## 关键器件"), true);
+  assert.equal(messages[0]?.reportMarkdown?.includes("## 主要网络"), true);
+  assert.equal(messages[0]?.reportMarkdown?.includes("## 下一步"), true);
+});
+
+test("buildDraftMessages keeps summary rationale concise when preview rationale contains fallback chatter", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale:
+        "便携式语音聊天设备，集成锂电池充电管理、音频输入输出和无线连接。 已检索到知识依据，但未匹配到专用草案模板，回退到通用草案生成。 已选器件: mcu=ESP32-S3, charger=TP4056, codec=WM8960",
+      componentRefs: ["U1", "U2", "U3"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+  });
+
+  const summaryBlock = (messages[0]?.structuredContent ?? []).find(
+    (block) => block.kind === "kv" && block.title === "草案摘要"
+  );
+  const rationaleValue =
+    summaryBlock && summaryBlock.kind === "kv"
+      ? summaryBlock.entries.find((entry) => entry.key === "说明")?.value
+      : "";
+
+  assert.equal(rationaleValue, "便携式语音聊天设备，集成锂电池充电管理、音频输入输出和无线连接。");
+});
+
+test("buildDraftMessages truncates summary lists for components and nets", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "U3", "U4", "U5", "U6"],
+      netNames: ["5V", "VBAT", "3V3", "GND", "I2C_SDA", "I2C_SCL"],
+      componentCount: 6,
+      netCount: 6,
+    },
+  });
+
+  const structured = messages[0]?.structuredContent ?? [];
+  const componentBlock = structured.find((block) => block.kind === "list" && block.title === "涉及器件");
+  const netBlock = structured.find((block) => block.kind === "list" && block.title === "涉及网络");
+
+  assert.deepEqual(
+    componentBlock && componentBlock.kind === "list" ? componentBlock.items : [],
+    ["U1", "U2", "U3", "另有 3 个器件未展开"]
+  );
+  assert.deepEqual(
+    netBlock && netBlock.kind === "list" ? netBlock.items : [],
+    ["5V", "VBAT", "3V3", "另有 3 条网络未展开"]
+  );
+});
+
+test("buildDraftMessages provides default follow-up suggestions for draft confirmation", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "U3"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+  });
+
+  assert.deepEqual(messages[0]?.suggestions, [
+    {
+      label: "列主要器件",
+      actionType: "ask_followup",
+      prompt: "给我列一下这版草案使用的主要元器件和各自作用",
+    },
+    {
+      label: "说明风险",
+      actionType: "ask_followup",
+      prompt: "这版草案还有哪些阻断风险，为什么现在不能直接应用？",
+    },
+    {
+      label: "继续修改草案",
+      actionType: "ask_followup",
+      prompt: "基于当前这版草案，不要重做整体方案，只修改我接下来指出的部分",
+    },
+  ]);
+});
+
+test("buildDraftMessages preserves provided structured suggestions", () => {
+  const agent = createAgent();
+  const providedSuggestions = [
+    {
+      label: "查看风险",
+      actionType: "ask_followup" as const,
+      prompt: "总结当前风险",
+    },
+  ];
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "U3"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+    structuredSuggestions: providedSuggestions,
+  });
+
+  assert.deepEqual(messages[0]?.suggestions, providedSuggestions);
+});
+
 test("buildNaturalChatMessage shows tool failure details when naturalReply is empty", () => {
   const agent = createAgent();
   const message = agent.buildNaturalChatMessage({

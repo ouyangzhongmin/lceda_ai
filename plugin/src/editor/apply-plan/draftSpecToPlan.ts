@@ -37,6 +37,123 @@ function toPlacementProperties(spec: DraftDesignSpec["components"][number]): Rec
   };
 }
 
+function normalizeNetName(name: string | undefined, netId: string): string {
+  const raw = String(name || netId || "").trim();
+  if (!raw) {
+    return "NET";
+  }
+  const normalized = raw.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!normalized) {
+    return "NET";
+  }
+  if (normalized === "VCC_5V" || normalized === "USB_5V" || normalized === "VBUS_5V") {
+    return "5V";
+  }
+  if (normalized === "VCC_3V3" || normalized === "3_3V" || normalized === "3V3_SYS" || normalized === "VDD_3V3") {
+    return "3V3";
+  }
+  if (normalized === "VBAT_SYS" || normalized === "VCC_BAT" || normalized === "BATTERY" || normalized === "BAT") {
+    return "VBAT";
+  }
+  if (normalized === "I2S_WS") {
+    return "I2S_LRCK";
+  }
+  return normalized;
+}
+
+function componentRoleBucket(role: string | undefined, ref: string | undefined): "power" | "core" | "audio" | "ui" | "io" {
+  const normalized = String(role || ref || "").trim().toLowerCase();
+  if (/power|charger|charge|battery|ldo|regulator|buck|boost|usb|typec|type-c/.test(normalized)) {
+    return "power";
+  }
+  if (/mcu|soc|main|esp32|controller|processor/.test(normalized)) {
+    return "core";
+  }
+  if (/audio|codec|microphone|mic|speaker|amp/.test(normalized)) {
+    return "audio";
+  }
+  if (/button|key|led|display|user|sensor/.test(normalized)) {
+    return "ui";
+  }
+  return "io";
+}
+
+function defaultPlacementForComponent(
+  component: DraftDesignSpec["components"][number],
+  indexInBucket: number
+): { x: number; y: number; rotation?: number } {
+  const bucket = componentRoleBucket(component.role, component.ref);
+  const normalizedRole = String(component.role || "").trim().toLowerCase();
+  const presets: Record<typeof bucket, { baseX: number; baseY: number; dx: number; dy: number }> = {
+    power: { baseX: 180, baseY: 180, dx: 0, dy: 140 },
+    core: { baseX: 520, baseY: 260, dx: 0, dy: 160 },
+    audio: { baseX: 860, baseY: 220, dx: 320, dy: 140 },
+    ui: { baseX: 520, baseY: 540, dx: 200, dy: 120 },
+    io: { baseX: 180, baseY: 520, dx: 220, dy: 120 },
+  };
+  const preset = presets[bucket];
+  if (bucket === "audio") {
+    if (/codec/.test(normalizedRole)) {
+      return { x: 860, y: 220, rotation: 0 };
+    }
+    if (/microphone|mic/.test(normalizedRole)) {
+      return { x: 1180, y: 160, rotation: 0 };
+    }
+    if (/speaker|amp/.test(normalizedRole)) {
+      return { x: 1180, y: 300, rotation: 0 };
+    }
+    const column = Math.floor(indexInBucket / 2);
+    const row = indexInBucket % 2;
+    return {
+      x: preset.baseX + column * preset.dx,
+      y: preset.baseY + row * preset.dy - column * 60,
+      rotation: 0,
+    };
+  }
+  return {
+    x: preset.baseX + Math.floor(indexInBucket / 3) * preset.dx,
+    y: preset.baseY + (indexInBucket % 3) * preset.dy,
+    rotation: 0,
+  };
+}
+
+function buildPlacementMap(spec: DraftDesignSpec): Map<string, { x: number; y: number; rotation?: number }> {
+  const counters = {
+    power: 0,
+    core: 0,
+    audio: 0,
+    ui: 0,
+    io: 0,
+  };
+  const placements = new Map<string, { x: number; y: number; rotation?: number }>();
+  for (const component of spec.components) {
+    if (component.placement) {
+      placements.set(component.id, component.placement);
+      continue;
+    }
+    const bucket = componentRoleBucket(component.role, component.ref);
+    const index = counters[bucket];
+    counters[bucket] += 1;
+    placements.set(component.id, defaultPlacementForComponent(component, index));
+  }
+  return placements;
+}
+
+function toPlacementPropertiesFromMap(
+  component: DraftDesignSpec["components"][number],
+  placements: Map<string, { x: number; y: number; rotation?: number }>
+): Record<string, string> {
+  const placement = placements.get(component.id);
+  if (!placement) {
+    return {};
+  }
+  return {
+    placement_x: String(placement.x),
+    placement_y: String(placement.y),
+    placement_rotation: String(placement.rotation ?? 0),
+  };
+}
+
 function toExpectedNetProperties(component: DraftDesignSpec["components"][number], spec: DraftDesignSpec): Record<string, string> {
   const pinNetPairs = spec.connections.flatMap((connection) =>
     connection.pinIds
@@ -44,7 +161,7 @@ function toExpectedNetProperties(component: DraftDesignSpec["components"][number
       .map((pinId) => {
         const pin = component.pins.find((item) => item.id === pinId);
         const suffix = String(pin?.pinName || pin?.pinNumber || pinId).replace(/[^a-zA-Z0-9]+/g, "_").toUpperCase();
-        return [`expected_net_${suffix}`, connection.netName] as const;
+        return [`expected_net_${suffix}`, normalizeNetName(connection.netName, connection.netName)] as const;
       })
   );
   return Object.fromEntries(pinNetPairs);
@@ -56,6 +173,15 @@ export function draftSpecToPlan(input: {
 }): DraftPlan {
   const { spec, guidance } = input;
   assertValidDraftSpec(spec);
+  const placements = buildPlacementMap(spec);
+  const normalizedConnections = spec.connections.map((connection) => ({
+    ...connection,
+    netName: normalizeNetName(connection.netName, connection.netName),
+  }));
+  const normalizedNets = spec.nets.map((net) => ({
+    ...net,
+    name: normalizeNetName(net.name, net.id),
+  }));
   return {
     title: spec.title,
     rationale: spec.rationale,
@@ -71,7 +197,7 @@ export function draftSpecToPlan(input: {
       properties: {
         role: component.role,
         ...(component.searchQuery ? { preferred_search_query: component.searchQuery } : {}),
-        ...toPlacementProperties(component),
+        ...toPlacementPropertiesFromMap(component, placements),
         ...toExpectedNetProperties(component, spec),
       },
     })),
@@ -82,14 +208,14 @@ export function draftSpecToPlan(input: {
         pinNumber: pin.pinNumber,
         pinName: pin.pinName,
         electricalType: pin.electricalType,
-        netName: spec.connections.find((connection) => connection.pinIds.includes(pin.id))?.netName,
+        netName: normalizedConnections.find((connection) => connection.pinIds.includes(pin.id))?.netName,
       }))
     ),
-    nets: spec.nets.map((net) => ({
+    nets: normalizedNets.map((net) => ({
       id: net.id,
       name: net.name,
       isPower: net.isPower,
-      nodeIds: spec.connections.find((connection) => connection.netName === String(net.name || net.id))?.pinIds ?? [],
+      nodeIds: normalizedConnections.find((connection) => connection.netName === String(net.name || net.id))?.pinIds ?? [],
     })),
     guidance,
   };

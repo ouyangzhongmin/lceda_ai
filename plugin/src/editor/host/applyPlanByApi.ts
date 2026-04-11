@@ -171,74 +171,74 @@ async function applyTypedSchematicPlan(plan: DraftPlan): Promise<{ componentIds:
   const placedPins = new Map<string, { x: number; y: number; primitiveId: string }>();
   const gridX = 140;
   const gridY = 100;
-
-      for (const [index, component] of plan.components.entries()) {
-    const deviceUuid = component.properties.device_uuid;
-    const libraryUuid = component.properties.library_uuid;
-    if (!deviceUuid || !libraryUuid) {
-      continue;
-    }
-    const x = parsePlacementNumber(component.properties.placement_x) ?? 200 + (index % 3) * gridX;
-    const y = parsePlacementNumber(component.properties.placement_y) ?? 200 + Math.floor(index / 3) * gridY;
-    const rotation = parsePlacementNumber(component.properties.placement_rotation) ?? 0;
-    const created = await eda.sch_PrimitiveComponent.create(
-      {
-        uuid: deviceUuid,
-        libraryUuid,
-      },
-      x,
-      y,
-      undefined,
-      rotation,
-      false,
-      true,
-      true
-    );
-    if (!created) {
-      continue;
-    }
-    applyComponentDesignator(created, component.ref);
-    const primitiveId = created.getState_PrimitiveId();
-    componentIds.push(primitiveId);
-    const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
-    if (pins) {
-      for (const pin of pins) {
-        const pinName = pin.getState_PinName();
-        const pinNumber = pin.getState_PinNumber();
-        const planPin = findBestMatchingPlanPin(plan.pins, component.id, pinName, pinNumber);
-        if (!planPin) {
-          continue;
+  try {
+    for (const [index, component] of plan.components.entries()) {
+      const deviceUuid = component.properties.device_uuid;
+      const libraryUuid = component.properties.library_uuid;
+      if (!deviceUuid || !libraryUuid) {
+        continue;
+      }
+      const x = parsePlacementNumber(component.properties.placement_x) ?? 200 + (index % 3) * gridX;
+      const y = parsePlacementNumber(component.properties.placement_y) ?? 200 + Math.floor(index / 3) * gridY;
+      const rotation = parsePlacementNumber(component.properties.placement_rotation) ?? 0;
+      const created = await eda.sch_PrimitiveComponent.create(
+        {
+          uuid: deviceUuid,
+          libraryUuid,
+        },
+        x,
+        y,
+        undefined,
+        rotation,
+        false,
+        true,
+        true
+      );
+      if (!created) {
+        continue;
+      }
+      applyComponentDesignator(created, component.ref);
+      const primitiveId = created.getState_PrimitiveId();
+      componentIds.push(primitiveId);
+      const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+      if (pins) {
+        for (const pin of pins) {
+          const pinName = pin.getState_PinName();
+          const pinNumber = pin.getState_PinNumber();
+          const planPin = findBestMatchingPlanPin(plan.pins, component.id, pinName, pinNumber);
+          if (!planPin) {
+            continue;
+          }
+          placedPins.set(planPin.id, {
+            x: pin.getState_X(),
+            y: pin.getState_Y(),
+            primitiveId: pin.getState_PrimitiveId(),
+          });
         }
-        placedPins.set(planPin.id, {
-          x: pin.getState_X(),
-          y: pin.getState_Y(),
-          primitiveId: pin.getState_PrimitiveId(),
-        });
       }
     }
-  }
 
-  for (const net of plan.nets) {
-    const nodePoints = net.nodeIds
-      .map((nodeId) => placedPins.get(nodeId))
-      .filter((item): item is { x: number; y: number; primitiveId: string } => Boolean(item));
-    if (nodePoints.length < 2) {
-      const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
-      throw new Error(
-        `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
-      );
+    validateMappedNets(plan, placedPins);
+    validateRequiredConnections(plan, placedPins);
+
+    for (const net of plan.nets) {
+      const nodePoints = net.nodeIds
+        .map((nodeId) => placedPins.get(nodeId))
+        .filter((item): item is { x: number; y: number; primitiveId: string } => Boolean(item));
+      const line = buildOrthogonalPolyline(nodePoints);
+      const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
+      if (!createdWire) {
+        continue;
+      }
+      wireIds.push(createdWire.getState_PrimitiveId());
     }
-    const line = buildOrthogonalPolyline(nodePoints);
-    const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
-    if (!createdWire) {
-      continue;
-    }
-    wireIds.push(createdWire.getState_PrimitiveId());
+
+    return { componentIds, wireIds };
+  } catch (error) {
+    await deleteTypedSchematicWires(wireIds);
+    await deleteTypedSchematicComponents(componentIds);
+    throw error;
   }
-
-  validateRequiredConnections(plan, placedPins);
-
-  return { componentIds, wireIds };
 }
 
 function parsePlacementNumber(value: string | undefined): number | undefined {
@@ -310,6 +310,23 @@ function validateRequiredConnections(
     if (!placedPins.has(fromPin.id) || !placedPins.has(toPin.id)) {
       throw new Error(
         `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
+      );
+    }
+  }
+}
+
+function validateMappedNets(
+  plan: DraftPlan,
+  placedPins: Map<string, { x: number; y: number; primitiveId: string }>
+): void {
+  for (const net of plan.nets) {
+    const nodePoints = net.nodeIds
+      .map((nodeId) => placedPins.get(nodeId))
+      .filter((item): item is { x: number; y: number; primitiveId: string } => Boolean(item));
+    if (nodePoints.length < 2) {
+      const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
+      throw new Error(
+        `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
       );
     }
   }

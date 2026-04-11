@@ -55,17 +55,30 @@ export async function waitLoginSuccess(
   options: {
     waitIntervalMs: number;
     timeoutMs: number;
+    maxConsecutiveErrors?: number;
   }
 ): Promise<LoginSessionStatusData> {
   const startedAt = Date.now();
+  const maxConsecutiveErrors = Math.max(1, options.maxConsecutiveErrors ?? 3);
+  let consecutiveErrors = 0;
 
   while (Date.now() - startedAt < options.timeoutMs) {
     const waitSeconds = Math.max(1, Math.min(20, Math.floor(options.waitIntervalMs / 1000)));
-    const status = await authClient.getLoginSession(
-      loginSession.login_session_id,
-      loginSession.poll_token,
-      waitSeconds
-    );
+    let status: LoginSessionStatusData;
+    try {
+      status = await authClient.getLoginSession(
+        loginSession.login_session_id,
+        loginSession.poll_token,
+        waitSeconds
+      );
+      consecutiveErrors = 0;
+    } catch (error) {
+      consecutiveErrors += 1;
+      if (consecutiveErrors >= maxConsecutiveErrors) {
+        throw error;
+      }
+      continue;
+    }
 
     if (status.status === "success") {
       return status;

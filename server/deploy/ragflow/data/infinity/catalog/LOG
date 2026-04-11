@@ -4741,3 +4741,1299 @@ Write Stall (count): write-buffer-manager-limit-stops: 0
 2026/04/11-07:13:08.239003 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
 2026/04/11-07:14:08.716755 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
 2026/04/11-07:14:08.829376 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:15:08.864000 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:15:08.865329 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:16:09.031213 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:16:09.033715 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:17:09.226348 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:17:09.232124 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:18:09.605650 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:18:09.606474 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:19:10.084074 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:19:10.085557 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:20:10.808283 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:20:10.809207 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:21:12.453546 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:21:12.454499 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:22:13.625679 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:22:13.627733 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:22:49.401517 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-07:22:49.506949 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 101280.2 total, 600.0 interval
+Cumulative writes: 2170 writes, 0 keys, 2170 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-07:23:13.781480 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:23:13.783433 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:24:14.195037 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:24:14.197203 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:25:15.302222 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:25:15.305699 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:26:15.866239 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:26:15.867747 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:27:16.731368 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:27:16.732543 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:28:18.009971 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:28:18.011131 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:29:19.835318 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:29:19.838188 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:30:21.087805 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:30:21.189066 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:31:22.432610 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:31:22.435195 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:32:24.498715 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:32:24.501428 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:32:49.855696 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-07:32:49.928909 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 101880.8 total, 600.5 interval
+Cumulative writes: 2190 writes, 0 keys, 2190 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-07:33:25.390873 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:33:25.394978 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:34:25.692029 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:34:25.701191 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:35:25.977407 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:35:25.981243 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:36:26.272142 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:36:26.273546 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:37:26.486825 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:37:26.487790 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:38:26.743500 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:38:26.744798 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:39:27.141829 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:39:27.143567 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:40:28.099121 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:40:28.101500 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:41:28.469635 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:41:28.471118 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:42:28.959573 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:42:28.965974 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:42:49.954783 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-07:42:49.960571 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 102481.1 total, 600.3 interval
+Cumulative writes: 2210 writes, 0 keys, 2210 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-07:43:29.178889 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:43:29.208792 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:44:30.850514 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:44:30.857026 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:45:31.509186 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:45:31.514045 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:46:31.675568 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:46:31.678127 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:47:31.847438 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:47:31.849163 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:48:32.264924 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:48:32.267534 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:49:32.495642 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:49:32.497112 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:50:33.594991 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:50:33.606884 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:51:33.618422 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:51:33.620563 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:52:33.989128 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:52:33.990701 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:52:49.983450 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-07:52:49.987554 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 103081.1 total, 600.0 interval
+Cumulative writes: 2230 writes, 0 keys, 2230 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-07:53:34.313881 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:53:34.316212 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:54:34.609196 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:54:34.610682 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:55:35.210642 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:55:35.213250 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:56:35.841305 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:56:35.843137 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:57:36.385697 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:57:36.387222 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:58:36.862994 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:58:36.864187 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-07:59:37.400203 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-07:59:37.401971 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:00:38.356351 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:00:38.359028 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:01:38.820351 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:01:38.822889 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:02:39.275615 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:02:39.277636 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:02:50.015048 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-08:02:50.023062 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 103681.1 total, 600.0 interval
+Cumulative writes: 2250 writes, 0 keys, 2250 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-08:03:40.003757 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:03:40.004952 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:04:40.196494 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:04:40.198395 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:05:40.563900 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:05:40.565132 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:06:40.790815 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:06:40.792308 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:07:41.031198 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:07:41.032356 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:08:41.375818 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:08:41.379203 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:09:41.640623 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:09:41.643445 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:10:41.954235 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:10:41.956359 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:11:42.295192 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:11:42.296169 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:12:42.446385 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:12:42.447643 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:12:50.048573 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-08:12:50.050093 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 104281.1 total, 600.0 interval
+Cumulative writes: 2270 writes, 0 keys, 2270 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      2/0     13.08 KB   0.5      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+  L6      1/0     23.68 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum      3/0     36.75 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 104281.2 total, 4801.4 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 0
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache AutoHyperClockCache@0x7fecf12228d0#1 capacity: 32.00 MB seed: 1996470823 usage: 38.78 KB table_size: 64 occupancy: 11 collections: 147 last_copies: 0 last_secs: 0.00686 secs_since: 0
+Block cache entry stats(count,size,portion): DataBlock(10,34.78 KB,0.106144%) Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+2026/04/11-08:13:42.709433 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:13:42.711340 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:14:43.067135 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:14:43.068838 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:15:43.316492 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:15:43.318736 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:16:43.477967 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:16:43.479039 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:17:43.659314 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:17:43.660070 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:18:43.922726 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:18:43.926482 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:19:44.069464 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:19:44.070704 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:20:44.299984 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:20:44.302070 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:21:44.592635 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:21:44.594113 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:22:44.784913 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:22:44.786103 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:22:50.069668 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-08:22:50.071771 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 104881.2 total, 600.0 interval
+Cumulative writes: 2290 writes, 0 keys, 2290 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-08:23:44.945094 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:23:44.946388 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:24:45.105227 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:24:45.107151 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:25:45.396873 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:25:45.398846 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:26:46.003151 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:26:46.008694 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:27:46.155777 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:27:46.159470 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:28:46.462710 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:28:46.465080 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:29:46.792233 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:29:46.798643 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:30:46.860341 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:30:46.865871 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:31:47.077439 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:31:47.079663 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:32:47.243195 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:32:47.245576 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:32:50.086672 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-08:32:50.088392 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 105481.2 total, 600.0 interval
+Cumulative writes: 2310 writes, 0 keys, 2310 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-08:33:47.743325 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:33:47.749915 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:34:48.115882 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:34:48.117467 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:35:48.302782 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:35:48.306887 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:36:48.594166 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:36:48.600012 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:37:48.845406 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:37:48.851060 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:38:49.163788 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:38:49.166572 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:39:49.493959 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:39:49.498569 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:40:49.764446 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:40:49.767625 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:41:50.008848 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:41:50.010449 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:42:50.205715 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-08:42:50.214847 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 106081.3 total, 600.1 interval
+Cumulative writes: 2329 writes, 0 keys, 2329 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 19 writes, 0 keys, 19 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-08:42:50.342431 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:42:50.343152 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:43:50.737728 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:43:50.741005 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:44:50.945170 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:44:50.947230 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:45:51.188615 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:45:51.190235 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:46:51.426250 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:46:51.428461 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:47:51.564584 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:47:51.566091 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:48:51.934616 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:48:51.938335 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:49:52.127009 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:49:52.129551 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:50:52.317400 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:50:52.319285 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:51:52.634767 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:51:52.638140 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:52:50.232177 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-08:52:50.236085 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 106681.3 total, 600.0 interval
+Cumulative writes: 2349 writes, 0 keys, 2349 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-08:52:52.967685 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:52:52.969339 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:53:53.217450 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:53:53.219097 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:54:53.435442 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:54:53.437245 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:55:53.646860 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:55:53.650389 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:56:54.001768 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:56:54.002742 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:57:54.244639 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:57:54.249258 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:58:54.586126 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:58:54.588066 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-08:59:54.883625 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-08:59:54.886115 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:00:55.190602 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:00:55.195532 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:01:55.537277 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:01:55.539785 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:02:50.323978 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-09:02:50.330272 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 107281.4 total, 600.1 interval
+Cumulative writes: 2369 writes, 0 keys, 2369 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-09:02:55.733361 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:02:55.737110 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:03:56.030608 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:03:56.032873 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:04:56.394823 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:04:56.398362 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:05:56.678488 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:05:56.683770 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:06:56.975487 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:06:56.983327 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:07:57.091163 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:07:57.093991 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:08:57.246154 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:08:57.250375 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:09:57.404054 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:09:57.405497 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:10:57.529003 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:10:57.529997 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:11:57.798533 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:11:57.801420 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:12:50.344172 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-09:12:50.347891 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 107881.4 total, 600.0 interval
+Cumulative writes: 2389 writes, 0 keys, 2389 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-09:12:57.945258 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:12:57.946585 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:13:58.131379 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:13:58.133577 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:14:58.418240 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:14:58.422860 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:15:58.534226 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:15:58.535213 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:16:58.694597 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:16:58.696472 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:17:58.817474 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:17:58.818904 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:18:58.975025 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:18:58.976009 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:19:59.076182 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:19:59.078214 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:36:13.549008 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-09:36:13.549937 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 109284.7 total, 1403.2 interval
+Cumulative writes: 2405 writes, 0 keys, 2405 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 16 writes, 0 keys, 16 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-09:36:43.750584 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:36:43.755377 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:52:55.903491 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-09:52:55.903893 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 110286.9 total, 1002.3 interval
+Cumulative writes: 2407 writes, 0 keys, 2407 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 2 writes, 0 keys, 2 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      2/0     13.08 KB   0.5      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+  L6      1/0     23.68 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum      3/0     36.75 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 110287.0 total, 6005.9 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 0
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache AutoHyperClockCache@0x7fecf12228d0#1 capacity: 32.00 MB seed: 1996470823 usage: 38.78 KB table_size: 64 occupancy: 11 collections: 155 last_copies: 0 last_secs: 0.004875 secs_since: 0
+Block cache entry stats(count,size,portion): DataBlock(10,34.78 KB,0.106144%) Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+2026/04/11-09:52:55.903985 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:52:55.904290 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-09:53:26.317969 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-09:53:26.321266 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-10:09:19.845899 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-10:09:19.951600 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 111270.9 total, 984.0 interval
+Cumulative writes: 2410 writes, 0 keys, 2410 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 3 writes, 0 keys, 3 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-10:09:50.046809 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-10:09:50.050161 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-10:11:57.596716 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-10:11:57.598639 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-10:12:27.883467 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-10:12:27.888526 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-10:28:40.361052 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-10:28:40.364207 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 112431.5 total, 1160.6 interval
+Cumulative writes: 2417 writes, 0 keys, 2417 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 7 writes, 0 keys, 7 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-10:28:40.416892 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-10:28:40.431061 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-10:29:10.838221 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-10:29:10.850165 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-10:45:16.202605 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-10:45:16.208300 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 113427.2 total, 995.7 interval
+Cumulative writes: 2421 writes, 0 keys, 2421 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 4 writes, 0 keys, 4 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-10:45:16.434797 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-10:45:16.438568 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-10:45:46.337962 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-10:45:46.344140 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:01:58.789348 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-11:01:58.807652 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 114429.9 total, 1002.7 interval
+Cumulative writes: 2425 writes, 0 keys, 2425 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 4 writes, 0 keys, 4 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-11:01:58.869865 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:01:58.776714 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:02:29.060252 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:02:29.076133 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:18:50.999771 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-11:18:51.202086 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 115441.6 total, 1011.8 interval
+Cumulative writes: 2428 writes, 0 keys, 2428 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 3 writes, 0 keys, 3 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-11:18:52.385723 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:18:52.538484 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:19:57.007520 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:19:59.054332 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:35:34.993440 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-11:35:36.652846 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 116445.9 total, 1004.3 interval
+Cumulative writes: 2432 writes, 0 keys, 2432 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 4 writes, 0 keys, 4 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-11:44:09.295888 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:44:09.978740 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:49:59.783164 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-11:50:02.440239 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 117302.6 total, 856.7 interval
+Cumulative writes: 2435 writes, 0 keys, 2435 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 3 writes, 0 keys, 3 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-11:50:22.909438 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:50:23.337583 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:50:26.027099 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:50:26.274640 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:50:29.233096 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:50:29.251743 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:51:30.276791 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:51:30.279393 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:52:31.165631 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:52:31.167352 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:53:31.438226 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:53:31.439792 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:54:31.726740 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:54:31.731208 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:55:31.867406 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:55:31.869151 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:56:32.272990 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:56:32.274227 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:57:32.445299 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:57:32.447744 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:58:32.647747 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:58:32.649057 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-11:59:32.777418 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-11:59:32.778377 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:00:07.748993 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-12:00:07.763249 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 117918.8 total, 616.2 interval
+Cumulative writes: 2461 writes, 0 keys, 2461 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 26 writes, 0 keys, 26 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      2/0     13.08 KB   0.5      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+  L6      1/0     23.68 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum      3/0     36.75 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 117918.8 total, 7631.8 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 0
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache AutoHyperClockCache@0x7fecf12228d0#1 capacity: 32.00 MB seed: 1996470823 usage: 38.78 KB table_size: 64 occupancy: 11 collections: 162 last_copies: 1 last_secs: 209.508 secs_since: 655
+Block cache entry stats(count,size,portion): DataBlock(10,34.78 KB,0.106144%) Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+2026/04/11-12:00:32.941069 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:00:32.942313 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:01:33.141603 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:01:33.143335 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:02:33.253233 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:02:33.255083 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:03:33.447217 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:03:33.448822 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:04:33.621520 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:04:33.623572 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:05:34.284676 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:05:34.286751 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:06:34.650485 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:06:34.651429 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:07:34.981812 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:07:34.982803 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:08:35.401727 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:08:35.406837 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:09:35.732664 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:09:35.733676 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:10:07.836226 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-12:10:07.842683 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 118518.9 total, 600.1 interval
+Cumulative writes: 2481 writes, 0 keys, 2481 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-12:10:36.183263 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:10:36.186277 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:11:37.759550 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:11:37.761067 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:12:38.772831 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:12:38.776484 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:13:39.159142 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:13:39.233276 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:14:39.894922 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:14:39.897357 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:15:41.147095 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:15:41.148846 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:16:41.550101 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:16:41.551679 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:17:42.764299 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:17:42.790603 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:18:42.827370 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:18:42.829138 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:19:43.009911 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:19:43.011094 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:20:07.868846 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-12:20:07.879924 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 119119.0 total, 600.1 interval
+Cumulative writes: 2501 writes, 0 keys, 2501 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-12:20:43.340890 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:20:43.352349 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:21:43.912440 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:21:43.966469 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:22:44.234302 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:22:44.235991 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:23:44.535484 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:23:44.538011 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:24:45.079347 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:24:45.080929 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:25:46.018439 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:25:46.020235 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:26:46.362149 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:26:46.363657 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:27:46.708192 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:27:46.714199 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:28:46.977632 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:28:46.979406 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:29:47.405075 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:29:47.406335 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:30:07.905159 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-12:30:07.906119 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 119719.0 total, 600.0 interval
+Cumulative writes: 2521 writes, 0 keys, 2521 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-12:30:47.839325 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:30:47.841428 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:31:48.124437 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:31:48.126068 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:32:48.393984 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:32:48.394962 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:33:48.681008 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:33:48.683419 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:34:49.175132 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:34:49.176796 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:35:49.387208 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:35:49.388520 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:36:49.745944 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:36:49.748808 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:37:50.045987 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:37:50.048222 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:38:50.336922 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:38:50.342028 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:39:50.667378 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:39:50.671633 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:40:07.918495 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-12:40:07.921242 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 120319.0 total, 600.0 interval
+Cumulative writes: 2541 writes, 0 keys, 2541 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-12:40:51.026496 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:40:51.028258 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:41:51.370979 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:41:51.372606 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:42:51.546410 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:42:51.547909 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:43:51.833720 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:43:51.835042 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:44:51.999742 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:44:52.002615 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:45:52.280365 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:45:52.282337 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:46:52.436180 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:46:52.439336 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:47:52.595803 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:47:52.597977 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:48:52.760319 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:48:52.762917 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:49:53.014353 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:49:53.018029 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:50:07.960388 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-12:50:07.966402 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 120919.0 total, 600.0 interval
+Cumulative writes: 2561 writes, 0 keys, 2561 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-12:50:53.163053 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:50:53.165735 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:51:53.556642 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:51:53.560901 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:52:53.888000 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:52:53.892681 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:53:54.109849 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:53:54.111569 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:54:54.321298 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:54:54.326992 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:55:54.620185 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:55:54.622620 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:56:54.831923 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:56:54.833867 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:57:55.045680 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:57:55.053288 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:58:55.338440 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:58:55.340646 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-12:59:55.835050 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-12:59:55.837311 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:00:08.017013 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-13:00:08.021579 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 121519.1 total, 600.1 interval
+Cumulative writes: 2581 writes, 0 keys, 2581 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-13:00:56.444019 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:00:56.445793 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:01:56.726714 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:01:56.728320 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:02:56.954387 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:02:56.956794 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:03:57.134170 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:03:57.136350 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:04:57.417072 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:04:57.420344 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:05:57.586015 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:05:57.587218 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:06:57.803719 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:06:57.804905 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:07:58.035064 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:07:58.036743 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:08:58.271512 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:08:58.274917 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:09:58.561432 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:09:58.562552 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:10:08.051851 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-13:10:08.056428 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 122119.1 total, 600.0 interval
+Cumulative writes: 2601 writes, 0 keys, 2601 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-13:10:58.783925 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:10:58.786156 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:11:59.218771 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:11:59.225286 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:12:59.591342 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:12:59.592646 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:13:59.767725 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:13:59.769943 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:15:00.087337 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:15:00.088763 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:16:00.437477 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:16:00.440572 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:17:00.658388 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:17:00.660001 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:18:00.958837 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:18:00.961539 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:19:01.073414 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:19:01.075587 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:20:01.909059 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:20:01.912837 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:20:08.105399 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-13:20:08.109158 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 122719.2 total, 600.0 interval
+Cumulative writes: 2621 writes, 0 keys, 2621 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      2/0     13.08 KB   0.5      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+  L6      1/0     23.68 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum      3/0     36.75 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 122719.2 total, 4800.4 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 0
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache AutoHyperClockCache@0x7fecf12228d0#1 capacity: 32.00 MB seed: 1996470823 usage: 38.78 KB table_size: 64 occupancy: 11 collections: 162 last_copies: 9 last_secs: 209.508 secs_since: 5455
+Block cache entry stats(count,size,portion): DataBlock(10,34.78 KB,0.106144%) Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+2026/04/11-13:21:02.051900 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:21:02.054332 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:22:02.259680 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:22:02.263861 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:23:02.476987 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:23:02.479001 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:24:02.711024 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:24:02.713578 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:25:02.906660 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:25:02.908670 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:26:04.189034 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:26:04.195087 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:41:36.688635 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-13:41:36.692043 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 124007.8 total, 1288.6 interval
+Cumulative writes: 2633 writes, 0 keys, 2633 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 12 writes, 0 keys, 12 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-13:42:06.190754 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:42:06.196439 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:43:07.367924 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:43:07.375038 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-13:44:08.190789 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-13:44:08.214077 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:00:23.608250 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-14:00:23.623533 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 125134.6 total, 1126.9 interval
+Cumulative writes: 2640 writes, 0 keys, 2640 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 7 writes, 0 keys, 7 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-14:00:23.997879 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:00:23.998738 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:00:54.838665 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:00:54.956588 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:01:24.585806 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:01:24.585908 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:02:25.371384 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:02:25.372495 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:04:43.528376 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:04:43.529658 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:05:14.826670 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:05:14.831790 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:05:44.874876 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:05:44.875635 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:06:45.037327 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:06:45.040082 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:07:45.169065 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:07:45.169123 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:08:45.504548 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:08:45.523538 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:09:46.000084 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:09:46.002577 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:10:23.731963 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-14:10:23.740435 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 125734.8 total, 600.2 interval
+Cumulative writes: 2661 writes, 0 keys, 2661 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 21 writes, 0 keys, 21 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-14:10:46.214434 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:10:46.215051 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:11:46.506328 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:11:46.534436 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:12:46.685762 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:12:46.686933 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:13:46.941574 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:13:46.942145 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:14:47.087689 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:14:47.091051 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:15:47.249822 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:15:47.250385 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:16:47.318883 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:16:47.319403 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:17:47.546917 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:17:47.547661 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:18:47.778731 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:18:47.779393 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:19:48.075003 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:19:48.076192 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:20:23.752414 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-14:20:23.755206 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 126334.9 total, 600.0 interval
+Cumulative writes: 2681 writes, 0 keys, 2681 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-14:20:48.310889 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:20:48.312602 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:21:48.546246 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:21:48.548512 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:22:48.863839 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:22:48.864689 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:23:49.076557 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:23:49.082252 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:24:50.103696 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:24:50.106420 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:25:51.248483 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:25:51.250491 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:26:52.062173 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:26:52.064377 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:27:52.739203 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:27:52.741507 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:28:53.748396 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:28:53.752523 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:29:54.232526 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:29:54.233408 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:30:24.064156 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-14:30:24.096993 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 126934.9 total, 600.0 interval
+Cumulative writes: 2701 writes, 0 keys, 2701 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-14:30:54.883136 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:30:54.884264 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:31:55.631310 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:31:55.635177 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:32:56.236906 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:32:56.239061 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:33:56.607679 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:33:56.609996 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:34:56.968169 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:34:56.969546 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:35:58.531384 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:35:58.531433 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:36:59.012028 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:36:59.013031 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:38:00.511185 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:38:00.575821 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:39:00.746508 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:39:00.748027 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:40:01.429512 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:40:01.432715 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:40:24.245499 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-14:40:24.252165 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 127535.3 total, 600.4 interval
+Cumulative writes: 2721 writes, 0 keys, 2721 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-14:41:01.964578 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:41:01.970019 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:42:02.092196 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:42:02.093396 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:43:02.392516 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:43:02.392958 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:44:02.723434 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:44:02.724637 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:45:03.306454 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:45:03.307251 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:46:03.557948 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:46:03.558140 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:47:03.969692 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:47:03.971585 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:48:04.131027 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:48:04.131935 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:49:04.820061 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:49:04.822690 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:50:05.230202 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:50:05.235854 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:50:24.473791 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-14:50:24.488070 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 128135.6 total, 600.3 interval
+Cumulative writes: 2741 writes, 0 keys, 2741 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-14:51:05.584885 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:51:05.586329 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:52:05.945228 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:52:05.946222 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:53:06.083059 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:53:06.088834 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:54:06.598732 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:54:06.599907 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:55:06.980858 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:55:06.981875 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:56:07.263203 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:56:07.264462 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:57:07.558246 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:57:07.560427 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:58:07.848374 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:58:07.849987 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-14:59:08.156148 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-14:59:08.158124 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:00:08.478360 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:00:08.480519 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:00:24.548433 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-15:00:24.557247 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 128735.6 total, 600.1 interval
+Cumulative writes: 2761 writes, 0 keys, 2761 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      2/0     13.08 KB   0.5      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+  L6      1/0     23.68 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum      3/0     36.75 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 128735.7 total, 6016.4 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 0
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache AutoHyperClockCache@0x7fecf12228d0#1 capacity: 32.00 MB seed: 1996470823 usage: 38.78 KB table_size: 64 occupancy: 11 collections: 162 last_copies: 17 last_secs: 209.508 secs_since: 11472
+Block cache entry stats(count,size,portion): DataBlock(10,34.78 KB,0.106144%) Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+2026/04/11-15:01:08.953988 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:01:08.955151 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:02:09.342534 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:02:09.346633 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:03:10.019550 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:03:10.116469 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:04:10.021477 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:04:10.023784 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:05:11.063556 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:05:11.066304 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:06:11.728813 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:06:11.732233 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:07:13.180321 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:07:13.194286 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:08:13.844266 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:08:13.844991 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:09:14.059494 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:09:14.061584 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:10:14.229840 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:10:14.232576 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:10:24.628559 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-15:10:24.639493 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 129335.7 total, 600.1 interval
+Cumulative writes: 2781 writes, 0 keys, 2781 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-15:11:14.453617 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:11:14.454845 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:12:14.625624 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:12:14.625738 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:13:15.054619 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:13:15.054662 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:14:15.309331 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:14:15.309387 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:15:15.532434 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:15:15.532537 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:16:15.801819 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:16:15.801855 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:17:16.025832 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:17:16.027830 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:18:16.442412 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:18:16.442480 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:19:17.013829 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:19:17.013879 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:20:17.394005 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:20:17.394220 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:20:24.652298 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-15:20:24.654034 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 129935.8 total, 600.1 interval
+Cumulative writes: 2801 writes, 0 keys, 2801 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-15:21:17.607448 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:21:17.608787 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:22:18.016990 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:22:18.017633 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:23:18.319633 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:23:18.319830 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:24:18.614671 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:24:18.630815 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:25:01.544302 236 [db/db_impl/db_impl.cc:6845] Running the periodic task to trigger compactions.
+2026/04/11-15:25:18.708332 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:25:18.708892 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:26:18.963419 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:26:18.965449 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:27:19.330771 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:27:19.331911 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:28:20.294510 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:28:20.297688 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:29:20.476385 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:29:20.478506 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:30:20.555944 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:30:20.558325 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:30:25.303045 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-15:30:25.323331 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 130536.4 total, 600.6 interval
+Cumulative writes: 2821 writes, 0 keys, 2821 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-15:31:21.038092 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:31:21.040033 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:32:21.266011 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:32:21.267403 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:33:21.534712 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:33:21.535820 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:34:21.643007 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:34:21.644479 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:35:22.253837 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:35:22.257033 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:36:22.429101 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:36:22.432006 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:37:22.758963 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:37:22.760431 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:38:22.969465 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:38:22.970644 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:39:23.204303 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:39:23.205679 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:40:23.294410 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:40:23.295618 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:40:25.337124 236 [db/db_impl/db_impl.cc:1117] ------- DUMPING STATS -------
+2026/04/11-15:40:25.337959 236 [db/db_impl/db_impl.cc:1118] 
+** DB Stats **
+Uptime(secs): 131136.4 total, 600.1 interval
+Cumulative writes: 2841 writes, 0 keys, 2841 commit groups, 1.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 20 writes, 0 keys, 20 commit groups, 1.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+2026/04/11-15:41:23.401211 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:41:23.402701 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK
+2026/04/11-15:42:23.537213 243 [db/db_impl/db_impl_compaction_flush.cc:2059] [default] Manual flush start.
+2026/04/11-15:42:23.538396 243 [db/db_impl/db_impl_compaction_flush.cc:2070] [default] Manual flush finished, status: OK

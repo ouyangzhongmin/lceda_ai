@@ -8,6 +8,7 @@ import { resolveHostEditorBridge, resolveRuntimeChannel } from "../editor/host/r
 import { FetchHttpClient, HttpError } from "../services/api-client/httpClient";
 import { AuthClient, type TokenExchangeData } from "../services/auth/authClient";
 import { HostBrowserLauncher } from "../services/auth/browserLauncher";
+import { waitLoginSuccess } from "../services/auth/loginPolling";
 import { PersistentSessionStore, type AuthSession } from "../services/auth/sessionStore";
 import { CreditsClient } from "../services/credits/creditsClient";
 import { CustomLlmConfigStore } from "../services/llm/customLlmConfigStore";
@@ -1559,8 +1560,6 @@ function createAssistantRuntime(): AssistantRuntime {
           touch(); // start idle timer immediately
         });
         if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
-          console.log(`${LOG_PREFIX} sendChat.plan`, turn.plan);
-          console.log(`${LOG_PREFIX} sendChat.intent`, { intent: turn.intent });
           console.log(`${LOG_PREFIX} sendChat.route`, { route: turn.route });
           console.log(`${LOG_PREFIX} sendChat.react.trace`, turn.result.executionTraces ?? []);
         }
@@ -1573,7 +1572,6 @@ function createAssistantRuntime(): AssistantRuntime {
           userMessages: nextMessages,
           requestedRoute: plan.route,
           finalRoute: turn.route,
-          plan: turn.plan,
           result: turn.result,
         });
         if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
@@ -1947,7 +1945,6 @@ async function generateDraftStateFromResult(
     userMessages: NonNullable<MainPanelState["chatMessages"]>;
     requestedRoute: "chat" | "analysis" | "draft";
     finalRoute: "chat" | "analysis" | "draft";
-    plan: Awaited<ReturnType<typeof pluginAgent.handleUserTurn>>["plan"];
     result: Awaited<ReturnType<typeof pluginAgent.run>>;
   }): Promise<MainPanelState> {
     if (input.finalRoute === "chat") {
@@ -1974,7 +1971,7 @@ async function generateDraftStateFromResult(
     // Analysis route: 直接更新最后一条streaming消息，而不是删除重建
     const analyzed = await buildAnalysisStateFromTurnResult(input.baseState, input.result);
     const replannedFromDraft =
-      input.plan.route === "analysis" && input.plan.intent === "analysis" && input.requestedRoute === "draft";
+      input.requestedRoute === "draft";
     analyzed.agentRunRoute = "analysis";
     analyzed.agentRunState = "completed";
     analyzed.agentRunDetail = replannedFromDraft ? `draft blocked -> analysis: ${input.result.summary}` : input.result.summary;
@@ -2513,63 +2510,66 @@ async function pollLoginSessionUntilDone(
     return;
   }
 
-  for (let i = 0; i < 40; i += 1) {
+  try {
+    const status = await waitLoginSuccess(
+      authClient,
+      {
+        login_session_id: active.loginSessionId,
+        poll_token: active.pollToken,
+        login_url: "",
+        expires_at: "",
+        interval_seconds: 15,
+      },
+      {
+        waitIntervalMs: 15_000,
+        timeoutMs: 10 * 60_000,
+        maxConsecutiveErrors: 3,
+      }
+    );
+
     if (active.stopped) {
       return;
     }
 
-    try {
-      const status = await authClient.getLoginSession(active.loginSessionId, active.pollToken, 15);
-      if (status.status === "success" && status.exchange_token) {
-        const tokenData = await authClient.exchangeToken(active.loginSessionId, status.exchange_token);
-        await sessionStore.set(toSession(tokenData));
+    if (!status.exchange_token) {
+      throw new Error("登录成功但缺少 exchange token");
+    }
 
-        const state = internals.currentState ?? {
-          loggedIn: false,
-        };
-        await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
-        state.summary = `登录成功，欢迎回来 ${tokenData.user.display_name || tokenData.user.email}。`;
-        state.nextActions = buildNextActions(state);
-        commitState(internals, state, storage);
-        active.stopped = true;
-        if (internals.pendingChatInput) {
-          void retryPendingChatAfterLogin(internals, chatOrchestrator, storage);
-        }
-        return;
-      }
+    const tokenData = await authClient.exchangeToken(active.loginSessionId, status.exchange_token);
+    await sessionStore.set(toSession(tokenData));
 
-      if (status.status === "failed" || status.status === "expired" || status.status === "cancelled") {
-        const state = internals.currentState ?? {
-          loggedIn: false,
-        };
-        state.loginStatus = `登录未完成（${status.status}）`;
-        state.summary = "浏览器登录会话已结束，请重新发起登录。";
-        state.nextActions = buildNextActions(state);
-        commitState(internals, state, storage);
-        active.stopped = true;
-        return;
-      }
-    } catch (error) {
-      const state = internals.currentState ?? {
-        loggedIn: false,
-      };
+    const state = internals.currentState ?? {
+      loggedIn: false,
+    };
+    await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
+    state.summary = `登录成功，欢迎回来 ${tokenData.user.display_name || tokenData.user.email}。`;
+    state.nextActions = buildNextActions(state);
+    commitState(internals, state, storage);
+    active.stopped = true;
+    if (internals.pendingChatInput) {
+      void retryPendingChatAfterLogin(internals, chatOrchestrator, storage);
+    }
+    return;
+  } catch (error) {
+    const state = internals.currentState ?? {
+      loggedIn: false,
+    };
+    if (error instanceof Error && /browser login ended with status:/i.test(error.message)) {
+      const status = error.message.replace(/^.*status:\s*/i, "").trim();
+      state.loginStatus = `登录未完成（${status}）`;
+      state.summary = "浏览器登录会话已结束，请重新发起登录。";
+    } else if (error instanceof Error && /timed out/i.test(error.message)) {
+      state.loginStatus = "登录等待超时";
+      state.summary = "登录等待超时，请在浏览器完成后重新点击登录。";
+    } else {
       state.loginStatus = "登录轮询失败";
       state.summary = `登录状态同步失败：${error instanceof Error ? error.message : String(error)}`;
-      state.nextActions = buildNextActions(state);
-      commitState(internals, state, storage);
-      active.stopped = true;
-      return;
     }
+    state.nextActions = buildNextActions(state);
+    commitState(internals, state, storage);
+    active.stopped = true;
+    return;
   }
-
-  const state = internals.currentState ?? {
-    loggedIn: false,
-  };
-  state.loginStatus = "登录等待超时";
-  state.summary = "登录等待超时，请在浏览器完成后重新点击登录。";
-  state.nextActions = buildNextActions(state);
-  commitState(internals, state, storage);
-  active.stopped = true;
 }
 
 async function retryPendingChatAfterLogin(

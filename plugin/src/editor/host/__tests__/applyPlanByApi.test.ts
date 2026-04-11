@@ -37,6 +37,7 @@ test("createApiApplyPlanAdapter does not report shape apply success when createS
 
 test("createApiApplyPlanAdapter rejects typed placement when required nets cannot be fully mapped", async () => {
   const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  let wireCreateCount = 0;
   (globalThis as typeof globalThis & { eda?: unknown }).eda = {
     sch_PrimitiveComponent: {
       create: async () => ({
@@ -53,9 +54,12 @@ test("createApiApplyPlanAdapter rejects typed placement when required nets canno
       ],
     },
     sch_PrimitiveWire: {
-      create: async () => ({
-        getState_PrimitiveId: () => "wire-1",
-      }),
+      create: async () => {
+        wireCreateCount += 1;
+        return {
+          getState_PrimitiveId: () => "wire-1",
+        };
+      },
     },
   };
 
@@ -67,6 +71,54 @@ test("createApiApplyPlanAdapter rejects typed placement when required nets canno
   }
 
   await assert.rejects(() => adapter.apply(draft), /unmapped required nets/i);
+  assert.equal(wireCreateCount, 0);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
+test("createApiApplyPlanAdapter rolls back typed placed components when net mapping fails after placement", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const deletedComponentIds: string[][] = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (...args: unknown[]) => {
+        const payload = args[0] as { uuid?: string };
+        return {
+          getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+        };
+      },
+      getAllPinsByPrimitiveId: async () => [
+        {
+          getState_PinName: () => "1",
+          getState_PinNumber: () => "1",
+          getState_X: () => 100,
+          getState_Y: () => 100,
+          getState_PrimitiveId: () => "pin-1",
+        },
+      ],
+      delete: async (ids: string[]) => {
+        deletedComponentIds.push(ids.slice());
+        return true;
+      },
+    },
+    sch_PrimitiveWire: {
+      create: async () => ({
+        getState_PrimitiveId: () => "wire-1",
+      }),
+      delete: async () => true,
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = generateDraftPlanFromPrompt("帮我设计一个点亮LED的电路");
+  for (const component of draft.components) {
+    component.properties.device_uuid = `${component.id}-device`;
+    component.properties.library_uuid = `${component.id}-library`;
+  }
+
+  await assert.rejects(() => adapter.apply(draft), /unmapped required nets/i);
+  assert.equal(deletedComponentIds.length > 0, true);
+  assert.equal(deletedComponentIds[0]?.length, draft.components.length);
 
   (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
 });

@@ -1,8 +1,8 @@
 {
   "name": "lceda-ai-assistant",
   "uuid": "8f6b9a9d4e8348a8b0fd67c2a1a4c9e1",
-  "displayName": "LCEDA AI Assistant",
-  "description": "AI assistant for schematic analysis, drafting, and guided review in JLCEDA.",
+  "displayName": "AI生成助手",
+  "description": "可以使用于嘉立创专业版与标准版的AI分析与生成原理图助手",
   "version": "0.1.0",
   "entry": "./dist/index",
   "publisher": "oyzm",
@@ -19,17 +19,17 @@
     "ai",
     "schematic"
   ],
-  "homepage": "https://github.com/oyzm/lceda-ai-assistant",
-  "bugs": "https://github.com/oyzm/lceda-ai-assistant/issues",
+  "homepage": "https://gitee.com/ouyangzhongmin/lceda_ai",
+  "bugs": "https://gitee.com/ouyangzhongmin/lceda_ai/issues",
   "headerMenus": {
     "sch": [
       {
         "id": "lceda-ai-assistant-root",
-        "title": "LCEDA AI Assistant",
+        "title": "AI生成助手",
         "menuItems": [
           {
             "id": "lceda-ai-assistant-open",
-            "title": "Open Assistant",
+            "title": "聊天",
             "registerFn": "activate"
           }
         ]
@@ -37,8 +37,8 @@
     ]
   },
   "repository": {
-    "type": "github",
-    "url": "https://github.com/oyzm/lceda-ai-assistant"
+    "type": "gitee",
+    "url": "https://gitee.com/ouyangzhongmin/lceda_ai"
   },
   "activationEvents": {},
   "dependentExtensions": {}
