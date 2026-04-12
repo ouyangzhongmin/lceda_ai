@@ -165,13 +165,46 @@ test("buildDraftMessages renders guidance and evidence details into structured d
   });
 
   const structured = messages[0]?.structuredContent ?? [];
-  assert.equal(structured.some((block) => block.kind === "kv" && block.title === "生成依据"), true);
-  assert.equal(structured.some((block) => block.kind === "list" && block.title === "已选器件详情"), true);
-  assert.equal(structured.some((block) => block.kind === "list" && block.title === "待处理器件"), true);
-  assert.equal(structured.some((block) => block.kind === "list" && block.title === "器件检索偏好"), true);
-  assert.equal(structured.some((block) => block.kind === "list" && block.title === "必需连接约束"), true);
-  assert.equal(structured.some((block) => block.kind === "list" && block.title === "设计依据（知识库）"), true);
+  assert.equal(structured.some((block) => block.kind === "section" && block.title === "这版方案"), true);
+  assert.equal(structured.some((block) => block.kind === "list" && block.title === "关键模块与器件"), true);
+  assert.equal(structured.some((block) => block.kind === "list" && block.title === "待确认项"), true);
+  assert.equal(structured.some((block) => block.kind === "kv" && block.title === "当前状态"), true);
+  assert.equal(structured.some((block) => block.kind === "list" && block.title === "补充依据"), true);
   assert.deepEqual(messages[0]?.actions?.map((item) => item.action), ["select_devices"]);
+});
+
+test("buildDraftMessages humanizes internal draft role labels for user-facing device details", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "5V LED Indicator Draft",
+      rationale: "Generated a minimal LED indicator draft based on the user request.",
+      componentRefs: ["J1", "R1", "D1"],
+      netNames: ["5V", "LED_ANODE", "GND"],
+      componentCount: 3,
+      netCount: 3,
+      selectedDeviceDetails: [
+        "power_connector: CONN_1X2 [HDR-TH_1X2]",
+        "led: 红色LED [LED-TH_BD3.0-P2.54-FD]",
+      ],
+      unresolvedDeviceDetails: [
+        "J1 / power_connector: unresolved (no_search_results) query=header 1x2 2pin HDR-TH_1X2",
+      ],
+    },
+  });
+
+  const structured = messages[0]?.structuredContent ?? [];
+  const selectedBlock = structured.find((block) => block.kind === "list" && block.title === "关键模块与器件");
+  const unresolvedBlock = structured.find((block) => block.kind === "list" && block.title === "待确认项");
+
+  const selectedItems = selectedBlock && selectedBlock.kind === "list" ? selectedBlock.items : [];
+  const unresolvedItems = unresolvedBlock && unresolvedBlock.kind === "list" ? unresolvedBlock.items : [];
+
+  assert.equal(selectedItems.some((item) => item.includes("电源输入接口")), true);
+  assert.equal(selectedItems.some((item) => item.includes("用于接入外部电源")), true);
+  assert.equal(selectedItems.some((item) => item.includes("power_connector")), false);
+  assert.equal(unresolvedItems.some((item) => item.includes("J1 电源输入接口")), true);
+  assert.equal(unresolvedItems.some((item) => item.includes("power_connector")), false);
 });
 
 test("buildDraftMessages includes markdown detail report alongside structured summary", () => {
@@ -205,6 +238,76 @@ test("buildDraftMessages includes markdown detail report alongside structured su
   assert.equal(messages[0]?.reportMarkdown?.includes("## 下一步"), true);
 });
 
+test("buildDraftMessages prefers draftNarrative as the lead answer when present", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftNarrative: "先回答：当前器件只有 4 个，是因为上一版只是占位级最小草案。",
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "U3"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+  });
+
+  assert.equal(
+    messages[0]?.content?.startsWith("先回答：当前器件只有 4 个"),
+    true
+  );
+});
+
+test("buildDraftMessages shows follow-up answer as the lead paragraph for draft follow-up replies", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftNarrative: "先回答：J1 / power_connector 通常是电源输入连接器，用于把外部 5V 接入充电与供电链路。",
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["J1", "U1", "U2"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+  });
+
+  assert.equal(
+    messages[0]?.content?.startsWith("先回答：J1 / power_connector 通常是电源输入连接器"),
+    true
+  );
+  assert.equal(messages[0]?.content?.includes("我已经生成一版草案。"), false);
+});
+
+test("buildDraftMessages prefers full markdown draft content over structured summary cards", () => {
+  const agent = createAgent();
+  const markdownDraft = `# ESP32-S3 小智语音聊天设备原理图草案
+
+## 草案概述
+已成功生成基于 ESP32-S3 的便携式语音聊天设备原理图草案。
+
+## 关键器件配置
+- 主控：ESP32-S3
+- 充电：TP4056
+- 电池：单节锂电池`;
+
+  const messages = agent.buildDraftMessages({
+    draftNarrative: markdownDraft,
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "BT1"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+  });
+
+  assert.equal(messages[0]?.content, markdownDraft);
+  assert.equal(messages[0]?.structuredContent, undefined);
+  assert.equal(messages[0]?.reportMarkdown, undefined);
+});
+
 test("buildDraftMessages keeps summary rationale concise when preview rationale contains fallback chatter", () => {
   const agent = createAgent();
   const messages = agent.buildDraftMessages({
@@ -220,11 +323,11 @@ test("buildDraftMessages keeps summary rationale concise when preview rationale 
   });
 
   const summaryBlock = (messages[0]?.structuredContent ?? []).find(
-    (block) => block.kind === "kv" && block.title === "草案摘要"
+    (block) => block.kind === "section" && block.title === "这版方案"
   );
   const rationaleValue =
-    summaryBlock && summaryBlock.kind === "kv"
-      ? summaryBlock.entries.find((entry) => entry.key === "说明")?.value
+    summaryBlock && summaryBlock.kind === "section"
+      ? String(summaryBlock.text || "").split("\n").slice(1).join("\n").trim()
       : "";
 
   assert.equal(rationaleValue, "便携式语音聊天设备，集成锂电池充电管理、音频输入输出和无线连接。");
@@ -244,8 +347,8 @@ test("buildDraftMessages truncates summary lists for components and nets", () =>
   });
 
   const structured = messages[0]?.structuredContent ?? [];
-  const componentBlock = structured.find((block) => block.kind === "list" && block.title === "涉及器件");
-  const netBlock = structured.find((block) => block.kind === "list" && block.title === "涉及网络");
+  const componentBlock = structured.find((block) => block.kind === "list" && block.title === "关键模块与器件");
+  const netBlock = structured.find((block) => block.kind === "list" && block.title === "关键网络");
 
   assert.deepEqual(
     componentBlock && componentBlock.kind === "list" ? componentBlock.items : [],
@@ -253,8 +356,69 @@ test("buildDraftMessages truncates summary lists for components and nets", () =>
   );
   assert.deepEqual(
     netBlock && netBlock.kind === "list" ? netBlock.items : [],
-    ["5V", "VBAT", "3V3", "另有 3 条网络未展开"]
+    ["5V 外部输入电源", "VBAT 电池电源", "3V3 主系统 3.3V 电源", "GND 地线", "另有 2 条网络未展开"]
   );
+});
+
+test("buildDraftMessages prefers ref plus readable device name in component summary when device details exist", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["J1", "U1", "U2"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+      selectedDeviceDetails: [
+        "power_connector: USB-C 电源座 [TYPE-C]",
+        "mcu_module: ESP32-S3-WROOM-1U [WIRELM-SMD_ESP32-S3-WROOM-1U]",
+        "charger: TP4056 [ESOP-8]",
+      ],
+    },
+  });
+
+  const structured = messages[0]?.structuredContent ?? [];
+  const componentBlock = structured.find((block) => block.kind === "list" && block.title === "关键模块与器件");
+  const componentItems = componentBlock && componentBlock.kind === "list" ? componentBlock.items : [];
+
+  assert.equal(componentItems.some((item) => item.includes("电源输入接口：USB-C 电源座")), true);
+  assert.equal(componentItems.some((item) => item.includes("主控模块：ESP32-S3-WROOM-1U")), true);
+  assert.equal(componentItems.some((item) => item.includes("锂电池充电芯片：TP4056")), true);
+  assert.equal(messages[0]?.content?.includes("器件：J1 电源输入接口、U1 主控模块、U2 锂电池充电芯片"), true);
+  assert.equal(messages[0]?.reportMarkdown?.includes("- J1 电源输入接口"), true);
+});
+
+test("buildDraftMessages humanizes common network names for user-facing summaries", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["J1", "U1", "U2"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+      selectedDeviceDetails: [
+        "power_connector: USB-C 电源座 [TYPE-C]",
+        "mcu_module: ESP32-S3-WROOM-1U [WIRELM-SMD_ESP32-S3-WROOM-1U]",
+        "charger: TP4056 [ESOP-8]",
+      ],
+    },
+  });
+
+  const structured = messages[0]?.structuredContent ?? [];
+  const netBlock = structured.find((block) => block.kind === "list" && block.title === "关键网络");
+  const netItems = netBlock && netBlock.kind === "list" ? netBlock.items : [];
+
+  assert.deepEqual(netItems, [
+    "5V 外部输入电源",
+    "VBAT 电池电源",
+    "3V3 主系统 3.3V 电源",
+    "GND 地线",
+  ]);
+  assert.equal(messages[0]?.content?.includes("网络：5V 外部输入电源、VBAT 电池电源、3V3 主系统 3.3V 电源、GND 地线"), true);
+  assert.equal(messages[0]?.reportMarkdown?.includes("- VBAT 电池电源"), true);
 });
 
 test("buildDraftMessages provides default follow-up suggestions for draft confirmation", () => {

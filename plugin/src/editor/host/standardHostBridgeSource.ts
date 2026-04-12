@@ -84,9 +84,18 @@ export function resolveStandardRawHostApi(): StandardRawHostApi | undefined {
               ["selectShape", [target.objectId]],
               ["selectShape", target.objectId],
               ["locateShape", target.objectId],
-              ["focusShape", target.objectId],
-            ]);
-          },
+                ["focusShape", target.objectId],
+              ]);
+            },
+      createEmptyPage: fromNamespace?.schematic?.createEmptyPage
+        ? fromNamespace.schematic.createEmptyPage
+        : async (input): Promise<unknown> =>
+            callApiCandidate(callApi, [
+              ["createEmptySchematicPage", input ?? {}],
+              ["createSchematicPage", input ?? {}],
+              ["newSchematicPage", input ?? {}],
+              ["createEmptyPage", input ?? {}],
+            ]),
     },
     shell: {
       openExternal: fromNamespace?.shell?.openExternal

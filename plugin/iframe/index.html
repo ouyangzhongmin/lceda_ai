@@ -344,7 +344,11 @@
     }
 
     .message-content.md p {
-      margin: 0 0 12px;
+      margin: 0;
+    }
+
+    .message-content.md p + p {
+      margin-top: 12px;
     }
 
     .message-content.md ul,
@@ -752,7 +756,7 @@
       border: 0;
       background: transparent;
       color: #64748b;
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 700;
       line-height: 1;
       vertical-align: middle;
@@ -782,16 +786,16 @@
       justify-content: center;
       gap: 6px;
       min-width: 0;
-      min-height: 0;
+      min-height: 36px;
       border: 0;
       border-radius: 0;
       background: transparent;
       color: #334155;
       font: inherit;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
       line-height: 1;
-      padding: 2px 0;
+      padding: 6px 4px 6px 8px;
       cursor: pointer;
       white-space: nowrap;
       box-shadow: none;
@@ -804,8 +808,15 @@
 
     .assistant-steps-toggle::after {
       content: "▾";
-      margin-left: 0;
-      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      margin-left: 2px;
+      font-size: 20px;
+      line-height: 1;
+      font-weight: 700;
       color: #6b7280;
       transition: transform 180ms ease;
     }
@@ -1359,10 +1370,11 @@
     .assistant-thinking {
       display: flex;
       flex-direction: column;
-      border: 2px solid #1f2937;
-      border-radius: 16px;
+      border: 1px solid #d8e4f2;
+      border-radius: 12px;
       background: #ffffff;
-      padding: 10px 10px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      padding: 8px 10px;
       margin-bottom: 12px;
       max-height: var(--chat-pane-half);
       overflow: hidden;
@@ -1395,13 +1407,13 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 4px 10px;
+      padding: 3px 9px;
       border-radius: 999px;
       border: 1px solid #d8e4f2;
       background: #f8fbff;
-      color: #1f2937;
-      font-size: 12px;
-      font-weight: 800;
+      color: #334155;
+      font-size: 11px;
+      font-weight: 700;
       letter-spacing: 0.01em;
     }
 
@@ -1409,26 +1421,26 @@
       display: flex;
       flex: 1 1 auto;
       min-height: 0;
-      gap: 12px;
+      gap: 10px;
       align-items: flex-start;
-      color: #0f172a;
-      font-size: 13px;
-      line-height: 1.58;
+      color: #334155;
+      font-size: 12px;
+      line-height: 1.5;
       white-space: pre-wrap;
       word-break: break-word;
-      max-height: calc(var(--chat-pane-half) - 54px);
+      max-height: calc(var(--chat-pane-half) - 50px);
       overflow-y: auto;
       overflow-x: hidden;
       padding-right: 2px;
     }
 
     .assistant-thinking-spinner {
-      width: 14px;
-      height: 14px;
-      margin-top: 5px;
+      width: 12px;
+      height: 12px;
+      margin-top: 4px;
       border-radius: 999px;
-      border: 2px solid rgba(15, 23, 42, 0.18);
-      border-top-color: rgba(15, 23, 42, 0.62);
+      border: 2px solid rgba(37, 99, 235, 0.18);
+      border-top-color: rgba(37, 99, 235, 0.82);
       animation: spin 900ms linear infinite;
       flex-shrink: 0;
     }
@@ -1527,6 +1539,10 @@
       grid-template-columns: 1fr;
     }
 
+    .report-root.draft-report {
+      gap: 14px;
+    }
+
     .report-lead {
       padding: 12px 14px;
       border-radius: 14px;
@@ -1582,6 +1598,317 @@
       line-height: 1.56;
       color: #334155;
       white-space: pre-wrap;
+    }
+
+    .draft-lead {
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid #d9e8da;
+      background:
+        radial-gradient(circle at top right, rgba(187, 247, 208, 0.45), transparent 34%),
+        linear-gradient(180deg, #ffffff 0%, #f6fbf7 100%);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+    }
+
+    .draft-lead-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #edf9f0;
+      color: #166534;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .draft-lead-text {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #0f172a;
+      font-weight: 700;
+      white-space: pre-wrap;
+    }
+
+    .draft-lead-text.md {
+      white-space: normal;
+    }
+
+    .draft-lead-text.md h1,
+    .draft-lead-text.md h2,
+    .draft-lead-text.md h3 {
+      margin: 0 0 12px;
+      line-height: 1.35;
+      color: #0f172a;
+    }
+
+    .draft-lead-text.md h1 {
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .draft-lead-text.md h2 {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .draft-lead-text.md h3 {
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .draft-lead-text.md p {
+      margin: 0 0 12px;
+      font-size: 15px;
+      line-height: 1.75;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    .draft-lead-text.md ul,
+    .draft-lead-text.md ol {
+      margin: 6px 0 12px 22px;
+      padding: 0;
+    }
+
+    .draft-lead-text.md li {
+      margin: 4px 0;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #1e293b;
+      font-weight: 700;
+    }
+
+    .draft-overview {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr);
+      align-items: stretch;
+    }
+
+    .draft-hero {
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid #d9e3ef;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+    }
+
+    .draft-hero-label {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .draft-hero-title {
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 900;
+      color: #0f172a;
+      margin-bottom: 10px;
+    }
+
+    .draft-hero-text {
+      font-size: 13px;
+      line-height: 1.7;
+      color: #334155;
+      white-space: pre-wrap;
+    }
+
+    .draft-status-card {
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid #f0dcb0;
+      background:
+        radial-gradient(circle at top left, rgba(253, 230, 138, 0.35), transparent 40%),
+        linear-gradient(180deg, #fffdf7 0%, #fffaf0 100%);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+    }
+
+    .draft-status-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .draft-status-title {
+      font-size: 15px;
+      font-weight: 900;
+      color: #7c2d12;
+    }
+
+    .draft-status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #fff7dd;
+      border: 1px solid #f5d58a;
+      color: #92400e;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .draft-status-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .draft-status-item {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid #f4e7c7;
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    .draft-status-key {
+      font-size: 11px;
+      font-weight: 800;
+      color: #9a3412;
+      margin-bottom: 4px;
+    }
+
+    .draft-status-value {
+      font-size: 12px;
+      line-height: 1.55;
+      color: #5b3522;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .draft-grid-two {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .draft-card {
+      border: 1px solid #e3ebf4;
+      border-radius: 18px;
+      background: #ffffff;
+      padding: 16px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+
+    .draft-card.full {
+      grid-column: 1 / -1;
+    }
+
+    .draft-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .draft-card-title {
+      font-size: 15px;
+      font-weight: 900;
+      color: #0f172a;
+    }
+
+    .draft-card-note {
+      font-size: 11px;
+      font-weight: 800;
+      color: #64748b;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .draft-points {
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .draft-point {
+      position: relative;
+      padding: 10px 12px 10px 18px;
+      border-radius: 14px;
+      background: #f8fbff;
+      border: 1px solid #e6eef8;
+      color: #334155;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .draft-point::before {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 16px;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #3b82f6;
+    }
+
+    .draft-point.emphasis {
+      background: #fff8eb;
+      border-color: #f5dfb3;
+      color: #7c2d12;
+      font-weight: 700;
+    }
+
+    .draft-point.emphasis::before {
+      background: #f59e0b;
+    }
+
+    .draft-detail {
+      margin-top: 4px;
+      border: 1px solid #dbe6f2;
+      border-radius: 16px;
+      background: #fbfdff;
+      overflow: hidden;
+    }
+
+    .draft-detail summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .draft-detail summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .draft-detail summary::after {
+      content: "展开";
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .draft-detail[open] summary::after {
+      content: "收起";
+    }
+
+    .draft-detail-body {
+      padding: 0 16px 16px;
+    }
+
+    @media (max-width: 640px) {
+      .draft-overview,
+      .draft-grid-two {
+        grid-template-columns: 1fr;
+      }
     }
 
     .report-kv-grid {
@@ -2615,6 +2942,13 @@
             <input id="settings-llm-model-input" type="text" placeholder="gpt-4.1-mini" />
           </div>
           <div class="settings-row column">
+            <span>输出语言</span>
+            <select id="settings-llm-language-select">
+              <option value="zh-CN">中文</option>
+              <option value="en-US">English</option>
+            </select>
+          </div>
+          <div class="settings-row column">
             <span>API Key</span>
             <input id="settings-llm-api-key-input" type="password" placeholder="sk-***" />
           </div>
@@ -2779,15 +3113,19 @@
       const sendBtn = document.getElementById("send-btn");
       const input = document.getElementById("chat-input");
       if (sendBtn) {
-        sendBtn.disabled = busy;
-        sendBtn.textContent = busy ? "处理中..." : "发送";
+        sendBtn.disabled = false;
+        sendBtn.textContent = busy ? "停止" : "发送";
       }
       if (input) input.disabled = busy;
     }
 
     function sendPrompt(text) {
       const prompt = String(text || "").trim();
-      if (!prompt || isBusy) return;
+      if (isBusy) {
+        invokeRuntime("stopCurrentTurn");
+        return;
+      }
+      if (!prompt) return;
       if (currentState && currentState.llmMode === "proxy" && currentState.loggedIn === false) {
         showToast("当前 LLM 模式为服务器转发，请先登录");
         return;
@@ -3047,13 +3385,16 @@
         thinkingHost = document.createElement("div");
         thinkingHost.className = "assistant-thinking";
         thinkingHost.hidden = true;
-        card.appendChild(thinkingHost);
       }
 
       const stepsHost = document.createElement("div");
       stepsHost.className = role === "user" ? "message-steps-host" : "assistant-steps-simple";
       stepsHost.hidden = true;
       card.appendChild(stepsHost);
+
+      if (thinkingHost) {
+        card.appendChild(thinkingHost);
+      }
 
       const content = document.createElement("div");
       content.className = role === "user" ? "message-content" : "assistant-summary";
@@ -3213,14 +3554,13 @@
       const prevText = dom.lastText || "";
       const nextText = message.content || "";
 
-      // Thinking vs steps:
-      // - If we have thought/reasoning but no tool execution yet, show thinking card (image 1).
-      // - Once tool_call / observation appears (or stepStates exist), hide thinking and show steps timeline (image 2).
+      // Thinking and steps should coexist while streaming:
+      // - Show the latest thought/reasoning whenever it exists during streaming.
+      // - Show steps timeline once tool_call / observation appears (or stepStates exist).
       if (role === "assistant") {
         const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : [];
-        const hasTooling = reactEvents.some((e) => e && (e.kind === "tool_call" || e.kind === "observation"));
         const hasThought = reactEvents.some((e) => e && e.kind === "thought" && String(e.text || "").trim());
-        const showThinking = Boolean(dom.thinkingHostEl && hasThought && nextStreaming && !hasTooling);
+        const showThinking = Boolean(dom.thinkingHostEl && hasThought && nextStreaming);
         if (dom.thinkingHostEl) {
           dom.thinkingHostEl.hidden = !showThinking;
           dom.thinkingHostEl.classList.toggle("live", showThinking);
@@ -3271,7 +3611,11 @@
       // If the message includes structuredContent, render it as a proper report layout (no markdown conversion).
       const structured = Array.isArray(message.structuredContent) ? message.structuredContent : null;
       const reportMarkdown = typeof message.reportMarkdown === "string" ? message.reportMarkdown.trim() : "";
-      if (structured && structured.length > 0) {
+      const preferMarkdownOverStructured =
+        role === "assistant" &&
+        String(message.title || "").trim() === "草案草图" &&
+        looksLikeRichMarkdownMessage(nextText);
+      if (structured && structured.length > 0 && !preferMarkdownOverStructured) {
         dom.contentEl.classList.remove("md");
         dom.contentEl.classList.add("structured");
         const signature = `${buildStructuredSignature(structured)}|md:${reportMarkdown.length}`;
@@ -3315,7 +3659,7 @@
         }
       }
 
-      if (!(structured && structured.length > 0)) dom.lastText = nextText;
+      if (!(structured && structured.length > 0 && !preferMarkdownOverStructured)) dom.lastText = nextText;
 
       if (
         role === "assistant" &&
@@ -3330,7 +3674,7 @@
       }
 
       if (role === "assistant") {
-        const hasStructuredContent = Boolean(structured && structured.length > 0);
+        const hasStructuredContent = Boolean(structured && structured.length > 0 && !preferMarkdownOverStructured);
         const hasReportMarkdown = reportMarkdown.length > 0;
         const visibleText = String(nextText || "").trim();
         const shouldHideContent =
@@ -3899,6 +4243,15 @@
       }
     }
 
+    function looksLikeRichMarkdownMessage(text) {
+      const value = String(text || "").trim();
+      if (!value) return false;
+      const hasHeading = /^(#{1,3})\s+\S/m.test(value);
+      const hasStructuredSections = /^##\s+\S/m.test(value) || /^###\s+\S/m.test(value);
+      const hasList = /^(?:-|\*|\d+\.)\s+\S/m.test(value);
+      return hasHeading && (hasStructuredSections || hasList);
+    }
+
     function escapeHtml(text) {
       return String(text)
         .replace(/&/g, "&amp;")
@@ -4104,6 +4457,15 @@
       return parts.join("|");
     }
 
+    function isDraftStructuredBlocks(blocks) {
+      const titles = new Set(
+        (Array.isArray(blocks) ? blocks : [])
+          .filter((block) => block && typeof block.title === "string")
+          .map((block) => String(block.title).trim())
+      );
+      return titles.has("这版方案") && titles.has("当前状态");
+    }
+
     function renderStructuredContentDom(host, blocks, options) {
       host.innerHTML = "";
       if (options && options.contextCompaction) {
@@ -4143,10 +4505,33 @@
         return;
       }
       const root = document.createElement("div");
-      root.className = "report-root";
+      const isDraft = isDraftStructuredBlocks(blocks);
+      root.className = `report-root${isDraft ? " draft-report" : ""}`;
       host.appendChild(root);
-      renderStructuredBlocksInto(root, blocks);
+      if (isDraft) {
+        renderDraftStructuredBlocksInto(root, blocks);
+      } else {
+        renderStructuredBlocksInto(root, blocks);
+      }
       if (options && typeof options.reportMarkdown === "string" && options.reportMarkdown.trim()) {
+        if (isDraft) {
+          const detail = document.createElement("details");
+          detail.className = "draft-detail";
+          const summary = document.createElement("summary");
+          summary.textContent = "查看完整技术细节";
+          detail.appendChild(summary);
+          const bodyWrap = document.createElement("div");
+          bodyWrap.className = "draft-detail-body";
+          const body = document.createElement("div");
+          body.className = "assistant-summary md";
+          body.style.maxHeight = "none";
+          body.style.overflow = "visible";
+          body.innerHTML = renderMarkdown(options.reportMarkdown);
+          bodyWrap.appendChild(body);
+          detail.appendChild(bodyWrap);
+          root.appendChild(detail);
+          return;
+        }
         const section = document.createElement("div");
         section.className = "report-section full";
         const head = document.createElement("div");
@@ -4167,6 +4552,138 @@
         section.appendChild(body);
         root.appendChild(section);
       }
+    }
+
+    function renderDraftStructuredBlocksInto(root, blocks) {
+      const normalized = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
+      const findBlock = (kind, title) => normalized.find((block) => block.kind === kind && String(block.title || "").trim() === title);
+      const leadBlock = normalized.find((block) => block.kind === "paragraph" && String(block.text || "").trim());
+      const overviewBlock = findBlock("section", "这版方案");
+      const capabilityBlock = findBlock("list", "核心能力");
+      const moduleBlock = findBlock("list", "关键模块与器件");
+      const netBlock = findBlock("list", "关键网络");
+      const statusBlock = findBlock("kv", "当前状态");
+      const pendingBlock = findBlock("list", "待确认项");
+      const nextBlock = findBlock("list", "下一步建议");
+      const supportBlock = findBlock("list", "补充依据");
+
+      if (leadBlock) {
+        const lead = document.createElement("section");
+        lead.className = "draft-lead";
+        const kicker = document.createElement("div");
+        kicker.className = "draft-lead-kicker";
+        kicker.textContent = "当前结论";
+        const text = document.createElement("div");
+        text.className = "draft-lead-text md";
+        text.innerHTML = renderMarkdown(String(leadBlock.text || "").trim());
+        lead.appendChild(kicker);
+        lead.appendChild(text);
+        root.appendChild(lead);
+      }
+
+      const overviewShell = document.createElement("section");
+      overviewShell.className = "draft-overview";
+
+      const hero = document.createElement("div");
+      hero.className = "draft-hero";
+      const heroLabel = document.createElement("div");
+      heroLabel.className = "draft-hero-label";
+      heroLabel.textContent = "方案定位";
+      const heroTitle = document.createElement("div");
+      heroTitle.className = "draft-hero-title";
+      const heroText = document.createElement("div");
+      heroText.className = "draft-hero-text";
+      if (overviewBlock && overviewBlock.kind === "section") {
+        const text = String(overviewBlock.text || "").trim();
+        const parts = text.split("\n").map((item) => item.trim()).filter(Boolean);
+        heroTitle.textContent = parts[0] || "当前草案";
+        heroText.textContent = parts.slice(1).join("\n") || parts[0] || "未返回方案说明";
+      } else {
+        heroTitle.textContent = "当前草案";
+        heroText.textContent = "未返回方案说明";
+      }
+      hero.appendChild(heroLabel);
+      hero.appendChild(heroTitle);
+      hero.appendChild(heroText);
+      overviewShell.appendChild(hero);
+
+      const status = document.createElement("div");
+      status.className = "draft-status-card";
+      const statusHead = document.createElement("div");
+      statusHead.className = "draft-status-head";
+      const statusTitle = document.createElement("div");
+      statusTitle.className = "draft-status-title";
+      statusTitle.textContent = "本轮重点";
+      const statusBadge = document.createElement("div");
+      statusBadge.className = "draft-status-badge";
+      const pendingCount = pendingBlock && pendingBlock.kind === "list" ? pendingBlock.items.length : 0;
+      statusBadge.textContent = pendingCount > 0 ? `待确认 ${pendingCount}` : "可继续确认";
+      statusHead.appendChild(statusTitle);
+      statusHead.appendChild(statusBadge);
+      status.appendChild(statusHead);
+      const statusGrid = document.createElement("div");
+      statusGrid.className = "draft-status-grid";
+      if (statusBlock && statusBlock.kind === "kv") {
+        (Array.isArray(statusBlock.entries) ? statusBlock.entries : []).forEach((entry) => {
+          if (!entry) return;
+          const item = document.createElement("div");
+          item.className = "draft-status-item";
+          const key = document.createElement("div");
+          key.className = "draft-status-key";
+          key.textContent = String(entry.key || "").trim() || "状态";
+          const value = document.createElement("div");
+          value.className = "draft-status-value";
+          value.textContent = String(entry.value || "").trim() || "-";
+          item.appendChild(key);
+          item.appendChild(value);
+          statusGrid.appendChild(item);
+        });
+      }
+      status.appendChild(statusGrid);
+      overviewShell.appendChild(status);
+      root.appendChild(overviewShell);
+
+      const grid = document.createElement("section");
+      grid.className = "draft-grid-two";
+      root.appendChild(grid);
+
+      const pushDraftListCard = (block, opts = {}) => {
+        if (!block || block.kind !== "list") return;
+        const card = document.createElement("div");
+        card.className = `draft-card${opts.full ? " full" : ""}`;
+        const head = document.createElement("div");
+        head.className = "draft-card-head";
+        const title = document.createElement("div");
+        title.className = "draft-card-title";
+        title.textContent = String(block.title || "").trim() || "内容";
+        head.appendChild(title);
+        if (opts.note) {
+          const note = document.createElement("div");
+          note.className = "draft-card-note";
+          note.textContent = opts.note;
+          head.appendChild(note);
+        }
+        card.appendChild(head);
+        const ul = document.createElement("ul");
+        ul.className = "draft-points";
+        (Array.isArray(block.items) ? block.items : []).forEach((itemText) => {
+          const text = String(itemText || "").trim();
+          if (!text) return;
+          const li = document.createElement("li");
+          li.className = `draft-point${opts.emphasis ? " emphasis" : ""}`;
+          li.textContent = text;
+          ul.appendChild(li);
+        });
+        card.appendChild(ul);
+        grid.appendChild(card);
+      };
+
+      pushDraftListCard(capabilityBlock, { note: "这版能做什么" });
+      pushDraftListCard(moduleBlock, { note: "你最需要关心的器件" });
+      pushDraftListCard(netBlock, { note: "主网络" });
+      pushDraftListCard(pendingBlock, { note: "优先确认", emphasis: true, full: true });
+      pushDraftListCard(nextBlock, { note: "推荐操作", full: true });
+      pushDraftListCard(supportBlock, { note: "次级信息", full: true });
     }
 
     function renderStructuredBlocksInto(root, blocks) {
@@ -4531,9 +5048,16 @@
       const providerInput = document.getElementById("settings-llm-provider-input");
       const baseUrlInput = document.getElementById("settings-llm-base-url-input");
       const modelInput = document.getElementById("settings-llm-model-input");
+      const languageSelect = document.getElementById("settings-llm-language-select");
       if (providerInput && !providerInput.value) providerInput.value = state.customLlmConfig?.provider || "";
       if (baseUrlInput && !baseUrlInput.value) baseUrlInput.value = state.customLlmConfig?.baseUrl || "";
       if (modelInput && !modelInput.value) modelInput.value = state.customLlmConfig?.model || "";
+      if (languageSelect) {
+        const preferred = state.customLlmConfig?.preferredOutputLanguage || "zh-CN";
+        if (String(languageSelect.value || "") !== preferred) {
+          languageSelect.value = preferred;
+        }
+      }
     }
 
     function formatHistoryTime(value) {
@@ -4660,6 +5184,7 @@
         baseUrl: document.getElementById("settings-llm-base-url-input").value,
         model: document.getElementById("settings-llm-model-input").value,
         apiKey: document.getElementById("settings-llm-api-key-input").value,
+        preferredOutputLanguage: document.getElementById("settings-llm-language-select").value,
       });
     });
 
@@ -4770,6 +5295,7 @@ var edaEsbuildExportName = (() => {
       locateObject: rawApi?.editor?.locateEntity ? async (target) => {
         await rawApi.editor.locateEntity(target);
       } : void 0,
+      createEmptySchematicPage: rawApi?.editor?.createEmptySchematicPage ? async (input) => rawApi.editor.createEmptySchematicPage(input) : void 0,
       openExternal: rawApi?.system?.openBrowser ? async (url) => {
         await rawApi.system.openBrowser(url);
       } : void 0,
@@ -5274,6 +5800,7 @@ var edaEsbuildExportName = (() => {
       locateObject: rawApi?.schematic?.locateObject ? async (target) => {
         await rawApi.schematic.locateObject(target);
       } : void 0,
+      createEmptySchematicPage: rawApi?.schematic?.createEmptyPage ? async (input) => rawApi.schematic.createEmptyPage(input) : void 0,
       openExternal: rawApi?.shell?.openExternal ? async (url) => {
         await rawApi.shell.openExternal(url);
       } : void 0,
@@ -5317,6 +5844,7 @@ var edaEsbuildExportName = (() => {
         locate: Boolean(capabilities.locateObject)
       },
       {
+        createEmptySchematicPage: Boolean(capabilities.createEmptySchematicPage),
         previewApplyPlan: Boolean(capabilities.previewApplyPlan),
         applyPlan: Boolean(capabilities.applyPlan),
         rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
@@ -5338,6 +5866,12 @@ var edaEsbuildExportName = (() => {
           return;
         }
         throw new Error("standard host bridge locate is not available");
+      },
+      createEmptySchematicPage: async (input) => {
+        if (!capabilities.createEmptySchematicPage) {
+          throw new Error("standard host bridge createEmptySchematicPage is not available");
+        }
+        await capabilities.createEmptySchematicPage(input);
       },
       previewApplyPlan: capabilities.previewApplyPlan,
       applyPlan: capabilities.applyPlan,
@@ -5371,6 +5905,7 @@ var edaEsbuildExportName = (() => {
         locate: Boolean(capabilities.locateObject)
       },
       {
+        createEmptySchematicPage: Boolean(capabilities.createEmptySchematicPage),
         previewApplyPlan: Boolean(capabilities.previewApplyPlan),
         applyPlan: Boolean(capabilities.applyPlan),
         rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
@@ -5392,6 +5927,12 @@ var edaEsbuildExportName = (() => {
           return;
         }
         throw new Error("professional host bridge locate is not available");
+      },
+      createEmptySchematicPage: async (input) => {
+        if (!capabilities.createEmptySchematicPage) {
+          throw new Error("professional host bridge createEmptySchematicPage is not available");
+        }
+        await capabilities.createEmptySchematicPage(input);
       },
       previewApplyPlan: capabilities.previewApplyPlan,
       applyPlan: capabilities.applyPlan,
@@ -6959,7 +7500,13 @@ var edaEsbuildExportName = (() => {
             ["locateShape", target.objectId],
             ["focusShape", target.objectId]
           ]);
-        }
+        },
+        createEmptySchematicPage: fromNamespace?.editor?.createEmptySchematicPage ? fromNamespace.editor.createEmptySchematicPage : async (input) => callApiCandidate(callApi, [
+          ["createEmptySchematicPage", input ?? {}],
+          ["createSchematicPage", input ?? {}],
+          ["newSchematicPage", input ?? {}],
+          ["createEmptyPage", input ?? {}]
+        ])
       },
       system: {
         openBrowser: fromNamespace?.system?.openBrowser ? fromNamespace.system.openBrowser : runtime.shell?.openBrowser ? runtime.shell.openBrowser : runtime.shell?.openExternal ? runtime.shell.openExternal : async (url) => {
@@ -7081,7 +7628,13 @@ var edaEsbuildExportName = (() => {
             ["locateShape", target.objectId],
             ["focusShape", target.objectId]
           ]);
-        }
+        },
+        createEmptyPage: fromNamespace?.schematic?.createEmptyPage ? fromNamespace.schematic.createEmptyPage : async (input) => callApiCandidate2(callApi, [
+          ["createEmptySchematicPage", input ?? {}],
+          ["createSchematicPage", input ?? {}],
+          ["newSchematicPage", input ?? {}],
+          ["createEmptyPage", input ?? {}]
+        ])
       },
       shell: {
         openExternal: fromNamespace?.shell?.openExternal ? fromNamespace.shell.openExternal : runtime.shell?.openExternal ? runtime.shell.openExternal : runtime.shell?.openBrowser ? runtime.shell.openBrowser : async (url) => {
@@ -7190,12 +7743,12 @@ var edaEsbuildExportName = (() => {
     list() {
       return Array.from(this.tools.values());
     }
-    async invoke(name, input) {
+    async invoke(name, input, context) {
       const tool = this.tools.get(name);
       if (!tool) {
         throw new Error(`tool not found: ${name}`);
       }
-      return tool.execute(input);
+      return tool.execute(input, context);
     }
   };
 
@@ -7907,6 +8460,26 @@ var edaEsbuildExportName = (() => {
     );
     return Object.fromEntries(pinNetPairs);
   }
+  function buildNormalizedConnectionMap(connections) {
+    const connectionMap = /* @__PURE__ */ new Map();
+    for (const connection of connections) {
+      const normalizedNetName = normalizeNetName(connection.netName, connection.netName);
+      const existing = connectionMap.get(normalizedNetName);
+      if (existing) {
+        for (const pinId of connection.pinIds) {
+          if (!existing.pinIds.includes(pinId)) {
+            existing.pinIds.push(pinId);
+          }
+        }
+        continue;
+      }
+      connectionMap.set(normalizedNetName, {
+        netName: normalizedNetName,
+        pinIds: [...connection.pinIds]
+      });
+    }
+    return connectionMap;
+  }
   function draftSpecToPlan(input) {
     const { spec, guidance } = input;
     assertValidDraftSpec(spec);
@@ -7915,6 +8488,7 @@ var edaEsbuildExportName = (() => {
       ...connection,
       netName: normalizeNetName(connection.netName, connection.netName)
     }));
+    const normalizedConnectionMap = buildNormalizedConnectionMap(spec.connections);
     const normalizedNets = spec.nets.map((net) => ({
       ...net,
       name: normalizeNetName(net.name, net.id)
@@ -7952,7 +8526,7 @@ var edaEsbuildExportName = (() => {
         id: net.id,
         name: net.name,
         isPower: net.isPower,
-        nodeIds: normalizedConnections.find((connection) => connection.netName === String(net.name || net.id))?.pinIds ?? []
+        nodeIds: normalizedConnectionMap.get(String(net.name || net.id))?.pinIds ?? []
       })),
       guidance
     };
@@ -9617,7 +10191,8 @@ var edaEsbuildExportName = (() => {
           tools: input.tools,
           tool_choice: input.tool_choice,
           stream: false
-        })
+        }),
+        signal: input.signal
       });
       const bodyText = await response.text();
       if (!response.ok) {
@@ -9673,7 +10248,8 @@ var edaEsbuildExportName = (() => {
           tools: input.tools,
           tool_choice: input.tool_choice,
           stream: true
-        })
+        }),
+        signal: input.signal
       });
       if (!response.ok) {
         const body = await response.text().catch(() => "");
@@ -9839,7 +10415,7 @@ var edaEsbuildExportName = (() => {
           let finalEvent;
           await this.customClient.generateStream(
             { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model },
-            { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice },
+            { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice, signal: input.signal },
             (event) => {
               if (event.type === "delta") {
                 outputText += event.delta ?? "";
@@ -9868,7 +10444,7 @@ var edaEsbuildExportName = (() => {
         }
         const res = await this.customClient.generate(
           { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model },
-          { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice }
+          { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice, signal: input.signal }
         );
         return {
           request_id: "custom",
@@ -9903,7 +10479,8 @@ var edaEsbuildExportName = (() => {
             model: input.model,
             messages: input.messages,
             tools: input.tools,
-            tool_choice: input.tool_choice
+            tool_choice: input.tool_choice,
+            signal: input.signal
           },
           (event) => {
             if (event.type === "delta") {
@@ -9935,7 +10512,8 @@ var edaEsbuildExportName = (() => {
         model: input.model,
         messages: input.messages,
         tools: input.tools,
-        tool_choice: input.tool_choice
+        tool_choice: input.tool_choice,
+        signal: input.signal
       });
     }
   };
@@ -9956,7 +10534,7 @@ var edaEsbuildExportName = (() => {
           required: ["query"],
           additionalProperties: false
         },
-        execute: async (input) => ragClient.search(input.query, input.topK ?? 3)
+        execute: async (input, context) => ragClient.search(input.query, input.topK ?? 3, context?.signal)
       },
       {
         name: "rag_build_citations",
@@ -9970,14 +10548,14 @@ var edaEsbuildExportName = (() => {
           required: ["query"],
           additionalProperties: false
         },
-        execute: async (input) => ragClient.buildCitations(input.query, input.topK ?? 3)
+        execute: async (input, context) => ragClient.buildCitations(input.query, input.topK ?? 3, context?.signal)
       },
       {
         name: "llm_generate",
         description: "\u751F\u6210 AI \u56DE\u590D\uFF08\u53EF\u9009\uFF1A\u670D\u52A1\u7AEF\u4EE3\u7406\u6216\u81EA\u5B9A\u4E49 LLM \u76F4\u8FDE\uFF09",
-        execute: async (input) => {
+        execute: async (input, context) => {
           if (unifiedClient) {
-            return unifiedClient.generate(input);
+            return unifiedClient.generate({ ...input, signal: input.signal ?? context?.signal });
           }
           const session = await sessionStore.get();
           if (!session) {
@@ -9993,7 +10571,8 @@ var edaEsbuildExportName = (() => {
                 model: input.model,
                 messages: input.messages,
                 tools: input.tools,
-                tool_choice: input.tool_choice
+                tool_choice: input.tool_choice,
+                signal: input.signal ?? context?.signal
               },
               (event) => {
                 if (event.type === "delta") {
@@ -10026,7 +10605,8 @@ var edaEsbuildExportName = (() => {
             model: input.model,
             messages: input.messages,
             tools: input.tools,
-            tool_choice: input.tool_choice
+            tool_choice: input.tool_choice,
+            signal: input.signal ?? context?.signal
           });
         }
       }
@@ -10125,6 +10705,28 @@ var edaEsbuildExportName = (() => {
     ];
   }
 
+  // src/agent/core/cancelledError.ts
+  var CancelledError = class extends Error {
+    constructor(message = "operation cancelled") {
+      super(message);
+      this.name = "CancelledError";
+    }
+  };
+  function isCancelledError(error) {
+    if (error instanceof CancelledError) {
+      return true;
+    }
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return true;
+    }
+    return error instanceof Error && error.name === "AbortError";
+  }
+  function throwIfCancelled(signal, isCancelled) {
+    if (signal?.aborted || isCancelled?.()) {
+      throw new CancelledError();
+    }
+  }
+
   // src/agent/core/reactLoopAgent.ts
   async function runReActLoop(input) {
     const {
@@ -10146,6 +10748,7 @@ var edaEsbuildExportName = (() => {
     } = input;
     const observations = [];
     const usedTools = /* @__PURE__ */ new Set();
+    const ensureNotCancelled = () => throwIfCancelled(deps.signal, deps.isCancelled);
     const messages = [
       { role: "system", content: system },
       ...historyMessages,
@@ -10257,6 +10860,7 @@ var edaEsbuildExportName = (() => {
       }
     }));
     for (let i = 0; i < maxIterations; i += 1) {
+      ensureNotCancelled();
       const iterationLabel = `\u8FED\u4EE3 ${i + 1}`;
       const iterationEvent = {
         kind: "task",
@@ -10298,6 +10902,7 @@ var edaEsbuildExportName = (() => {
       onProgress?.(`ReAct \u8FED\u4EE3 ${i + 1}/${maxIterations}`);
       let streamText = "";
       let streamReasoning = "";
+      ensureNotCancelled();
       const decision = await deps.invokeTool("llm_generate", {
         stream: true,
         messages,
@@ -10305,6 +10910,7 @@ var edaEsbuildExportName = (() => {
         tools: toolsForModel,
         tool_choice: "auto",
         onEvent: (event) => {
+          ensureNotCancelled();
           if (event.type === "reasoning_delta" && event.reasoning_delta) {
             streamReasoning += event.reasoning_delta;
             thoughtEvent.text = streamReasoning.trim();
@@ -10362,6 +10968,7 @@ var edaEsbuildExportName = (() => {
         }
         return { type: "retry", rationale: "model_output_parse_failed" };
       });
+      ensureNotCancelled();
       if (decision.type === "retry") {
         thoughtEvent.status = thoughtEvent.text ? "failed" : "skipped";
         const existing = state.stepStates.find((s) => s.kind === "llm");
@@ -10463,6 +11070,7 @@ var edaEsbuildExportName = (() => {
         stepStates: state.stepStates,
         workingMemory: state.workingMemory
       });
+      ensureNotCancelled();
       const actionPayload = decision.input && typeof decision.input === "object" ? decision.input : void 0;
       const rawToolCalls = Array.isArray(actionPayload?.__toolCalls) ? actionPayload.__toolCalls : [];
       const rawToolInput = Object.prototype.hasOwnProperty.call(actionPayload ?? {}, "__toolInput") ? actionPayload?.__toolInput : decision.input ?? {};
@@ -10470,14 +11078,16 @@ var edaEsbuildExportName = (() => {
       const toolInput = toolName === "todo_list" ? normalizeTodoToolInput(preparedInput) : preparedInput;
       const selectedToolCall = rawToolCalls.find((call) => normalizeToolName(call?.function?.name || "") === toolName) ?? rawToolCalls[0];
       const toolCallId = String(selectedToolCall?.id || `call_${i + 1}_${toolName}`);
-      const assistantToolCalls = rawToolCalls.length > 0 ? rawToolCalls.map((call, index) => ({
-        id: String(call.id || `call_${i + 1}_${index}`),
-        type: call.type || "function",
-        function: {
-          name: String(call.function?.name || ""),
-          arguments: typeof call.function?.arguments === "string" ? call.function.arguments : "{}"
+      const assistantToolCalls = rawToolCalls.length > 0 ? [
+        {
+          id: toolCallId,
+          type: selectedToolCall?.type || "function",
+          function: {
+            name: toolName,
+            arguments: typeof selectedToolCall?.function?.arguments === "string" ? selectedToolCall.function.arguments : JSON.stringify(toolInput ?? {})
+          }
         }
-      })) : [
+      ] : [
         {
           id: toolCallId,
           type: "function",
@@ -10502,9 +11112,16 @@ var edaEsbuildExportName = (() => {
         stepKind
       };
       state.reactEvents.push(toolCallEvent);
+      deps.onProgress?.({
+        detail: `\u6267\u884C\u5DE5\u5177\uFF1A${toolName}`,
+        reactEvents: state.reactEvents,
+        stepStates: state.stepStates,
+        workingMemory: state.workingMemory
+      });
       try {
         const toolResult = isSpecial && specialTools ? await specialTools[toolName]({ toolName, toolInput, iteration: i, messages: messages.slice() }) : void 0;
         const output = toolResult ? toolResult.output : await deps.invokeTool(toolName, toolInput);
+        ensureNotCancelled();
         onToolResult?.(toolName, output);
         const formatted = formatObservation?.(toolName, output);
         const outputSummary = toolResult?.observationForUi ?? formatted?.summary ?? summarize(output, 900);
@@ -10541,6 +11158,9 @@ var edaEsbuildExportName = (() => {
         });
         iterationEvent.status = "done";
       } catch (err) {
+        if (isCancelledError(err)) {
+          throw err;
+        }
         const msg = err instanceof Error ? err.message : String(err);
         state.toolTraces.push({ toolName, status: "blocked", note: msg });
         toolCallEvent.status = "failed";
@@ -10590,6 +11210,7 @@ var edaEsbuildExportName = (() => {
     const skillLines = (input.skills ?? []).map((s) => `- ${s.name}: ${s.description}`);
     const contextHint = String(input.contextHint || "").trim();
     const userQuery = String(input.task.userQuery || "").trim();
+    const preferredOutputLanguage = String(input.task.preferredOutputLanguage || "").trim() || "zh-CN";
     const isAnalysisTask = input.task.type === "schematic_analysis" || input.task.type !== "schematic_draft" && /(分析|检查|检查看看|看看|查看|排查|定位|问题|有什么问题|有啥问题|erc|审查|review|analy[sz]e|check|inspect)/iu.test(userQuery);
     const isDraftTask = input.task.type === "schematic_draft" || !isAnalysisTask && /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(userQuery);
     const isDraftFollowUpSummary = input.task.draftFollowUpIntent === "summarize_existing_draft";
@@ -10751,6 +11372,8 @@ var edaEsbuildExportName = (() => {
       "- \u6536\u5230\u7528\u6237\u6D88\u606F\u540E\u76F4\u63A5\u5F00\u59CB\u6267\u884C\uFF1B\u4EC5\u5728\u5173\u952E\u4FE1\u606F\u5B8C\u5168\u7F3A\u5931\u65F6\u624D\u5141\u8BB8\u63D0\u4E00\u4E2A\u6700\u5C0F\u95EE\u9898\u3002",
       "- \u8F93\u51FA\u5FC5\u987B\u57FA\u4E8E\u5DE5\u5177\u89C2\u6D4B\u5230\u7684\u4E8B\u5B9E\uFF0C\u7981\u6B62\u7F16\u9020\u672A\u89C2\u6D4B\u5230\u7684\u539F\u7406\u56FE\u7EC6\u8282\u3002",
       "- \u9047\u5230\u4E0D\u786E\u5B9A\u5FC5\u987B\u4F18\u5148\u8C03\u7528\u5DE5\u5177\u8865\u8BC1\u636E\uFF1B\u65E0\u6CD5\u83B7\u53D6\u5219\u5728\u6700\u7EC8\u8F93\u51FA\u4E2D\u660E\u786E\u8BF4\u660E\u8BC1\u636E\u4E0D\u8DB3\u3002",
+      `- \u7528\u6237\u53EF\u89C1\u8F93\u51FA\u9ED8\u8BA4\u4F7F\u7528 ${preferredOutputLanguage}\uFF1B\u6B63\u5F0F\u7B54\u590D\u3001\u8349\u6848\u8BF4\u660E\u3001\u5206\u6790\u62A5\u544A\u3001\u6B65\u9AA4\u8BF4\u660E\u548C\u603B\u7ED3\u90FD\u5E94\u4F18\u5148\u4F7F\u7528\u8BE5\u8BED\u8A00\u3002`,
+      `- \u82E5\u6A21\u578B\u4F1A\u8F93\u51FA\u601D\u8003\u6458\u8981\u6216 reasoning\uFF0C\u4E5F\u5E94\u5C3D\u91CF\u4F7F\u7528 ${preferredOutputLanguage}\uFF1B\u5982\u65E0\u6CD5\u5B8C\u5168\u63A7\u5236\uFF0C\u81F3\u5C11\u4FDD\u8BC1\u6700\u7EC8\u6B63\u5F0F\u8F93\u51FA\u4F7F\u7528\u8BE5\u8BED\u8A00\u3002`,
       "",
       "## \u6267\u884C\u4E0E\u5B89\u5168",
       "- \u4F60\u53EA\u80FD\u8C03\u7528\u201C\u53EF\u7528\u5DE5\u5177\u5217\u8868\u201D\u4E2D\u7684\u5DE5\u5177\u540D\u3002",
@@ -10889,6 +11512,7 @@ ${match[2] || ""}`);
     return toolName === "editor_apply_plan" || toolName === "editor_rollback_apply_plan";
   }
   function inferRouteFromResult(result) {
+    if (result.naturalReply) return "chat";
     if (result.draftPlan || result.draftPreview || result.draftValidation || result.draftRisk) return "draft";
     if (result.analysisReport || result.checkResult || result.analysisMarkdown) return "analysis";
     return "chat";
@@ -10917,14 +11541,6 @@ ${match[2] || ""}`);
   }
   function isDraftTaskType(taskType) {
     return taskType === "schematic_draft";
-  }
-  function looksLikeDraftFollowUpSummaryQuery(userQuery) {
-    const text = String(userQuery || "").trim().toLowerCase();
-    if (!text) return false;
-    if (/(重新生成|重新设计|重画|修改草案|改原理图|增加模块|新增模块|替换器件|换成|重做)/iu.test(text)) {
-      return false;
-    }
-    return /(列表|清单|主要元器件|主要器件|用哪些器件|用了哪些器件|器件列表|列出|展示|总结|概述|说明|介绍)/iu.test(text);
   }
   function looksLikeDraftFollowUpRevisionQuery(userQuery) {
     const text = String(userQuery || "").trim().toLowerCase();
@@ -11037,7 +11653,7 @@ ${match[2] || ""}`);
     let checkResult;
     let locateResult;
     let draftPlan = input.panelState.draftPlan;
-    let draftPreview;
+    let draftPreview = input.panelState.draftPreview;
     let draftValidation;
     let draftRisk;
     let mcpResources;
@@ -11045,7 +11661,7 @@ ${match[2] || ""}`);
     let libraryInsights;
     const resolvedTaskType = input.taskType ?? "natural_chat";
     const hasExistingDraftPreview = Boolean(input.panelState.draftPreview || input.panelState.draftPlan);
-    const draftFollowUpIntent = resolvedTaskType === "natural_chat" && hasExistingDraftPreview && input.panelState.agentRunState === "awaiting_confirmation" && (looksLikeDraftFollowUpRevisionQuery(input.userQuery) ? "revise_existing_draft" : looksLikeDraftRiskAnalysisQuery(input.userQuery) ? "analyze_existing_draft_risk" : looksLikeDraftFollowUpSummaryQuery(input.userQuery) ? "summarize_existing_draft" : void 0);
+    const draftFollowUpIntent = resolvedTaskType === "natural_chat" && hasExistingDraftPreview && input.panelState.agentRunState === "awaiting_confirmation" && (looksLikeDraftFollowUpRevisionQuery(input.userQuery) ? "revise_existing_draft" : looksLikeDraftRiskAnalysisQuery(input.userQuery) ? "analyze_existing_draft_risk" : "summarize_existing_draft");
     const task = {
       type: resolvedTaskType,
       userQuery: input.userQuery,
@@ -11081,7 +11697,10 @@ ${match[2] || ""}`);
       (tool) => draftFollowUpIntent === "summarize_existing_draft" ? !["draft_generate_plan", "draft_preview_plan", "rules_validate_draft", "editor_preview_apply_plan"].includes(tool.name) && decisionToolNames.includes(tool.name) : decisionToolNames.includes(tool.name)
     );
     const system = buildSystemPrompt({
-      task,
+      task: {
+        ...task,
+        preferredOutputLanguage: input.panelState?.customLlmConfig?.preferredOutputLanguage || task.preferredOutputLanguage
+      },
       tools: toolList,
       skills: [
         { name: "analysis", description: "\u5206\u6790/\u68C0\u67E5\u539F\u7406\u56FE\u95EE\u9898\uFF08\u5EFA\u8BAE\u7528 rules_run_schematic_checks + schematic_review\uFF09" },
@@ -11107,7 +11726,9 @@ ${match[2] || ""}`);
     const deps = {
       task,
       allowedTools: toolList.map((t) => t.name),
-      invokeTool: (toolName, toolInput) => input.tools.invoke(toolName, toolInput),
+      signal: input.signal,
+      isCancelled: () => Boolean(input.signal?.aborted),
+      invokeTool: (toolName, toolInput) => input.tools.invoke(toolName, toolInput, { signal: input.signal }),
       listToolNames: () => input.tools.list().map((t) => t.name),
       onProgress: (payload) => {
         const route2 = inferRouteFromResult({
@@ -11340,13 +11961,15 @@ ${match[2] || ""}`);
         selectionCount: liveContext.selection.objectIds.length
       } : void 0
     };
-    const route = loopResult.finalRoute ?? inferRouteFromResult({
+    const inferredFinalResult = {
       ...base,
-      analysisMarkdown: checkResult ? finalText : void 0,
-      naturalReply: checkResult ? void 0 : finalText
-    });
+      analysisMarkdown: loopResult.finalRoute === "analysis" ? finalText : loopResult.finalRoute ? void 0 : checkResult ? finalText : void 0,
+      naturalReply: loopResult.finalRoute === "chat" ? finalText : loopResult.finalRoute ? void 0 : checkResult ? void 0 : finalText
+    };
+    const route = loopResult.finalRoute ?? inferRouteFromResult(inferredFinalResult);
     const result = {
       ...base,
+      draftNarrative: route === "draft" ? finalText : void 0,
       analysisMarkdown: route === "analysis" ? finalText : void 0,
       naturalReply: route === "chat" ? finalText : void 0
     };
@@ -11408,9 +12031,21 @@ ${match[2] || ""}`);
         }
       ];
     };
+    const looksLikeCompleteMarkdownDocument = (value) => {
+      const text = String(value || "").trim();
+      if (!text) return false;
+      const hasHeading = /^(#{1,3})\s+\S/m.test(text);
+      const hasStructuredSections = /^##\s+\S/m.test(text) || /^###\s+\S/m.test(text);
+      const hasList = /^(?:-|\*|\d+\.)\s+\S/m.test(text);
+      return hasHeading && (hasStructuredSections || hasList);
+    };
     const buildDraftReportMarkdown = (input) => {
       const { draftPreview, draftRisk, nextSuggestions } = input;
       const selectedDevices = draftPreview.selectedDeviceDetails ?? [];
+      const readableComponentRefs = buildReadableComponentRefs(
+        draftPreview.componentRefs,
+        draftPreview.selectedDeviceDetails
+      );
       const lines = [
         "## \u8349\u6848\u8303\u56F4",
         `- \u6807\u9898\uFF1A${draftPreview.title}`,
@@ -11419,10 +12054,10 @@ ${match[2] || ""}`);
         `- \u7F51\u7EDC\u6570\u91CF\uFF1A${draftPreview.netCount}`,
         "",
         "## \u5173\u952E\u5668\u4EF6",
-        ...selectedDevices.length > 0 ? selectedDevices.map((item) => `- ${item}`) : draftPreview.componentRefs.length > 0 ? draftPreview.componentRefs.map((item) => `- ${item}`) : ["- \u672A\u8FD4\u56DE\u5173\u952E\u5668\u4EF6\u8BE6\u60C5"],
+        ...selectedDevices.length > 0 ? readableComponentRefs.map((item) => `- ${item}`) : readableComponentRefs.length > 0 ? readableComponentRefs.map((item) => `- ${item}`) : ["- \u672A\u8FD4\u56DE\u5173\u952E\u5668\u4EF6\u8BE6\u60C5"],
         "",
         "## \u4E3B\u8981\u7F51\u7EDC",
-        ...draftPreview.netNames.length > 0 ? draftPreview.netNames.map((item) => `- ${item}`) : ["- \u672A\u8FD4\u56DE\u7F51\u7EDC\u5217\u8868"]
+        ...draftPreview.netNames.length > 0 ? buildReadableNetNames(draftPreview.netNames).map((item) => `- ${item}`) : ["- \u672A\u8FD4\u56DE\u7F51\u7EDC\u5217\u8868"]
       ];
       if (draftRisk) {
         lines.push("", "## \u98CE\u9669\u7ED3\u8BBA");
@@ -11454,15 +12089,83 @@ ${match[2] || ""}`);
       const cleaned = text.slice(0, end).trim();
       return cleaned || text;
     };
-    const summarizeDraftList = (items, overflowLabel) => {
+    const summarizeDraftList = (items, overflowLabel, limit = 3) => {
       if (!Array.isArray(items) || items.length === 0) {
         return [];
       }
-      const limit = 3;
       if (items.length <= limit) {
         return items;
       }
       return [...items.slice(0, limit), `\u53E6\u6709 ${items.length - limit} ${overflowLabel}\u672A\u5C55\u5F00`];
+    };
+    const draftRoleLabels = {
+      power_connector: { label: "\u7535\u6E90\u8F93\u5165\u63A5\u53E3", purpose: "\u7528\u4E8E\u63A5\u5165\u5916\u90E8\u7535\u6E90\uFF0C\u8FDE\u63A5\u5230\u5145\u7535\u4E0E\u4F9B\u7535\u94FE\u8DEF" },
+      usb_type_c: { label: "USB-C \u63A5\u53E3", purpose: "\u7528\u4E8E\u63A5\u5165 USB \u7535\u6E90\u6216\u6570\u636E\u8FDE\u63A5" },
+      mcu_module: { label: "\u4E3B\u63A7\u6A21\u5757", purpose: "\u4F5C\u4E3A\u6574\u673A\u63A7\u5236\u4E0E\u901A\u4FE1\u6838\u5FC3" },
+      charger: { label: "\u9502\u7535\u6C60\u5145\u7535\u82AF\u7247", purpose: "\u7528\u4E8E\u7ED9\u9502\u7535\u6C60\u5145\u7535\u5E76\u7BA1\u7406\u5145\u7535\u72B6\u6001" },
+      ldo_regulator: { label: "\u7A33\u538B\u82AF\u7247", purpose: "\u7528\u4E8E\u628A\u8F93\u5165\u7535\u538B\u7A33\u538B\u5230\u7CFB\u7EDF\u6240\u9700\u7535\u6E90\u8F68" },
+      audio_codec: { label: "\u97F3\u9891\u7F16\u89E3\u7801\u5668", purpose: "\u7528\u4E8E\u5904\u7406\u9EA6\u514B\u98CE\u8F93\u5165\u548C\u626C\u58F0\u5668\u8F93\u51FA\u97F3\u9891" },
+      led: { label: "\u6307\u793A\u706F", purpose: "\u7528\u4E8E\u663E\u793A\u7535\u6E90\u3001\u72B6\u6001\u6216\u5DE5\u4F5C\u6307\u793A" }
+    };
+    const humanizeDraftDetail = (value) => {
+      const text = String(value || "").trim();
+      if (!text) return text;
+      const unresolvedMatch = text.match(/^([^/]+)\s*\/\s*([a-z0-9_]+):\s*(.*)$/i);
+      if (unresolvedMatch) {
+        const ref = unresolvedMatch[1]?.trim();
+        const role = unresolvedMatch[2]?.trim().toLowerCase();
+        const rest = unresolvedMatch[3]?.trim();
+        const roleMeta = draftRoleLabels[role];
+        if (roleMeta) {
+          return `${ref} ${roleMeta.label}\uFF1A${rest}`;
+        }
+        return text;
+      }
+      const selectedMatch = text.match(/^([a-z0-9_]+):\s*(.+)$/i);
+      if (selectedMatch) {
+        const role = selectedMatch[1]?.trim().toLowerCase();
+        const rest = selectedMatch[2]?.trim();
+        const roleMeta = draftRoleLabels[role];
+        if (roleMeta) {
+          return roleMeta.purpose ? `${roleMeta.label}\uFF1A${rest}\u3002${roleMeta.purpose}\u3002` : `${roleMeta.label}\uFF1A${rest}`;
+        }
+      }
+      return text;
+    };
+    const buildReadableComponentRefs = (componentRefs, selectedDeviceDetails) => {
+      if (!Array.isArray(componentRefs) || componentRefs.length === 0) {
+        return [];
+      }
+      const details = Array.isArray(selectedDeviceDetails) ? selectedDeviceDetails : [];
+      if (details.length === 0) {
+        return componentRefs;
+      }
+      const roleLabels = details.map((item) => {
+        const match = String(item || "").trim().match(/^([a-z0-9_]+):/i);
+        if (!match) return void 0;
+        return draftRoleLabels[match[1].toLowerCase()]?.label;
+      });
+      return componentRefs.map((ref, index) => {
+        const label = roleLabels[index];
+        return label ? `${ref} ${label}` : ref;
+      });
+    };
+    const humanizeNetName = (value) => {
+      const net = String(value || "").trim();
+      if (!net) return net;
+      const upper = net.toUpperCase();
+      if (upper === "5V" || upper === "VCC_5V") return "5V \u5916\u90E8\u8F93\u5165\u7535\u6E90";
+      if (upper === "VBAT" || upper === "VCC_BAT" || upper === "BAT") return "VBAT \u7535\u6C60\u7535\u6E90";
+      if (upper === "3V3" || upper === "VDD3V3") return "3V3 \u4E3B\u7CFB\u7EDF 3.3V \u7535\u6E90";
+      if (upper === "GND" || upper === "PGND" || upper === "AGND") return "GND \u5730\u7EBF";
+      if (upper === "I2C_SDA") return "I2C_SDA I2C \u6570\u636E\u7EBF";
+      if (upper === "I2C_SCL") return "I2C_SCL I2C \u65F6\u949F\u7EBF";
+      if (upper === "TXD" || upper === "UART_TX") return "TXD \u4E32\u53E3\u53D1\u9001";
+      if (upper === "RXD" || upper === "UART_RX") return "RXD \u4E32\u53E3\u63A5\u6536";
+      return net;
+    };
+    const buildReadableNetNames = (netNames) => {
+      return (Array.isArray(netNames) ? netNames : []).map(humanizeNetName);
     };
     const buildNaturalChatFallback = (result) => {
       const failedToolNotes = (result.toolTraces ?? []).filter((trace) => trace.status === "blocked").map((trace) => `${trace.toolName}: ${trace.note || "\u8C03\u7528\u5931\u8D25"}`);
@@ -11498,6 +12201,7 @@ ${match[2] || ""}`);
             context: input.context,
             tools: toolRegistry,
             allowedTools,
+            signal: input.signal,
             onStreamEvent: input.onStreamEvent
           });
           return result2;
@@ -11514,6 +12218,7 @@ ${match[2] || ""}`);
             context: input.context,
             tools: toolRegistry,
             allowedTools,
+            signal: input.signal,
             onStreamEvent: input.onStreamEvent
           });
           return result2;
@@ -11529,6 +12234,7 @@ ${match[2] || ""}`);
           context: input.context,
           tools: toolRegistry,
           allowedTools,
+          signal: input.signal,
           onStreamEvent: input.onStreamEvent
         });
         return result;
@@ -11549,6 +12255,7 @@ ${match[2] || ""}`);
           adapter,
           tools,
           allowedTools,
+          signal: input.signal,
           onStreamEvent: input.onStreamEvent
         });
         const disposition = resolveTurnDisposition(taskType, result);
@@ -11729,11 +12436,18 @@ MCP\u6458\u8981\uFF1A${input.mcpResourceReads.map((item) => `${item.title}(${ite
 ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : "";
         const hasUnresolvedDevices = Boolean(preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0);
         const suggestions = buildDraftFollowUpSuggestions(input.structuredSuggestions);
+        const narrativeText = String(input.draftNarrative || "").trim();
+        const preferNarrativeMarkdown = looksLikeCompleteMarkdownDocument(narrativeText);
         const reportMarkdown = buildDraftReportMarkdown({
           draftPreview: preview,
           draftRisk: input.draftRisk,
           nextSuggestions: input.nextSuggestions
         });
+        const readableComponentRefs = buildReadableComponentRefs(
+          preview.componentRefs,
+          preview.selectedDeviceDetails
+        );
+        const readableNetNames = buildReadableNetNames(preview.netNames);
         const actions = input.draftRisk?.level === "blocked" ? [
           {
             label: "\u91CD\u65B0\u5206\u6790",
@@ -11754,20 +12468,20 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
             action: "rollback"
           }
         ];
-        const structuredContent = buildDraftStructuredContent(input);
+        const structuredContent = preferNarrativeMarkdown ? void 0 : buildDraftStructuredContent(input);
         return [
           {
             role: "assistant",
             title: "\u8349\u6848\u8349\u56FE",
             tone: input.draftRisk?.level === "blocked" ? "warning" : "success",
-            content: `\u6211\u5DF2\u7ECF\u751F\u6210\u4E00\u7248\u8349\u6848\u3002
+            content: preferNarrativeMarkdown ? narrativeText : `${narrativeText || "\u6211\u5DF2\u7ECF\u751F\u6210\u4E00\u7248\u8349\u6848\u3002"}
 
 \u6807\u9898\uFF1A${preview.title}
 \u8BF4\u660E\uFF1A${preview.rationale}
-\u5668\u4EF6\uFF1A${preview.componentRefs.join(
+\u5668\u4EF6\uFF1A${readableComponentRefs.join(
               "\u3001"
             )}
-\u7F51\u7EDC\uFF1A${preview.netNames.join("\u3001")}${mcpHint}${mcpReadHint}${riskHint}${suggestionHint}
+\u7F51\u7EDC\uFF1A${readableNetNames.join("\u3001")}${mcpHint}${mcpReadHint}${riskHint}${suggestionHint}
 
 \u4E0B\u4E00\u6B65\u5E94\u8FDB\u5165\u4EBA\u5DE5\u786E\u8BA4\uFF0C\u518D\u51B3\u5B9A\u662F\u5426 apply-plan\u3002`,
             structuredContent,
@@ -11783,7 +12497,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
             stepTranscript: buildStepTranscript(displayReactEvents),
             stepStates: input.stepStates,
             workingMemory: input.workingMemory,
-            reportMarkdown,
+            reportMarkdown: preferNarrativeMarkdown ? void 0 : reportMarkdown,
             suggestions,
             actions
           }
@@ -12033,110 +12747,155 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
       if (!preview) {
         return [{ kind: "paragraph", text: "\u8349\u6848\u751F\u6210\u5B8C\u6210\uFF0C\u4F46\u672A\u8FD4\u56DE\u53EF\u5C55\u793A\u5185\u5BB9\u3002" }];
       }
-      const blocks = [
-        { kind: "paragraph", text: "\u6211\u5DF2\u7ECF\u751F\u6210\u4E00\u7248\u8349\u6848\u3002" },
+      const readableComponents = buildReadableComponentRefs(preview.componentRefs, preview.selectedDeviceDetails);
+      const readableNets = buildReadableNetNames(preview.netNames);
+      const selectedItems = (preview.selectedDeviceDetails ?? []).map(humanizeDraftDetail);
+      const unresolvedItems = (preview.unresolvedDeviceDetails ?? []).map(humanizeDraftDetail);
+      const roleHints = Array.from(
+        new Set(
+          [...preview.selectedDeviceDetails ?? [], ...preview.unresolvedDeviceDetails ?? []].map(extractDraftRoleLabel).filter(Boolean)
+        )
+      );
+      const leadText = String(input.draftNarrative || "").trim() || (input.draftRisk || unresolvedItems.length > 0 ? "\u5DF2\u751F\u6210\u4E00\u7248\u53EF\u7EE7\u7EED\u8BA8\u8BBA\u548C\u4FEE\u6B63\u7684\u8349\u6848\uFF0C\u4F46\u5F53\u524D\u8FD8\u6709\u5F85\u786E\u8BA4\u9879\uFF0C\u4E0D\u5EFA\u8BAE\u76F4\u63A5\u5E94\u7528\u3002" : "\u5DF2\u751F\u6210\u4E00\u7248\u53EF\u8FDB\u5165\u4EBA\u5DE5\u786E\u8BA4\u7684\u8349\u6848\u3002");
+      const statusEntries = [
         {
-          kind: "kv",
-          title: "\u8349\u6848\u6458\u8981",
-          entries: [
-            { key: "\u6807\u9898", value: preview.title },
-            { key: "\u8BF4\u660E", value: summarizeDraftRationale(preview.rationale) },
-            { key: "\u5668\u4EF6\u6570\u91CF", value: String(preview.componentCount) },
-            { key: "\u7F51\u7EDC\u6570\u91CF", value: String(preview.netCount) }
-          ]
+          key: "\u5DF2\u786E\u5B9A",
+          value: selectedItems.length > 0 ? `${selectedItems.length} \u4E2A\u5173\u952E\u5668\u4EF6/\u6A21\u5757\u5DF2\u660E\u786E` : `${preview.componentCount} \u4E2A\u5668\u4EF6\u5DF2\u7EB3\u5165\u672C\u7248\u65B9\u6848`
         },
         {
-          kind: "list",
-          title: "\u6D89\u53CA\u5668\u4EF6",
-          items: preview.componentRefs.length > 0 ? summarizeDraftList(preview.componentRefs, "\u4E2A\u5668\u4EF6") : ["\u672A\u8FD4\u56DE\u5668\u4EF6\u5217\u8868"]
+          key: "\u5F85\u786E\u8BA4",
+          value: unresolvedItems.length > 0 ? `${unresolvedItems.length} \u9879\u4ECD\u9700\u4EBA\u5DE5\u786E\u8BA4` : "\u5F53\u524D\u672A\u53D1\u73B0\u5F85\u786E\u8BA4\u5668\u4EF6"
         },
         {
-          kind: "list",
-          title: "\u6D89\u53CA\u7F51\u7EDC",
-          items: preview.netNames.length > 0 ? summarizeDraftList(preview.netNames, "\u6761\u7F51\u7EDC") : ["\u672A\u8FD4\u56DE\u7F51\u7EDC\u5217\u8868"]
+          key: "\u98CE\u9669",
+          value: input.draftRisk?.message || (unresolvedItems.length > 0 ? "\u5B58\u5728\u672A\u5B9A\u5668\u4EF6\uFF0C\u6682\u4E0D\u5EFA\u8BAE\u76F4\u63A5\u5E94\u7528" : "\u672A\u8FD4\u56DE\u660E\u786E\u963B\u65AD\u98CE\u9669")
+        },
+        {
+          key: "\u4E0B\u4E00\u52A8\u4F5C",
+          value: unresolvedItems.length > 0 || input.draftRisk?.level === "blocked" ? "\u5148\u786E\u8BA4\u5668\u4EF6\u4E0E\u8FDE\u63A5\uFF0C\u518D\u51B3\u5B9A\u662F\u5426\u5E94\u7528" : "\u4EBA\u5DE5\u590D\u6838\u540E\u53EF\u7EE7\u7EED\u5E94\u7528\u6216\u5C40\u90E8\u4FEE\u6539"
         }
       ];
-      if (input.mcpResourceReads && input.mcpResourceReads.length > 0) {
-        blocks.push({
-          kind: "list",
-          title: "\u53C2\u8003\u77E5\u8BC6",
-          items: input.mcpResourceReads.map((item) => `${item.title}\uFF1A${item.summary}`)
-        });
+      const capabilityItems = buildDraftCapabilityItems({
+        roleHints,
+        readableNets,
+        rationale: summarizeDraftRationale(preview.rationale)
+      });
+      const moduleItems = selectedItems.length > 0 ? summarizeDraftList(selectedItems, "\u4E2A\u6A21\u5757") : readableComponents.length > 0 ? summarizeDraftList(readableComponents, "\u4E2A\u5668\u4EF6") : ["\u672A\u8FD4\u56DE\u5173\u952E\u6A21\u5757\u4FE1\u606F"];
+      const nextItems = input.nextSuggestions && input.nextSuggestions.length > 0 ? input.nextSuggestions : [
+        "\u5148\u4EBA\u5DE5\u786E\u8BA4\u5173\u952E\u5668\u4EF6\u662F\u5426\u7B26\u5408\u6210\u672C\u3001\u5C01\u88C5\u548C\u91C7\u8D2D\u9884\u671F",
+        "\u786E\u8BA4\u4E3B\u7535\u6E90\u94FE\u8DEF\u4E0E\u4E3B\u8981\u7F51\u7EDC\u547D\u540D\u540E\uFF0C\u518D\u51B3\u5B9A\u662F\u5426 apply-plan"
+      ];
+      const supportingItems = [];
+      if (preview.guidanceSummary?.rationale) {
+        supportingItems.push(`\u751F\u6210\u4F9D\u636E\uFF1A${preview.guidanceSummary.rationale}`);
       }
-      if (preview.selectedDeviceDetails && preview.selectedDeviceDetails.length > 0) {
-        blocks.push({
-          kind: "list",
-          title: "\u5DF2\u9009\u5668\u4EF6\u8BE6\u60C5",
-          items: preview.selectedDeviceDetails
-        });
+      if (preview.guidanceSummary?.templateId) {
+        supportingItems.push(`\u53C2\u8003\u6A21\u677F\uFF1A${preview.guidanceSummary.templateId}`);
       }
-      if (preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0) {
-        blocks.push({
-          kind: "list",
-          title: "\u5F85\u5904\u7406\u5668\u4EF6",
-          items: preview.unresolvedDeviceDetails
-        });
+      if (preview.guidanceSummary?.evidence?.length) {
+        supportingItems.push(...preview.guidanceSummary.evidence.slice(0, 2));
       }
-      if (preview.guidanceSummary) {
-        blocks.push({
+      if (input.mcpResourceReads?.length) {
+        supportingItems.push(...input.mcpResourceReads.slice(0, 2).map((item) => `${item.title}\uFF1A${item.summary}`));
+      }
+      const blocks = [
+        { kind: "paragraph", text: leadText },
+        {
+          kind: "section",
+          title: "\u8FD9\u7248\u65B9\u6848",
+          text: `${preview.title}
+${summarizeDraftRationale(preview.rationale)}`
+        },
+        {
+          kind: "list",
+          title: "\u6838\u5FC3\u80FD\u529B",
+          items: capabilityItems
+        },
+        {
+          kind: "list",
+          title: "\u5173\u952E\u6A21\u5757\u4E0E\u5668\u4EF6",
+          items: moduleItems
+        },
+        {
+          kind: "list",
+          title: "\u5173\u952E\u7F51\u7EDC",
+          items: readableNets.length > 0 ? summarizeDraftList(readableNets, "\u6761\u7F51\u7EDC", 4) : ["\u672A\u8FD4\u56DE\u5173\u952E\u7F51\u7EDC"]
+        },
+        {
           kind: "kv",
-          title: "\u751F\u6210\u4F9D\u636E",
-          entries: [
-            { key: "\u6A21\u677F", value: preview.guidanceSummary.templateId },
-            { key: "\u8BF4\u660E", value: preview.guidanceSummary.rationale }
-          ]
-        });
-        if (preview.guidanceSummary.preferredSearches && preview.guidanceSummary.preferredSearches.length > 0) {
-          blocks.push({
-            kind: "list",
-            title: "\u5668\u4EF6\u68C0\u7D22\u504F\u597D",
-            items: preview.guidanceSummary.preferredSearches
-          });
+          title: "\u5F53\u524D\u72B6\u6001",
+          entries: statusEntries
         }
-        if (preview.guidanceSummary.requiredNets && preview.guidanceSummary.requiredNets.length > 0) {
-          blocks.push({
-            kind: "list",
-            title: "\u5FC5\u9700\u7F51\u7EDC\u7EA6\u675F",
-            items: preview.guidanceSummary.requiredNets
-          });
-        }
-        if (preview.guidanceSummary.requiredConnections && preview.guidanceSummary.requiredConnections.length > 0) {
-          blocks.push({
-            kind: "list",
-            title: "\u5FC5\u9700\u8FDE\u63A5\u7EA6\u675F",
-            items: preview.guidanceSummary.requiredConnections
-          });
-        }
-        if (preview.guidanceSummary.evidence && preview.guidanceSummary.evidence.length > 0) {
-          blocks.push({
-            kind: "list",
-            title: "\u8BBE\u8BA1\u4F9D\u636E\uFF08\u77E5\u8BC6\u5E93\uFF09",
-            items: preview.guidanceSummary.evidence
-          });
-        }
-      }
-      if (input.draftRisk) {
-        blocks.push({
-          kind: "kv",
-          title: "\u9A8C\u8BC1\u7ED3\u8BBA",
-          entries: [
-            { key: "\u98CE\u9669\u7B49\u7EA7", value: input.draftRisk.level },
-            { key: "\u7ED3\u8BBA", value: input.draftRisk.message }
-          ]
-        });
-      }
-      if (input.nextSuggestions && input.nextSuggestions.length > 0) {
+      ];
+      if (unresolvedItems.length > 0) {
         blocks.push({
           kind: "list",
-          title: "\u4E0B\u4E00\u6B65\u5EFA\u8BAE",
-          items: input.nextSuggestions
+          title: "\u5F85\u786E\u8BA4\u9879",
+          items: unresolvedItems
         });
       }
       blocks.push({
-        kind: "paragraph",
-        text: "\u4E0B\u4E00\u6B65\u5E94\u8FDB\u5165\u4EBA\u5DE5\u786E\u8BA4\uFF0C\u518D\u51B3\u5B9A\u662F\u5426 apply-plan\u3002"
+        kind: "list",
+        title: "\u4E0B\u4E00\u6B65\u5EFA\u8BAE",
+        items: nextItems
       });
+      if (supportingItems.length > 0) {
+        blocks.push({
+          kind: "list",
+          title: "\u8865\u5145\u4F9D\u636E",
+          items: supportingItems
+        });
+      }
       return blocks;
+    }
+    function extractDraftRoleLabel(detail) {
+      const text = String(detail || "").trim();
+      if (!text) return void 0;
+      const selectedMatch = text.match(/^([a-z0-9_]+):/i);
+      if (selectedMatch) {
+        return draftRoleLabels[selectedMatch[1].toLowerCase()]?.label;
+      }
+      const unresolvedMatch = text.match(/\/\s*([a-z0-9_]+)\s*:/i);
+      if (unresolvedMatch) {
+        return draftRoleLabels[unresolvedMatch[1].toLowerCase()]?.label;
+      }
+      return void 0;
+    }
+    function buildDraftCapabilityItems(input) {
+      const items = [];
+      const push = (value) => {
+        const text = String(value || "").trim();
+        if (!text || items.includes(text)) return;
+        items.push(text);
+      };
+      input.roleHints.forEach((label) => {
+        if (label === "\u7535\u6E90\u8F93\u5165\u63A5\u53E3" || label === "USB-C \u63A5\u53E3") {
+          push("\u652F\u6301\u5916\u90E8\u4F9B\u7535\u63A5\u5165\uFF0C\u4F5C\u4E3A\u6574\u673A\u7535\u6E90\u5165\u53E3");
+        } else if (label === "\u9502\u7535\u6C60\u5145\u7535\u82AF\u7247") {
+          push("\u5305\u542B\u9502\u7535\u6C60\u5145\u7535\u4E0E\u7535\u6E90\u5207\u6362\u94FE\u8DEF");
+        } else if (label === "\u7A33\u538B\u82AF\u7247") {
+          push("\u5305\u542B\u7CFB\u7EDF\u7A33\u538B\uFF0C\u7ED9\u4E3B\u7CFB\u7EDF\u63D0\u4F9B\u7A33\u5B9A\u5DE5\u4F5C\u7535\u6E90");
+        } else if (label === "\u4E3B\u63A7\u6A21\u5757") {
+          push("\u4EE5\u4E3B\u63A7\u6A21\u5757\u4F5C\u4E3A\u6574\u673A\u63A7\u5236\u4E0E\u8FDE\u63A5\u6838\u5FC3");
+        } else if (label === "\u97F3\u9891\u7F16\u89E3\u7801\u5668") {
+          push("\u9884\u7559\u8BED\u97F3\u8F93\u5165\u8F93\u51FA\u6240\u9700\u7684\u97F3\u9891\u5904\u7406\u94FE\u8DEF");
+        } else if (label === "\u6307\u793A\u706F") {
+          push("\u5305\u542B\u57FA\u7840\u72B6\u6001\u6307\u793A\u80FD\u529B");
+        }
+      });
+      if (input.readableNets.some((item) => item.includes("VBAT"))) {
+        push("\u5305\u542B\u7535\u6C60\u7535\u6E90\u57DF\u4E0E\u4E3B\u7CFB\u7EDF\u7535\u6E90\u57DF\u7684\u57FA\u7840\u5212\u5206");
+      }
+      if (input.readableNets.some((item) => item.includes("3V3"))) {
+        push("\u4E3B\u7CFB\u7EDF\u4EE5 3.3V \u7535\u6E90\u8F68\u4F5C\u4E3A\u6838\u5FC3\u4F9B\u7535");
+      }
+      if (items.length === 0 && input.rationale) {
+        input.rationale.split(/[。；]/).map((item) => item.trim()).filter(Boolean).slice(0, 3).forEach(push);
+      }
+      if (items.length === 0) {
+        push("\u5F53\u524D\u8FD4\u56DE\u7684\u662F\u4E00\u7248\u6700\u5C0F\u53EF\u7528\u8349\u6848\uFF0C\u9002\u5408\u7EE7\u7EED\u786E\u8BA4\u5668\u4EF6\u4E0E\u8FDE\u63A5");
+      }
+      return items.slice(0, 4);
     }
     function pushStructuredList(blocks, title, items) {
       if (!items || items.length === 0) {
@@ -12426,6 +13185,19 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
         await this.assertCapability("applyPlan");
         throw new Error("host apply_plan is not available");
       }
+      let context = await this.bridge.getCurrentContext();
+      if (!isEmptySchematicContext(context)) {
+        if (this.bridge.createEmptySchematicPage) {
+          await this.bridge.createEmptySchematicPage({ title: plan.title });
+          context = await this.bridge.getCurrentContext();
+        }
+        if (!isEmptySchematicContext(context)) {
+          const pageName = context.project.pageName?.trim();
+          throw new Error(
+            `draft apply requires an empty schematic page${pageName ? `: current page "${pageName}" already has content` : ""}`
+          );
+        }
+      }
       return this.bridge.applyPlan(plan);
     }
     async rollbackApplyPlan(transactionId) {
@@ -12483,6 +13255,13 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
       return { rolledBack: false, transactionId };
     }
   };
+  function isEmptySchematicContext(context) {
+    const meaningfulComponents = context.components.filter((component) => {
+      const componentType = String(component.componentType || "").trim().toLowerCase();
+      return componentType !== "sheet";
+    });
+    return meaningfulComponents.length === 0 && context.pins.length === 0 && context.nets.length === 0;
+  }
 
   // src/editor/adapters/createEditorAdapter.ts
   function createEditorAdapter(channel) {
@@ -12537,7 +13316,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: options.method ?? "GET",
         headers: options.headers,
-        body: options.body
+        body: options.body,
+        signal: options.signal
       });
       const responseText = await response.text();
       const responseBody = responseText ? safeJsonParse2(responseText) : void 0;
@@ -12558,7 +13338,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: options.method ?? "GET",
         headers: options.headers,
-        body: options.body
+        body: options.body,
+        signal: options.signal
       });
       if (!response.ok) {
         const responseText = await response.text();
@@ -12913,6 +13694,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
   };
 
   // src/services/llm/customLlmConfigStore.ts
+  var DEFAULT_PREFERRED_OUTPUT_LANGUAGE = "zh-CN";
   var CustomLlmConfigStore = class {
     constructor(storage, storageKey = "lceda_ai.llm.custom_config") {
       this.storage = storage;
@@ -12931,7 +13713,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
         provider: parsed.provider,
         baseUrl: parsed.baseUrl,
         apiKey: parsed.apiKey,
-        model: parsed.model
+        model: parsed.model,
+        preferredOutputLanguage: typeof parsed.preferredOutputLanguage === "string" && parsed.preferredOutputLanguage.trim() ? parsed.preferredOutputLanguage.trim() : DEFAULT_PREFERRED_OUTPUT_LANGUAGE
       };
     }
     async set(config2) {
@@ -12985,7 +13768,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
             messages: input.messages,
             tools: input.tools,
             tool_choice: input.tool_choice
-          })
+          }),
+          signal: input.signal
         }
       );
       if (response.code !== 0) {
@@ -13010,6 +13794,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
           tools: input.tools,
           tool_choice: input.tool_choice
         }),
+        signal: input.signal,
         onEvent: (event) => {
           onEvent(event.data);
         }
@@ -13050,7 +13835,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
     constructor(httpClient) {
       this.httpClient = httpClient;
     }
-    async search(query, topK = 3) {
+    async search(query, topK = 3, signal) {
       const response = await this.httpClient.request(
         "/api/v1/rag/search",
         {
@@ -13061,7 +13846,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
           body: JSON.stringify({
             query,
             top_k: topK
-          })
+          }),
+          signal
         }
       );
       if (response.code !== 0) {
@@ -13069,7 +13855,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
       }
       return response.data;
     }
-    async buildCitations(query, topK = 3) {
+    async buildCitations(query, topK = 3, signal) {
       const response = await this.httpClient.request(
         "/api/v1/rag/citations:build",
         {
@@ -13080,7 +13866,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
           body: JSON.stringify({
             query,
             top_k: topK
-          })
+          }),
+          signal
         }
       );
       if (response.code !== 0) {
@@ -13285,6 +14072,12 @@ ${content}`;
     }
     return Boolean(normalizedLastUser && normalizedInput === normalizedLastUser);
   }
+  function shouldStopRunningTurnFromComposer(input) {
+    if (!input.activeTurnId) {
+      return false;
+    }
+    return input.agentRunState === "planning" || input.agentRunState === "running_tools" || input.agentRunState === "waiting_llm";
+  }
   function shouldAutoApplyDraftFromChatInput(input) {
     if (input.agentRunState !== "awaiting_confirmation") {
       return false;
@@ -13294,6 +14087,15 @@ ${content}`;
     }
     const normalized = input.input.trim().toLowerCase();
     return /^(确认|确定|应用|应用草案|好的应用|开始应用|ok|okay|yes)$/u.test(normalized);
+  }
+  function formatDraftApplyErrorMessage(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const emptyPageMatch = message.match(/draft apply requires an empty schematic page(?:: current page "([^"]+)" already has content)?/i);
+    if (!emptyPageMatch) {
+      return `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A${message}`;
+    }
+    const pageName = emptyPageMatch[1];
+    return pageName ? `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A\u5F53\u524D\u539F\u7406\u56FE\u9875\u201C${pageName}\u201D\u5DF2\u6709\u5185\u5BB9\u3002\u8BF7\u5148\u65B0\u5EFA\u7A7A\u767D\u539F\u7406\u56FE\u9875\uFF0C\u518D\u91CD\u65B0\u5E94\u7528\u8349\u6848\u3002` : "\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A\u5F53\u524D\u539F\u7406\u56FE\u9875\u5DF2\u6709\u5185\u5BB9\u3002\u8BF7\u5148\u65B0\u5EFA\u7A7A\u767D\u539F\u7406\u56FE\u9875\uFF0C\u518D\u91CD\u65B0\u5E94\u7528\u8349\u6848\u3002";
   }
   function hasUnresolvedDraftDevices(plan) {
     return Boolean(
@@ -13305,6 +14107,14 @@ ${content}`;
   }
   function buildDevicePickerApplyProgressText(current, total) {
     return `\u6B63\u5728\u786E\u8BA4\u5F85\u786E\u8BA4\u5668\u4EF6\uFF08${current}/${total}\uFF09...`;
+  }
+  function shouldUseDraftReplyLeadNarrative(input) {
+    const draftNarrative = String(input.draftNarrative || "").trim();
+    if (draftNarrative) {
+      return draftNarrative;
+    }
+    const naturalReply = String(input.naturalReply || "").trim();
+    return naturalReply || void 0;
   }
   function readSearchString(record, keys) {
     for (const key of keys) {
@@ -13894,7 +14704,7 @@ ${content}`;
         state.agentRunState = "failed";
         state.agentRunRoute = "draft";
         state.agentRunDetail = error instanceof Error ? error.message : String(error);
-        state.summary = `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
+        state.summary = formatDraftApplyErrorMessage(error);
         state.chatMessages = appendAssistantMessages(
           sanitizeChatMessages(state.chatMessages),
           pluginAgent.buildStatusMessages({
@@ -14073,6 +14883,7 @@ ${content}`;
         internals.lastApplyTransactionId = void 0;
         internals.pendingChatInput = void 0;
         internals.activeTurnId = void 0;
+        internals.activeTurnAbortController = void 0;
         cancelScheduledPanelStatePersist();
         await clearPanelState(storage);
         return openIdlePanelState();
@@ -14259,6 +15070,7 @@ ${content}`;
         turnIdCounter += 1;
         const turnId = turnIdCounter;
         internals.activeTurnId = turnId;
+        internals.activeTurnAbortController = new AbortController();
         let turnCommitTimer = null;
         let lastTurnCommitAt = 0;
         const scheduleTurnCommit = (force) => {
@@ -14351,6 +15163,7 @@ ${content}`;
             panelState: current,
             context,
             adapter,
+            signal: internals.activeTurnAbortController.signal,
             onStreamEvent: (event) => {
               if (internals.activeTurnId !== turnId) return;
               touchTurnActivity?.();
@@ -14407,6 +15220,7 @@ ${content}`;
           if (internals.activeTurnId === turnId) {
             internals.activeTurnId = void 0;
           }
+          internals.activeTurnAbortController = void 0;
           const finalState = await applyTurnResultToState({
             baseState: current,
             userMessages: nextMessages,
@@ -14434,6 +15248,23 @@ ${content}`;
         } catch (error) {
           if (internals.activeTurnId === turnId) {
             internals.activeTurnId = void 0;
+          }
+          internals.activeTurnAbortController = void 0;
+          if (isCancelledError(error)) {
+            internals.pendingChatInput = void 0;
+            current.agentRunState = "idle";
+            current.agentRunDetail = "\u5DF2\u505C\u6B62\u5F53\u524D\u4EFB\u52A1";
+            current.summary = "\u5DF2\u505C\u6B62\u5F53\u524D\u4EFB\u52A1\u3002";
+            current.chatMessages = replaceTrailingPendingAssistant(
+              nextMessages,
+              pluginAgent.buildStatusMessages({
+                title: "\u5DF2\u505C\u6B62",
+                content: "\u5DF2\u505C\u6B62\u5F53\u524D\u4EFB\u52A1\u3002",
+                tone: "warning"
+              })
+            );
+            current.nextActions = buildNextActions(current);
+            return commitState(internals, current, storage);
           }
           if (error instanceof HttpError && error.status === 401) {
             const unauthorizedState = internals.currentState ?? current;
@@ -14484,6 +15315,40 @@ ${content}`;
           );
           return commitState(internals, current, storage);
         }
+      },
+      stopCurrentTurn: async () => {
+        const state = internals.currentState ?? await openIdlePanelState();
+        if (!shouldStopRunningTurnFromComposer({
+          activeTurnId: internals.activeTurnId,
+          agentRunState: state.agentRunState
+        })) {
+          return state;
+        }
+        internals.activeTurnId = void 0;
+        internals.pendingChatInput = void 0;
+        internals.activeTurnAbortController?.abort();
+        internals.activeTurnAbortController = void 0;
+        state.agentRunState = "idle";
+        state.agentRunDetail = "\u5DF2\u505C\u6B62\u5F53\u524D\u4EFB\u52A1";
+        state.summary = "\u5DF2\u505C\u6B62\u5F53\u524D\u4EFB\u52A1\u3002";
+        const messages = sanitizeChatMessages(state.chatMessages);
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage?.role === "assistant" && lastMessage.streaming) {
+          lastMessage.streaming = false;
+          lastMessage.title = "\u5DF2\u505C\u6B62";
+          lastMessage.content = "\u5DF2\u505C\u6B62\u5F53\u524D\u4EFB\u52A1\u3002";
+          lastMessage.tone = "warning";
+        } else {
+          messages.push({
+            role: "assistant",
+            title: "\u5DF2\u505C\u6B62",
+            content: "\u5DF2\u505C\u6B62\u5F53\u524D\u4EFB\u52A1\u3002",
+            tone: "warning"
+          });
+        }
+        state.chatMessages = messages;
+        state.nextActions = buildNextActions(state);
+        return commitState(internals, state, storage);
       },
       applyDraftPlan: async () => {
         return applyCurrentDraftPlan();
@@ -14627,7 +15492,8 @@ ${content}`;
             provider: input.provider.trim(),
             baseUrl: input.baseUrl.trim(),
             apiKey: input.apiKey.trim(),
-            model: input.model.trim()
+            model: input.model.trim(),
+            preferredOutputLanguage: (input.preferredOutputLanguage || DEFAULT_PREFERRED_OUTPUT_LANGUAGE).trim() || DEFAULT_PREFERRED_OUTPUT_LANGUAGE
           });
           await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore2);
           state.summary = "\u81EA\u5B9A\u4E49 LLM \u914D\u7F6E\u5DF2\u4FDD\u5B58\u3002";
@@ -14745,6 +15611,7 @@ ${content}`;
         state.summary = `\u8349\u6848\u5DF2\u751F\u6210\uFF1A${result.draftPreview.title}\uFF0C\u5171 ${result.draftPreview.componentCount} \u4E2A\u5668\u4EF6\uFF0C${result.draftPreview.netCount} \u6761\u7F51\u7EDC\u3002`;
         state.chatMessages = pluginAgent.buildDraftMessages({
           draftPreview: state.draftPreview,
+          draftNarrative: shouldUseDraftReplyLeadNarrative(result),
           mcpResources: result.mcpResources,
           mcpResourceReads: result.mcpResourceReads,
           toolTraces: result.toolTraces,
@@ -15187,7 +16054,8 @@ ${content}`;
           provider: llmConfig.provider,
           baseUrl: llmConfig.baseUrl,
           apiKeyMasked: maskApiKey(llmConfig.apiKey),
-          model: llmConfig.model
+          model: llmConfig.model,
+          preferredOutputLanguage: llmConfig.preferredOutputLanguage
         };
       }
     } catch {

@@ -1,10 +1,14 @@
+export interface ToolExecutionContext {
+  signal?: AbortSignal;
+}
+
 export interface AgentTool<Input = unknown, Output = unknown> {
   name: string;
   description: string;
   parameters?: unknown;
   riskLevel?: "low" | "medium" | "high";
   requiresConfirmation?: boolean;
-  execute(input: Input): Promise<Output>;
+  execute(input: Input, context?: ToolExecutionContext): Promise<Output>;
 }
 
 export class ToolRegistry {
@@ -22,12 +26,12 @@ export class ToolRegistry {
     return Array.from(this.tools.values());
   }
 
-  async invoke<TInput, TOutput>(name: string, input: TInput): Promise<TOutput> {
+  async invoke<TInput, TOutput>(name: string, input: TInput, context?: ToolExecutionContext): Promise<TOutput> {
     const tool = this.tools.get(name);
     if (!tool) {
       throw new Error(`tool not found: ${name}`);
     }
 
-    return tool.execute(input) as Promise<TOutput>;
+    return tool.execute(input, context) as Promise<TOutput>;
   }
 }

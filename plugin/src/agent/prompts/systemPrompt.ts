@@ -23,6 +23,7 @@ export function buildSystemPrompt(input: {
   const skillLines = (input.skills ?? []).map((s) => `- ${s.name}: ${s.description}`);
   const contextHint = String(input.contextHint || "").trim();
   const userQuery = String(input.task.userQuery || "").trim();
+  const preferredOutputLanguage = String(input.task.preferredOutputLanguage || "").trim() || "zh-CN";
   const isAnalysisTask =
     input.task.type === "schematic_analysis" ||
     (input.task.type !== "schematic_draft" &&
@@ -205,6 +206,8 @@ export function buildSystemPrompt(input: {
     "- 收到用户消息后直接开始执行；仅在关键信息完全缺失时才允许提一个最小问题。",
     "- 输出必须基于工具观测到的事实，禁止编造未观测到的原理图细节。",
     "- 遇到不确定必须优先调用工具补证据；无法获取则在最终输出中明确说明证据不足。",
+    `- 用户可见输出默认使用 ${preferredOutputLanguage}；正式答复、草案说明、分析报告、步骤说明和总结都应优先使用该语言。`,
+    `- 若模型会输出思考摘要或 reasoning，也应尽量使用 ${preferredOutputLanguage}；如无法完全控制，至少保证最终正式输出使用该语言。`,
     "",
     "## 执行与安全",
     "- 你只能调用“可用工具列表”中的工具名。",

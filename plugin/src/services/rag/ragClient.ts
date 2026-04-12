@@ -22,7 +22,7 @@ export interface RagCitationPackage {
 export class RagClient {
   constructor(private readonly httpClient: HttpClient) {}
 
-  async search(query: string, topK = 3): Promise<RagSearchResponse> {
+  async search(query: string, topK = 3, signal?: AbortSignal): Promise<RagSearchResponse> {
     const response = await this.httpClient.request<ApiResponse<RagSearchResponse>>(
       "/api/v1/rag/search",
       {
@@ -34,6 +34,7 @@ export class RagClient {
           query,
           top_k: topK,
         }),
+        signal,
       }
     );
 
@@ -44,7 +45,7 @@ export class RagClient {
     return response.data;
   }
 
-  async buildCitations(query: string, topK = 3): Promise<RagCitationPackage> {
+  async buildCitations(query: string, topK = 3, signal?: AbortSignal): Promise<RagCitationPackage> {
     const response = await this.httpClient.request<ApiResponse<RagCitationPackage>>(
       "/api/v1/rag/citations:build",
       {
@@ -56,6 +57,7 @@ export class RagClient {
           query,
           top_k: topK,
         }),
+        signal,
       }
     );
 

@@ -40,6 +40,7 @@ export interface PluginAgent {
     panelState?: MainPanelState;
     context?: SchematicContext;
     adapter?: EditorAdapter;
+    signal?: AbortSignal;
     onStreamEvent?: (event: {
       route: "chat" | "analysis" | "draft";
       stage: "llm" | "progress";
@@ -58,6 +59,7 @@ export interface PluginAgent {
     taskType?: AgentTaskType;
     context?: SchematicContext;
     adapter?: EditorAdapter;
+    signal?: AbortSignal;
     onStreamEvent?: (event: {
       route: "chat" | "analysis" | "draft";
       stage: "llm" | "progress";
@@ -93,6 +95,7 @@ export interface PluginAgent {
   }): NonNullable<MainPanelState["chatMessages"]>;
   buildDraftMessages(input: {
     draftPreview?: MainPanelState["draftPreview"];
+    draftNarrative?: AgentResult["draftNarrative"];
     mcpResources?: AgentResult["mcpResources"];
     mcpResourceReads?: AgentResult["mcpResourceReads"];
     toolTraces?: AgentResult["toolTraces"];
@@ -194,6 +197,15 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     ];
   };
 
+  const looksLikeCompleteMarkdownDocument = (value?: string): boolean => {
+    const text = String(value || "").trim();
+    if (!text) return false;
+    const hasHeading = /^(#{1,3})\s+\S/m.test(text);
+    const hasStructuredSections = /^##\s+\S/m.test(text) || /^###\s+\S/m.test(text);
+    const hasList = /^(?:-|\*|\d+\.)\s+\S/m.test(text);
+    return hasHeading && (hasStructuredSections || hasList);
+  };
+
   const buildDraftReportMarkdown = (input: {
     draftPreview: NonNullable<MainPanelState["draftPreview"]>;
     draftRisk?: AgentResult["draftRisk"];
@@ -201,6 +213,10 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
   }): string => {
     const { draftPreview, draftRisk, nextSuggestions } = input;
     const selectedDevices = draftPreview.selectedDeviceDetails ?? [];
+    const readableComponentRefs = buildReadableComponentRefs(
+      draftPreview.componentRefs,
+      draftPreview.selectedDeviceDetails
+    );
     const lines = [
       "## 草案范围",
       `- 标题：${draftPreview.title}`,
@@ -210,14 +226,14 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       "",
       "## 关键器件",
       ...(selectedDevices.length > 0
-        ? selectedDevices.map((item) => `- ${item}`)
-        : draftPreview.componentRefs.length > 0
-          ? draftPreview.componentRefs.map((item) => `- ${item}`)
+        ? readableComponentRefs.map((item) => `- ${item}`)
+        : readableComponentRefs.length > 0
+          ? readableComponentRefs.map((item) => `- ${item}`)
           : ["- 未返回关键器件详情"]),
       "",
       "## 主要网络",
       ...(draftPreview.netNames.length > 0
-        ? draftPreview.netNames.map((item) => `- ${item}`)
+        ? buildReadableNetNames(draftPreview.netNames).map((item) => `- ${item}`)
         : ["- 未返回网络列表"]),
     ];
 
@@ -255,15 +271,91 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     return cleaned || text;
   };
 
-  const summarizeDraftList = (items: string[], overflowLabel: string): string[] => {
+  const summarizeDraftList = (items: string[], overflowLabel: string, limit = 3): string[] => {
     if (!Array.isArray(items) || items.length === 0) {
       return [];
     }
-    const limit = 3;
     if (items.length <= limit) {
       return items;
     }
     return [...items.slice(0, limit), `另有 ${items.length - limit} ${overflowLabel}未展开`];
+  };
+
+  const draftRoleLabels: Record<string, { label: string; purpose?: string }> = {
+    power_connector: { label: "电源输入接口", purpose: "用于接入外部电源，连接到充电与供电链路" },
+    usb_type_c: { label: "USB-C 接口", purpose: "用于接入 USB 电源或数据连接" },
+    mcu_module: { label: "主控模块", purpose: "作为整机控制与通信核心" },
+    charger: { label: "锂电池充电芯片", purpose: "用于给锂电池充电并管理充电状态" },
+    ldo_regulator: { label: "稳压芯片", purpose: "用于把输入电压稳压到系统所需电源轨" },
+    audio_codec: { label: "音频编解码器", purpose: "用于处理麦克风输入和扬声器输出音频" },
+    led: { label: "指示灯", purpose: "用于显示电源、状态或工作指示" },
+  };
+
+  const humanizeDraftDetail = (value: string): string => {
+    const text = String(value || "").trim();
+    if (!text) return text;
+
+    const unresolvedMatch = text.match(/^([^/]+)\s*\/\s*([a-z0-9_]+):\s*(.*)$/i);
+    if (unresolvedMatch) {
+      const ref = unresolvedMatch[1]?.trim();
+      const role = unresolvedMatch[2]?.trim().toLowerCase();
+      const rest = unresolvedMatch[3]?.trim();
+      const roleMeta = draftRoleLabels[role];
+      if (roleMeta) {
+        return `${ref} ${roleMeta.label}：${rest}`;
+      }
+      return text;
+    }
+
+    const selectedMatch = text.match(/^([a-z0-9_]+):\s*(.+)$/i);
+    if (selectedMatch) {
+      const role = selectedMatch[1]?.trim().toLowerCase();
+      const rest = selectedMatch[2]?.trim();
+      const roleMeta = draftRoleLabels[role];
+      if (roleMeta) {
+        return roleMeta.purpose ? `${roleMeta.label}：${rest}。${roleMeta.purpose}。` : `${roleMeta.label}：${rest}`;
+      }
+    }
+
+    return text;
+  };
+
+  const buildReadableComponentRefs = (componentRefs: string[], selectedDeviceDetails?: string[]): string[] => {
+    if (!Array.isArray(componentRefs) || componentRefs.length === 0) {
+      return [];
+    }
+    const details = Array.isArray(selectedDeviceDetails) ? selectedDeviceDetails : [];
+    if (details.length === 0) {
+      return componentRefs;
+    }
+    const roleLabels = details.map((item) => {
+      const match = String(item || "").trim().match(/^([a-z0-9_]+):/i);
+      if (!match) return undefined;
+      return draftRoleLabels[match[1].toLowerCase()]?.label;
+    });
+    return componentRefs.map((ref, index) => {
+      const label = roleLabels[index];
+      return label ? `${ref} ${label}` : ref;
+    });
+  };
+
+  const humanizeNetName = (value: string): string => {
+    const net = String(value || "").trim();
+    if (!net) return net;
+    const upper = net.toUpperCase();
+    if (upper === "5V" || upper === "VCC_5V") return "5V 外部输入电源";
+    if (upper === "VBAT" || upper === "VCC_BAT" || upper === "BAT") return "VBAT 电池电源";
+    if (upper === "3V3" || upper === "VDD3V3") return "3V3 主系统 3.3V 电源";
+    if (upper === "GND" || upper === "PGND" || upper === "AGND") return "GND 地线";
+    if (upper === "I2C_SDA") return "I2C_SDA I2C 数据线";
+    if (upper === "I2C_SCL") return "I2C_SCL I2C 时钟线";
+    if (upper === "TXD" || upper === "UART_TX") return "TXD 串口发送";
+    if (upper === "RXD" || upper === "UART_RX") return "RXD 串口接收";
+    return net;
+  };
+
+  const buildReadableNetNames = (netNames: string[]): string[] => {
+    return (Array.isArray(netNames) ? netNames : []).map(humanizeNetName);
   };
 
   const buildNaturalChatFallback = (result: AgentResult): string => {
@@ -309,6 +401,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           context: input.context,
           tools: toolRegistry,
           allowedTools,
+          signal: input.signal,
           onStreamEvent: input.onStreamEvent,
         });
         return result;
@@ -325,6 +418,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           context: input.context,
           tools: toolRegistry,
           allowedTools,
+          signal: input.signal,
           onStreamEvent: input.onStreamEvent,
         });
         return result;
@@ -340,6 +434,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         context: input.context,
         tools: toolRegistry,
         allowedTools,
+        signal: input.signal,
         onStreamEvent: input.onStreamEvent,
       });
       return result;
@@ -366,6 +461,7 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         adapter,
         tools,
         allowedTools,
+        signal: input.signal,
         onStreamEvent: input.onStreamEvent,
       });
       const disposition = resolveTurnDisposition(taskType, result);
@@ -573,11 +669,18 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           : "";
       const hasUnresolvedDevices = Boolean(preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0);
       const suggestions = buildDraftFollowUpSuggestions(input.structuredSuggestions);
+      const narrativeText = String(input.draftNarrative || "").trim();
+      const preferNarrativeMarkdown = looksLikeCompleteMarkdownDocument(narrativeText);
       const reportMarkdown = buildDraftReportMarkdown({
         draftPreview: preview,
         draftRisk: input.draftRisk,
         nextSuggestions: input.nextSuggestions,
       });
+      const readableComponentRefs = buildReadableComponentRefs(
+        preview.componentRefs,
+        preview.selectedDeviceDetails
+      );
+      const readableNetNames = buildReadableNetNames(preview.netNames);
       const actions =
         input.draftRisk?.level === "blocked"
           ? [
@@ -603,18 +706,20 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
                   action: "rollback" as const,
                 },
               ];
-      const structuredContent = buildDraftStructuredContent(input);
+      const structuredContent = preferNarrativeMarkdown ? undefined : buildDraftStructuredContent(input);
       return [
         {
           role: "assistant",
           title: "草案草图",
           tone: input.draftRisk?.level === "blocked" ? "warning" : "success",
-            content: `我已经生成一版草案。\n\n标题：${preview.title}\n说明：${preview.rationale}\n器件：${preview.componentRefs.join(
-            "、"
-          )}\n网络：${preview.netNames.join("、")}${mcpHint}${mcpReadHint}${riskHint}${suggestionHint}\n\n下一步应进入人工确认，再决定是否 apply-plan。`,
-           structuredContent,
-           evidenceItems: buildEvidenceItems({
-             toolTraces: input.toolTraces,
+            content: preferNarrativeMarkdown
+              ? narrativeText
+              : `${narrativeText || "我已经生成一版草案。"}\n\n标题：${preview.title}\n说明：${preview.rationale}\n器件：${readableComponentRefs.join(
+                  "、"
+                )}\n网络：${readableNetNames.join("、")}${mcpHint}${mcpReadHint}${riskHint}${suggestionHint}\n\n下一步应进入人工确认，再决定是否 apply-plan。`,
+            structuredContent,
+            evidenceItems: buildEvidenceItems({
+              toolTraces: input.toolTraces,
              reactEvents: displayReactEvents,
              uiEvents: input.uiEvents,
            }),
@@ -622,12 +727,12 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
             executionTraces: input.executionTraces,
             uiEvents: input.uiEvents,
              reactEvents: displayReactEvents,
-             stepTranscript: buildStepTranscript(displayReactEvents),
-             stepStates: input.stepStates,
-             workingMemory: input.workingMemory,
-             reportMarkdown,
-              suggestions,
-            actions,
+              stepTranscript: buildStepTranscript(displayReactEvents),
+              stepStates: input.stepStates,
+              workingMemory: input.workingMemory,
+              reportMarkdown: preferNarrativeMarkdown ? undefined : reportMarkdown,
+               suggestions,
+             actions,
         },
       ];
     },
@@ -926,126 +1031,192 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     if (!preview) {
       return [{ kind: "paragraph", text: "草案生成完成，但未返回可展示内容。" }];
     }
+    const readableComponents = buildReadableComponentRefs(preview.componentRefs, preview.selectedDeviceDetails);
+    const readableNets = buildReadableNetNames(preview.netNames);
+    const selectedItems = (preview.selectedDeviceDetails ?? []).map(humanizeDraftDetail);
+    const unresolvedItems = (preview.unresolvedDeviceDetails ?? []).map(humanizeDraftDetail);
+    const roleHints = Array.from(
+      new Set(
+        [...(preview.selectedDeviceDetails ?? []), ...(preview.unresolvedDeviceDetails ?? [])]
+          .map(extractDraftRoleLabel)
+          .filter(Boolean)
+      )
+    );
+    const leadText = String(input.draftNarrative || "").trim()
+      || (input.draftRisk || unresolvedItems.length > 0
+        ? "已生成一版可继续讨论和修正的草案，但当前还有待确认项，不建议直接应用。"
+        : "已生成一版可进入人工确认的草案。");
+    const statusEntries = [
+      {
+        key: "已确定",
+        value:
+          selectedItems.length > 0
+            ? `${selectedItems.length} 个关键器件/模块已明确`
+            : `${preview.componentCount} 个器件已纳入本版方案`,
+      },
+      {
+        key: "待确认",
+        value: unresolvedItems.length > 0 ? `${unresolvedItems.length} 项仍需人工确认` : "当前未发现待确认器件",
+      },
+      {
+        key: "风险",
+        value: input.draftRisk?.message || (unresolvedItems.length > 0 ? "存在未定器件，暂不建议直接应用" : "未返回明确阻断风险"),
+      },
+      {
+        key: "下一动作",
+        value:
+          unresolvedItems.length > 0 || input.draftRisk?.level === "blocked"
+            ? "先确认器件与连接，再决定是否应用"
+            : "人工复核后可继续应用或局部修改",
+      },
+    ];
+    const capabilityItems =
+      buildDraftCapabilityItems({
+        roleHints,
+        readableNets,
+        rationale: summarizeDraftRationale(preview.rationale),
+      });
+    const moduleItems =
+      selectedItems.length > 0
+        ? summarizeDraftList(selectedItems, "个模块")
+        : readableComponents.length > 0
+          ? summarizeDraftList(readableComponents, "个器件")
+          : ["未返回关键模块信息"];
+    const nextItems =
+      input.nextSuggestions && input.nextSuggestions.length > 0
+        ? input.nextSuggestions
+        : [
+            "先人工确认关键器件是否符合成本、封装和采购预期",
+            "确认主电源链路与主要网络命名后，再决定是否 apply-plan",
+          ];
+    const supportingItems: string[] = [];
+    if (preview.guidanceSummary?.rationale) {
+      supportingItems.push(`生成依据：${preview.guidanceSummary.rationale}`);
+    }
+    if (preview.guidanceSummary?.templateId) {
+      supportingItems.push(`参考模板：${preview.guidanceSummary.templateId}`);
+    }
+    if (preview.guidanceSummary?.evidence?.length) {
+      supportingItems.push(...preview.guidanceSummary.evidence.slice(0, 2));
+    }
+    if (input.mcpResourceReads?.length) {
+      supportingItems.push(...input.mcpResourceReads.slice(0, 2).map((item) => `${item.title}：${item.summary}`));
+    }
+
     const blocks: NonNullable<NonNullable<MainPanelState["chatMessages"]>[number]["structuredContent"]> = [
-      { kind: "paragraph", text: "我已经生成一版草案。" },
+      { kind: "paragraph", text: leadText },
+      {
+        kind: "section",
+        title: "这版方案",
+        text: `${preview.title}\n${summarizeDraftRationale(preview.rationale)}`,
+      },
+      {
+        kind: "list",
+        title: "核心能力",
+        items: capabilityItems,
+      },
+      {
+        kind: "list",
+        title: "关键模块与器件",
+        items: moduleItems,
+      },
+      {
+        kind: "list",
+        title: "关键网络",
+        items: readableNets.length > 0 ? summarizeDraftList(readableNets, "条网络", 4) : ["未返回关键网络"],
+      },
       {
         kind: "kv",
-        title: "草案摘要",
-        entries: [
-          { key: "标题", value: preview.title },
-          { key: "说明", value: summarizeDraftRationale(preview.rationale) },
-          { key: "器件数量", value: String(preview.componentCount) },
-          { key: "网络数量", value: String(preview.netCount) },
-        ],
-      },
-      {
-        kind: "list",
-        title: "涉及器件",
-        items:
-          preview.componentRefs.length > 0
-            ? summarizeDraftList(preview.componentRefs, "个器件")
-            : ["未返回器件列表"],
-      },
-      {
-        kind: "list",
-        title: "涉及网络",
-        items:
-          preview.netNames.length > 0
-            ? summarizeDraftList(preview.netNames, "条网络")
-            : ["未返回网络列表"],
+        title: "当前状态",
+        entries: statusEntries,
       },
     ];
 
-    if (input.mcpResourceReads && input.mcpResourceReads.length > 0) {
+    if (unresolvedItems.length > 0) {
       blocks.push({
         kind: "list",
-        title: "参考知识",
-        items: input.mcpResourceReads.map((item) => `${item.title}：${item.summary}`),
-      });
-    }
-
-    if (preview.selectedDeviceDetails && preview.selectedDeviceDetails.length > 0) {
-      blocks.push({
-        kind: "list",
-        title: "已选器件详情",
-        items: preview.selectedDeviceDetails,
-      });
-    }
-
-    if (preview.unresolvedDeviceDetails && preview.unresolvedDeviceDetails.length > 0) {
-      blocks.push({
-        kind: "list",
-        title: "待处理器件",
-        items: preview.unresolvedDeviceDetails,
-      });
-    }
-
-    if (preview.guidanceSummary) {
-      blocks.push({
-        kind: "kv",
-        title: "生成依据",
-        entries: [
-          { key: "模板", value: preview.guidanceSummary.templateId },
-          { key: "说明", value: preview.guidanceSummary.rationale },
-        ],
-      });
-      if (preview.guidanceSummary.preferredSearches && preview.guidanceSummary.preferredSearches.length > 0) {
-        blocks.push({
-          kind: "list",
-          title: "器件检索偏好",
-          items: preview.guidanceSummary.preferredSearches,
-        });
-      }
-      if (preview.guidanceSummary.requiredNets && preview.guidanceSummary.requiredNets.length > 0) {
-        blocks.push({
-          kind: "list",
-          title: "必需网络约束",
-          items: preview.guidanceSummary.requiredNets,
-        });
-      }
-      if (
-        preview.guidanceSummary.requiredConnections &&
-        preview.guidanceSummary.requiredConnections.length > 0
-      ) {
-        blocks.push({
-          kind: "list",
-          title: "必需连接约束",
-          items: preview.guidanceSummary.requiredConnections,
-        });
-      }
-      if (preview.guidanceSummary.evidence && preview.guidanceSummary.evidence.length > 0) {
-        blocks.push({
-          kind: "list",
-          title: "设计依据（知识库）",
-          items: preview.guidanceSummary.evidence,
-        });
-      }
-    }
-
-    if (input.draftRisk) {
-      blocks.push({
-        kind: "kv",
-        title: "验证结论",
-        entries: [
-          { key: "风险等级", value: input.draftRisk.level },
-          { key: "结论", value: input.draftRisk.message },
-        ],
-      });
-    }
-
-    if (input.nextSuggestions && input.nextSuggestions.length > 0) {
-      blocks.push({
-        kind: "list",
-        title: "下一步建议",
-        items: input.nextSuggestions,
+        title: "待确认项",
+        items: unresolvedItems,
       });
     }
 
     blocks.push({
-      kind: "paragraph",
-      text: "下一步应进入人工确认，再决定是否 apply-plan。",
+      kind: "list",
+      title: "下一步建议",
+      items: nextItems,
     });
+
+    if (supportingItems.length > 0) {
+      blocks.push({
+        kind: "list",
+        title: "补充依据",
+        items: supportingItems,
+      });
+    }
+
     return blocks;
+  }
+
+  function extractDraftRoleLabel(detail?: string): string | undefined {
+    const text = String(detail || "").trim();
+    if (!text) return undefined;
+    const selectedMatch = text.match(/^([a-z0-9_]+):/i);
+    if (selectedMatch) {
+      return draftRoleLabels[selectedMatch[1].toLowerCase()]?.label;
+    }
+    const unresolvedMatch = text.match(/\/\s*([a-z0-9_]+)\s*:/i);
+    if (unresolvedMatch) {
+      return draftRoleLabels[unresolvedMatch[1].toLowerCase()]?.label;
+    }
+    return undefined;
+  }
+
+  function buildDraftCapabilityItems(input: {
+    roleHints: string[];
+    readableNets: string[];
+    rationale: string;
+  }): string[] {
+    const items: string[] = [];
+    const push = (value?: string) => {
+      const text = String(value || "").trim();
+      if (!text || items.includes(text)) return;
+      items.push(text);
+    };
+
+    input.roleHints.forEach((label) => {
+      if (label === "电源输入接口" || label === "USB-C 接口") {
+        push("支持外部供电接入，作为整机电源入口");
+      } else if (label === "锂电池充电芯片") {
+        push("包含锂电池充电与电源切换链路");
+      } else if (label === "稳压芯片") {
+        push("包含系统稳压，给主系统提供稳定工作电源");
+      } else if (label === "主控模块") {
+        push("以主控模块作为整机控制与连接核心");
+      } else if (label === "音频编解码器") {
+        push("预留语音输入输出所需的音频处理链路");
+      } else if (label === "指示灯") {
+        push("包含基础状态指示能力");
+      }
+    });
+
+    if (input.readableNets.some((item) => item.includes("VBAT"))) {
+      push("包含电池电源域与主系统电源域的基础划分");
+    }
+    if (input.readableNets.some((item) => item.includes("3V3"))) {
+      push("主系统以 3.3V 电源轨作为核心供电");
+    }
+    if (items.length === 0 && input.rationale) {
+      input.rationale
+        .split(/[。；]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .forEach(push);
+    }
+    if (items.length === 0) {
+      push("当前返回的是一版最小可用草案，适合继续确认器件与连接");
+    }
+    return items.slice(0, 4);
   }
 
   function pushStructuredList(

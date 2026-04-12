@@ -8,10 +8,13 @@ import {
   buildDevicePickerSearchProgressText,
   deriveSessionHistoryEntries,
   finalizeDraftTurnMessages,
+  formatDraftApplyErrorMessage,
   hasUnresolvedDraftDevices,
   normalizeDevicePickerCandidates,
+  shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
   shouldIgnoreDuplicateSendWhileRunning,
+  shouldUseDraftReplyLeadNarrative,
 } from "../assistantRuntime";
 import { getAssistantCardLayout } from "../assistantCardLayout";
 import type { MainPanelState } from "../../ui/panels/mainPanel";
@@ -65,6 +68,26 @@ test("shouldIgnoreDuplicateSendWhileRunning returns true during planning when th
   );
 });
 
+test("shouldStopRunningTurnFromComposer returns true while a turn is running", () => {
+  assert.equal(
+    shouldStopRunningTurnFromComposer({
+      agentRunState: "waiting_llm",
+      activeTurnId: 1,
+    }),
+    true
+  );
+});
+
+test("shouldStopRunningTurnFromComposer returns false when no turn is active", () => {
+  assert.equal(
+    shouldStopRunningTurnFromComposer({
+      agentRunState: "idle",
+      activeTurnId: undefined,
+    }),
+    false
+  );
+});
+
 test("finalizeDraftTurnMessages replaces the pending assistant without duplicating previous user messages", () => {
   const previousMessages = [
     { role: "user" as const, title: "你", content: "帮我设计一个点亮LED的电路" },
@@ -109,6 +132,20 @@ test("shouldAutoApplyDraftFromChatInput returns false when no draft is pending c
   );
 });
 
+test("formatDraftApplyErrorMessage converts empty-page guard errors into actionable guidance", () => {
+  assert.equal(
+    formatDraftApplyErrorMessage(new Error('draft apply requires an empty schematic page: current page "Sheet 1" already has content')),
+    "应用草案失败：当前原理图页“Sheet 1”已有内容。请先新建空白原理图页，再重新应用草案。"
+  );
+});
+
+test("formatDraftApplyErrorMessage keeps generic errors readable", () => {
+  assert.equal(
+    formatDraftApplyErrorMessage(new Error("unmapped required nets: 5V (draft-j1-vbus)")),
+    "应用草案失败：unmapped required nets: 5V (draft-j1-vbus)"
+  );
+});
+
 test("draft confirmation follow-up summary requests should not auto-apply", () => {
   assert.equal(
     shouldAutoApplyDraftFromChatInput({
@@ -118,6 +155,16 @@ test("draft confirmation follow-up summary requests should not auto-apply", () =
       draftBlocked: false,
     }),
     false
+  );
+});
+
+test("shouldUseDraftReplyLeadNarrative falls back to naturalReply when draftNarrative is empty", () => {
+  assert.equal(
+    shouldUseDraftReplyLeadNarrative({
+      draftNarrative: undefined,
+      naturalReply: "先回答：J1 / power_connector 是外部电源输入接口。",
+    }),
+    "先回答：J1 / power_connector 是外部电源输入接口。"
   );
 });
 
@@ -193,6 +240,21 @@ test("getAssistantCardLayout keeps streaming thinking above the report while exe
   assert.equal(layout.showThinking, true);
   assert.equal(layout.useSplitLayout, true);
   assert.equal(layout.reportFillsRemainingHeight, false);
+});
+
+test("getAssistantCardLayout keeps both thinking and steps visible while streaming", () => {
+  const layout = getAssistantCardLayout({
+    streaming: true,
+    hasThinking: true,
+    hasSteps: true,
+    hasReport: false,
+    stepsOpen: true,
+  });
+
+  assert.deepEqual(layout.sectionOrder, ["header", "steps", "thinking"]);
+  assert.equal(layout.showThinking, true);
+  assert.equal(layout.showSteps, true);
+  assert.equal(layout.useSplitLayout, true);
 });
 
 test("draftPreview state shape preserves selected device and guidance details", () => {

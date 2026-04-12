@@ -117,6 +117,7 @@ export class LlmProxyClient {
       messages: LlmMessage[];
       tools?: LlmTool[];
       tool_choice?: LlmToolChoice;
+      signal?: AbortSignal;
     }
   ): Promise<LlmGenerateResponse> {
     const response = await this.httpClient.request<ApiResponse<LlmGenerateResponse>>(
@@ -136,6 +137,7 @@ export class LlmProxyClient {
           tools: input.tools,
           tool_choice: input.tool_choice,
         }),
+        signal: input.signal,
       }
     );
 
@@ -154,6 +156,7 @@ export class LlmProxyClient {
       messages: LlmMessage[];
       tools?: LlmTool[];
       tool_choice?: LlmToolChoice;
+      signal?: AbortSignal;
     },
     onEvent: (event: LlmStreamEvent) => void
   ): Promise<void> {
@@ -173,6 +176,7 @@ export class LlmProxyClient {
         tools: input.tools,
         tool_choice: input.tool_choice,
       }),
+      signal: input.signal,
       onEvent: (event) => {
         onEvent(event.data as LlmStreamEvent);
       },

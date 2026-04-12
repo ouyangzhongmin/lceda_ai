@@ -42,8 +42,8 @@ export function getAssistantCardLayout(input: AssistantCardLayoutInput): Assista
       reportFillsRemainingHeight: false,
       sectionOrder: [
         "header",
-        ...(showThinking ? ["thinking" as const] : []),
         ...(showSteps ? ["steps" as const] : []),
+        ...(showThinking ? ["thinking" as const] : []),
         ...(showReport ? ["report" as const] : []),
       ],
     };

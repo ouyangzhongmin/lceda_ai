@@ -12,6 +12,7 @@ export type DraftFollowUpIntent =
 export interface AgentTask {
   type: AgentTaskType;
   userQuery: string;
+  preferredOutputLanguage?: string;
   context?: SchematicContext;
   planSteps?: Array<{ kind: AgentPlanStepKind; note: string }>;
   draftFollowUpIntent?: DraftFollowUpIntent;
@@ -177,6 +178,7 @@ export interface AgentResult {
   };
   draftPlan?: DraftPlan;
   draftPreview?: DraftPreview;
+  draftNarrative?: string;
   draftValidation?: SchematicCheckResult;
   draftRisk?: {
     level: "safe" | "warning" | "blocked";

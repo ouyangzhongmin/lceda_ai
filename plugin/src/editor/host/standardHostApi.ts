@@ -7,6 +7,7 @@ export interface StandardRawHostApi {
     getCurrentDocument?: () => Promise<unknown> | unknown;
     getSelection?: () => Promise<unknown> | unknown;
     locateObject?: (target: { objectId: string; objectType: "component" | "pin" | "net" }) => Promise<void> | void;
+    createEmptyPage?: (input?: { title?: string }) => Promise<unknown> | unknown;
   };
   shell?: {
     openExternal?: (url: string) => Promise<void> | void;
@@ -29,6 +30,7 @@ export interface StandardHostCapabilities {
   getCurrentDocument?: () => Promise<unknown>;
   getSelection?: () => Promise<unknown>;
   locateObject?: (target: { objectId: string; objectType: "component" | "pin" | "net" }) => Promise<void>;
+  createEmptySchematicPage?: (input?: { title?: string }) => Promise<unknown>;
   openExternal?: (url: string) => Promise<void>;
   showToastMessage?: (message: string, timeoutMs?: number) => Promise<void>;
   previewApplyPlan?: (plan: DraftPlan) => Promise<DraftPreview>;
@@ -50,6 +52,9 @@ export function resolveStandardHostCapabilities(rawApi: StandardRawHostApi | und
       ? async (target): Promise<void> => {
           await rawApi.schematic!.locateObject!(target);
         }
+      : undefined,
+    createEmptySchematicPage: rawApi?.schematic?.createEmptyPage
+      ? async (input): Promise<unknown> => rawApi.schematic!.createEmptyPage!(input)
       : undefined,
     openExternal: rawApi?.shell?.openExternal
       ? async (url: string): Promise<void> => {

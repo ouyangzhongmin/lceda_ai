@@ -11,7 +11,10 @@ import { HostBrowserLauncher } from "../services/auth/browserLauncher";
 import { waitLoginSuccess } from "../services/auth/loginPolling";
 import { PersistentSessionStore, type AuthSession } from "../services/auth/sessionStore";
 import { CreditsClient } from "../services/credits/creditsClient";
-import { CustomLlmConfigStore } from "../services/llm/customLlmConfigStore";
+import {
+  CustomLlmConfigStore,
+  DEFAULT_PREFERRED_OUTPUT_LANGUAGE,
+} from "../services/llm/customLlmConfigStore";
 import { LlmModeStore, type LlmMode } from "../services/llm/llmModeStore";
 import { LlmProxyClient, type LlmMessage } from "../services/llm/llmProxyClient";
 import { UnifiedLlmClient } from "../services/llm/unifiedLlmClient";
@@ -19,6 +22,7 @@ import { RagClient } from "../services/rag/ragClient";
 import { LocalStorageKeyValueStore } from "../storage/keyValueStore";
 import type { MainPanelState } from "../ui/panels/mainPanel";
 import { previewDraftPlan } from "../editor/apply-plan/previewDraftPlan";
+import { isCancelledError } from "../agent/core/cancelledError";
 
 const GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
 const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
@@ -225,6 +229,20 @@ export function shouldIgnoreDuplicateSendWhileRunning(input: {
   return Boolean(normalizedLastUser && normalizedInput === normalizedLastUser);
 }
 
+export function shouldStopRunningTurnFromComposer(input: {
+  activeTurnId?: number;
+  agentRunState?: MainPanelState["agentRunState"];
+}): boolean {
+  if (!input.activeTurnId) {
+    return false;
+  }
+  return (
+    input.agentRunState === "planning" ||
+    input.agentRunState === "running_tools" ||
+    input.agentRunState === "waiting_llm"
+  );
+}
+
 export function shouldAutoApplyDraftFromChatInput(input: {
   agentRunState?: MainPanelState["agentRunState"];
   input: string;
@@ -241,6 +259,18 @@ export function shouldAutoApplyDraftFromChatInput(input: {
   return /^(确认|确定|应用|应用草案|好的应用|开始应用|ok|okay|yes)$/u.test(normalized);
 }
 
+export function formatDraftApplyErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const emptyPageMatch = message.match(/draft apply requires an empty schematic page(?:: current page "([^"]+)" already has content)?/i);
+  if (!emptyPageMatch) {
+    return `应用草案失败：${message}`;
+  }
+  const pageName = emptyPageMatch[1];
+  return pageName
+    ? `应用草案失败：当前原理图页“${pageName}”已有内容。请先新建空白原理图页，再重新应用草案。`
+    : "应用草案失败：当前原理图页已有内容。请先新建空白原理图页，再重新应用草案。";
+}
+
 export function hasUnresolvedDraftDevices(plan?: DraftPlan): boolean {
   return Boolean(
     plan?.components?.some((component) => component.properties?.device_resolution_status === "unresolved")
@@ -253,6 +283,18 @@ export function buildDevicePickerSearchProgressText(current: number, total: numb
 
 export function buildDevicePickerApplyProgressText(current: number, total: number): string {
   return `正在确认待确认器件（${current}/${total}）...`;
+}
+
+export function shouldUseDraftReplyLeadNarrative(input: {
+  draftNarrative?: string;
+  naturalReply?: string;
+}): string | undefined {
+  const draftNarrative = String(input.draftNarrative || "").trim();
+  if (draftNarrative) {
+    return draftNarrative;
+  }
+  const naturalReply = String(input.naturalReply || "").trim();
+  return naturalReply || undefined;
 }
 
 export interface SessionHistoryEntry {
@@ -529,6 +571,7 @@ export interface AssistantRuntime {
   locateIssue(index: number): Promise<MainPanelState>;
   startLogin(): Promise<MainPanelState>;
   sendChat(input: string): Promise<MainPanelState>;
+  stopCurrentTurn(): Promise<MainPanelState>;
   resetSession(): Promise<MainPanelState>;
   generateDraft(prompt: string): Promise<MainPanelState>;
   applyDraftPlan(): Promise<MainPanelState>;
@@ -544,6 +587,7 @@ export interface AssistantRuntime {
     baseUrl: string;
     apiKey: string;
     model: string;
+    preferredOutputLanguage?: string;
   }): Promise<MainPanelState>;
   setLlmMode(input: { mode: LlmMode }): Promise<MainPanelState>;
   listSessionHistory(): Promise<SessionHistoryEntry[]>;
@@ -561,6 +605,7 @@ interface RuntimeInternals {
   lastApplyTransactionId?: string;
   pendingChatInput?: string;
   activeTurnId?: number;
+  activeTurnAbortController?: AbortController;
   sessionId?: string;
   activeLoginSession?: {
     loginSessionId: string;
@@ -987,7 +1032,7 @@ function createAssistantRuntime(): AssistantRuntime {
       state.agentRunState = "failed";
       state.agentRunRoute = "draft";
       state.agentRunDetail = error instanceof Error ? error.message : String(error);
-      state.summary = `应用草案失败：${error instanceof Error ? error.message : String(error)}`;
+      state.summary = formatDraftApplyErrorMessage(error);
       state.chatMessages = appendAssistantMessages(
         sanitizeChatMessages(state.chatMessages),
         pluginAgent.buildStatusMessages({
@@ -1183,6 +1228,7 @@ function createAssistantRuntime(): AssistantRuntime {
       internals.lastApplyTransactionId = undefined;
       internals.pendingChatInput = undefined;
       internals.activeTurnId = undefined;
+      internals.activeTurnAbortController = undefined;
       cancelScheduledPanelStatePersist();
       await clearPanelState(storage);
       return openIdlePanelState();
@@ -1396,6 +1442,7 @@ function createAssistantRuntime(): AssistantRuntime {
       turnIdCounter += 1;
       const turnId = turnIdCounter;
       internals.activeTurnId = turnId;
+      internals.activeTurnAbortController = new AbortController();
 
       let turnCommitTimer: ReturnType<typeof setTimeout> | null = null;
       let lastTurnCommitAt = 0;
@@ -1506,6 +1553,7 @@ function createAssistantRuntime(): AssistantRuntime {
           panelState: current,
           context,
           adapter,
+          signal: internals.activeTurnAbortController.signal,
           onStreamEvent: (event) => {
             // Ignore late events from previous turns to prevent UI getting stuck.
             if (internals.activeTurnId !== turnId) return;
@@ -1567,6 +1615,7 @@ function createAssistantRuntime(): AssistantRuntime {
         if (internals.activeTurnId === turnId) {
           internals.activeTurnId = undefined;
         }
+        internals.activeTurnAbortController = undefined;
         const finalState = await applyTurnResultToState({
           baseState: current,
           userMessages: nextMessages,
@@ -1594,6 +1643,23 @@ function createAssistantRuntime(): AssistantRuntime {
       } catch (error) {
         if (internals.activeTurnId === turnId) {
           internals.activeTurnId = undefined;
+        }
+        internals.activeTurnAbortController = undefined;
+        if (isCancelledError(error)) {
+          internals.pendingChatInput = undefined;
+          current.agentRunState = "idle";
+          current.agentRunDetail = "已停止当前任务";
+          current.summary = "已停止当前任务。";
+          current.chatMessages = replaceTrailingPendingAssistant(
+            nextMessages,
+            pluginAgent.buildStatusMessages({
+              title: "已停止",
+              content: "已停止当前任务。",
+              tone: "warning",
+            })
+          );
+          current.nextActions = buildNextActions(current);
+          return commitState(internals, current, storage);
         }
         if (error instanceof HttpError && error.status === 401) {
           const unauthorizedState = internals.currentState ?? current;
@@ -1644,6 +1710,45 @@ function createAssistantRuntime(): AssistantRuntime {
         );
         return commitState(internals, current, storage);
       }
+    },
+    stopCurrentTurn: async (): Promise<MainPanelState> => {
+      const state = internals.currentState ?? (await openIdlePanelState());
+      if (
+        !shouldStopRunningTurnFromComposer({
+          activeTurnId: internals.activeTurnId,
+          agentRunState: state.agentRunState,
+        })
+      ) {
+        return state;
+      }
+
+      internals.activeTurnId = undefined;
+      internals.pendingChatInput = undefined;
+      internals.activeTurnAbortController?.abort();
+      internals.activeTurnAbortController = undefined;
+
+      state.agentRunState = "idle";
+      state.agentRunDetail = "已停止当前任务";
+      state.summary = "已停止当前任务。";
+
+      const messages = sanitizeChatMessages(state.chatMessages);
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage?.role === "assistant" && lastMessage.streaming) {
+        lastMessage.streaming = false;
+        lastMessage.title = "已停止";
+        lastMessage.content = "已停止当前任务。";
+        lastMessage.tone = "warning";
+      } else {
+        messages.push({
+          role: "assistant",
+          title: "已停止",
+          content: "已停止当前任务。",
+          tone: "warning",
+        });
+      }
+      state.chatMessages = messages;
+      state.nextActions = buildNextActions(state);
+      return commitState(internals, state, storage);
     },
     applyDraftPlan: async (): Promise<MainPanelState> => {
       return applyCurrentDraftPlan();
@@ -1788,6 +1893,7 @@ function createAssistantRuntime(): AssistantRuntime {
           baseUrl: input.baseUrl.trim(),
           apiKey: input.apiKey.trim(),
           model: input.model.trim(),
+          preferredOutputLanguage: (input.preferredOutputLanguage || DEFAULT_PREFERRED_OUTPUT_LANGUAGE).trim() || DEFAULT_PREFERRED_OUTPUT_LANGUAGE,
         });
         await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
         state.summary = "自定义 LLM 配置已保存。";
@@ -1919,6 +2025,7 @@ async function generateDraftStateFromResult(
       state.summary = `草案已生成：${result.draftPreview.title}，共 ${result.draftPreview.componentCount} 个器件，${result.draftPreview.netCount} 条网络。`;
       state.chatMessages = pluginAgent.buildDraftMessages({
         draftPreview: state.draftPreview,
+        draftNarrative: shouldUseDraftReplyLeadNarrative(result),
         mcpResources: result.mcpResources,
         mcpResourceReads: result.mcpResourceReads,
         toolTraces: result.toolTraces,
@@ -2484,6 +2591,7 @@ async function fillSettingsState(
         baseUrl: llmConfig.baseUrl,
         apiKeyMasked: maskApiKey(llmConfig.apiKey),
         model: llmConfig.model,
+        preferredOutputLanguage: llmConfig.preferredOutputLanguage,
       };
     }
   } catch {

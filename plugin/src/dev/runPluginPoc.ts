@@ -109,6 +109,7 @@ async function main(): Promise<void> {
     baseUrl: "https://api.example.com/v1",
     apiKey: "local-demo-key",
     model: "gpt-4.1-mini",
+    preferredOutputLanguage: "zh-CN",
   });
   const restoredSession = await sessionStore.get();
   const restoredLlmConfig = await llmConfigStore.get();

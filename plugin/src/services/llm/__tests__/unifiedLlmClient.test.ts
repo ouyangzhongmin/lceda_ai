@@ -68,3 +68,37 @@ test("UnifiedLlmClient custom stream preserves tool_calls from final event", asy
     },
   ]);
 });
+
+test("UnifiedLlmClient forwards abort signal to proxy stream generation", async () => {
+  const sessionStore = {
+    get: async () => ({ accessToken: "token" }),
+  } as any;
+  const customLlmConfigStore = {
+    get: async () => null,
+  } as any;
+  const llmModeStore = {
+    get: async () => "proxy" as const,
+  } as any;
+  const controller = new AbortController();
+  let capturedSignal: AbortSignal | undefined;
+
+  const proxyClient = {
+    generateStream: async (
+      _accessToken: string,
+      input: { signal?: AbortSignal },
+      _onEvent: (event: LlmStreamEvent) => void
+    ) => {
+      capturedSignal = input.signal;
+    },
+  } as unknown as LlmProxyClient;
+
+  const client = new UnifiedLlmClient(proxyClient, sessionStore, customLlmConfigStore, llmModeStore);
+
+  await client.generate({
+    stream: true,
+    signal: controller.signal,
+    messages: [{ role: "user", content: "分析当前原理图有什么问题" }],
+  });
+
+  assert.equal(capturedSignal, controller.signal);
+});

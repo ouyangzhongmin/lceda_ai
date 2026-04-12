@@ -115,3 +115,17 @@ test("buildSystemPrompt includes existing draft risk analysis instructions when 
   assert.equal(prompt.includes("可调用 `rules_validate_draft`"), true);
   assert.equal(prompt.includes("不要无必要重新调用 `draft_generate_plan`"), true);
 });
+
+test("buildSystemPrompt includes preferred output language guidance", () => {
+  const prompt = buildSystemPrompt({
+    task: {
+      type: "natural_chat",
+      userQuery: "解释一下这个模块",
+      preferredOutputLanguage: "zh-CN",
+    },
+    tools: [],
+  });
+
+  assert.equal(prompt.includes("用户可见输出默认使用 zh-CN"), true);
+  assert.equal(prompt.includes("若模型会输出思考摘要或 reasoning，也应尽量使用 zh-CN"), true);
+});

@@ -12,6 +12,39 @@ type ApiCall = {
 async function main(): Promise<void> {
   const calls: ApiCall[] = [];
   const channel = process.env.LCEDA_PLUGIN_CHANNEL === "professional" ? "professional" : "standard";
+  let currentSource = {
+    projectId: "prj_api_style",
+    pageId: "page_api_style",
+    pageName: "Existing Sheet",
+    components: [
+      {
+        id: "cmp-api-u1",
+        ref: "U1",
+        name: "ESP32-S3",
+        value: "MCU",
+        properties: {
+          package: "QFN56",
+        },
+      },
+    ],
+    pins: [
+      {
+        id: "pin-api-u1-1",
+        componentId: "cmp-api-u1",
+        pinNumber: "1",
+        pinName: "3V3",
+        electricalType: "power_input",
+      },
+    ],
+    nets: [
+      {
+        id: "net-api-3v3",
+        name: "3V3",
+        nodeIds: ["pin-api-u1-1"],
+        isPower: true,
+      },
+    ],
+  };
 
   (globalThis as typeof globalThis & { LCEDA_PLUGIN_CHANNEL?: "standard" | "professional" }).LCEDA_PLUGIN_CHANNEL =
     channel;
@@ -23,38 +56,7 @@ async function main(): Promise<void> {
   ).api = async (name: string, ...args: unknown[]): Promise<unknown> => {
     calls.push({ name, args });
     if (name === "getSource") {
-      return JSON.stringify({
-        projectId: "prj_api_style",
-        pageId: "page_api_style",
-        components: [
-          {
-            id: "cmp-api-u1",
-            ref: "U1",
-            name: "ESP32-S3",
-            value: "MCU",
-            properties: {
-              package: "QFN56",
-            },
-          },
-        ],
-        pins: [
-          {
-            id: "pin-api-u1-1",
-            componentId: "cmp-api-u1",
-            pinNumber: "1",
-            pinName: "3V3",
-            electricalType: "power_input",
-          },
-        ],
-        nets: [
-          {
-            id: "net-api-3v3",
-            name: "3V3",
-            nodeIds: ["pin-api-u1-1"],
-            isPower: true,
-          },
-        ],
-      });
+      return JSON.stringify(currentSource);
     }
     if (name === "getSelectShape") {
       return {
@@ -66,6 +68,22 @@ async function main(): Promise<void> {
     }
     if (name === "applySource" || name === "setSource" || name === "updateSource") {
       return { ok: true };
+    }
+    if (
+      name === "createEmptySchematicPage" ||
+      name === "createSchematicPage" ||
+      name === "newSchematicPage" ||
+      name === "createEmptyPage"
+    ) {
+      currentSource = {
+        projectId: "prj_api_style",
+        pageId: "page_api_style_draft",
+        pageName: String((args[0] as { title?: string } | undefined)?.title || "Draft Plan"),
+        components: [],
+        pins: [],
+        nets: [],
+      };
+      return { ok: true, pageId: currentSource.pageId };
     }
     if (name === "getShape") {
       return undefined;

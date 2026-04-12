@@ -185,6 +185,7 @@ export interface MainPanelState {
     baseUrl: string;
     apiKeyMasked: string;
     model: string;
+    preferredOutputLanguage: string;
   };
   toast?: {
     id: number;

@@ -187,3 +187,18 @@ test("draftSpecToPlan assigns grouped default placement for major functional blo
     ["520", "540"]
   );
 });
+
+test("draftSpecToPlan merges pinIds from repeated connections targeting the same normalized net", () => {
+  const spec = createVoiceDeviceSpec();
+  spec.connections = [
+    { netName: "VCC_5V", pinIds: ["usb-vbus"] },
+    { netName: "USB_5V", pinIds: ["chg-vin"] },
+    { netName: "5V", pinIds: ["mcu-3v3"] },
+  ];
+  spec.nets = [{ id: "net-usb-5v", name: "VCC_5V", isPower: true }];
+
+  const plan = draftSpecToPlan({ spec });
+  const powerNet = plan.nets.find((net) => net.name === "5V");
+
+  assert.deepEqual(powerNet?.nodeIds, ["usb-vbus", "chg-vin", "mcu-3v3"]);
+});

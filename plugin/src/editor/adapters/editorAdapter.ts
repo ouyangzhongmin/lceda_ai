@@ -102,6 +102,19 @@ export class HostBackedEditorAdapter implements EditorAdapter {
       await this.assertCapability("applyPlan");
       throw new Error("host apply_plan is not available");
     }
+    let context = await this.bridge.getCurrentContext();
+    if (!isEmptySchematicContext(context)) {
+      if (this.bridge.createEmptySchematicPage) {
+        await this.bridge.createEmptySchematicPage({ title: plan.title });
+        context = await this.bridge.getCurrentContext();
+      }
+      if (!isEmptySchematicContext(context)) {
+        const pageName = context.project.pageName?.trim();
+        throw new Error(
+          `draft apply requires an empty schematic page${pageName ? `: current page "${pageName}" already has content` : ""}`
+        );
+      }
+    }
 
     return this.bridge.applyPlan(plan);
   }
@@ -173,4 +186,12 @@ export class UnimplementedEditorAdapter implements EditorAdapter {
   async rollbackApplyPlan(transactionId: string): Promise<{ rolledBack: boolean; transactionId: string }> {
     return { rolledBack: false, transactionId };
   }
+}
+
+function isEmptySchematicContext(context: SchematicContext): boolean {
+  const meaningfulComponents = context.components.filter((component) => {
+    const componentType = String(component.componentType || "").trim().toLowerCase();
+    return componentType !== "sheet";
+  });
+  return meaningfulComponents.length === 0 && context.pins.length === 0 && context.nets.length === 0;
 }

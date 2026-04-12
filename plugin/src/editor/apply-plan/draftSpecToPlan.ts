@@ -167,6 +167,29 @@ function toExpectedNetProperties(component: DraftDesignSpec["components"][number
   return Object.fromEntries(pinNetPairs);
 }
 
+function buildNormalizedConnectionMap(
+  connections: DraftDesignSpec["connections"]
+): Map<string, { netName: string; pinIds: string[] }> {
+  const connectionMap = new Map<string, { netName: string; pinIds: string[] }>();
+  for (const connection of connections) {
+    const normalizedNetName = normalizeNetName(connection.netName, connection.netName);
+    const existing = connectionMap.get(normalizedNetName);
+    if (existing) {
+      for (const pinId of connection.pinIds) {
+        if (!existing.pinIds.includes(pinId)) {
+          existing.pinIds.push(pinId);
+        }
+      }
+      continue;
+    }
+    connectionMap.set(normalizedNetName, {
+      netName: normalizedNetName,
+      pinIds: [...connection.pinIds],
+    });
+  }
+  return connectionMap;
+}
+
 export function draftSpecToPlan(input: {
   spec: DraftDesignSpec;
   guidance?: DraftPlanGuidance;
@@ -178,6 +201,7 @@ export function draftSpecToPlan(input: {
     ...connection,
     netName: normalizeNetName(connection.netName, connection.netName),
   }));
+  const normalizedConnectionMap = buildNormalizedConnectionMap(spec.connections);
   const normalizedNets = spec.nets.map((net) => ({
     ...net,
     name: normalizeNetName(net.name, net.id),
@@ -215,7 +239,7 @@ export function draftSpecToPlan(input: {
       id: net.id,
       name: net.name,
       isPower: net.isPower,
-      nodeIds: normalizedConnections.find((connection) => connection.netName === String(net.name || net.id))?.pinIds ?? [],
+      nodeIds: normalizedConnectionMap.get(String(net.name || net.id))?.pinIds ?? [],
     })),
     guidance,
   };

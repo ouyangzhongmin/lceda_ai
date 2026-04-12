@@ -203,7 +203,7 @@ function mergeToolCalls(
 export class OpenAiCompatibleClient {
   async generate(
     config: OpenAiCompatibleConfig,
-    input: { messages: LlmMessage[]; model?: string; tools?: LlmTool[]; tool_choice?: LlmToolChoice }
+    input: { messages: LlmMessage[]; model?: string; tools?: LlmTool[]; tool_choice?: LlmToolChoice; signal?: AbortSignal }
   ): Promise<{ model: string; output_text: string; tool_calls?: unknown }> {
     const cfg: OpenAiCompatibleConfig = {
       ...config,
@@ -234,6 +234,7 @@ export class OpenAiCompatibleClient {
         tool_choice: input.tool_choice,
         stream: false,
       }),
+      signal: input.signal,
     });
 
     const bodyText = await response.text();
@@ -261,7 +262,7 @@ export class OpenAiCompatibleClient {
 
   async generateStream(
     config: OpenAiCompatibleConfig,
-    input: { messages: LlmMessage[]; model?: string; tools?: LlmTool[]; tool_choice?: LlmToolChoice },
+    input: { messages: LlmMessage[]; model?: string; tools?: LlmTool[]; tool_choice?: LlmToolChoice; signal?: AbortSignal },
     onEvent: (event: LlmStreamEvent) => void
   ): Promise<void> {
     const cfg: OpenAiCompatibleConfig = {
@@ -306,6 +307,7 @@ export class OpenAiCompatibleClient {
         tool_choice: input.tool_choice,
         stream: true,
       }),
+      signal: input.signal,
     });
 
     if (!response.ok) {

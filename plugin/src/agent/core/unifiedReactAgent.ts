@@ -146,6 +146,7 @@ function isBannedHighRiskTool(toolName: string): boolean {
 }
 
 function inferRouteFromResult(result: AgentResult): "chat" | "analysis" | "draft" {
+  if (result.naturalReply) return "chat";
   if (result.draftPlan || result.draftPreview || result.draftValidation || result.draftRisk) return "draft";
   if (result.analysisReport || result.checkResult || result.analysisMarkdown) return "analysis";
   return "chat";
@@ -184,10 +185,7 @@ function isDraftTaskType(taskType?: AgentTaskType): boolean {
 function looksLikeDraftFollowUpSummaryQuery(userQuery: string): boolean {
   const text = String(userQuery || "").trim().toLowerCase();
   if (!text) return false;
-  if (/(重新生成|重新设计|重画|修改草案|改原理图|增加模块|新增模块|替换器件|换成|重做)/iu.test(text)) {
-    return false;
-  }
-  return /(列表|清单|主要元器件|主要器件|用哪些器件|用了哪些器件|器件列表|列出|展示|总结|概述|说明|介绍)/iu.test(text);
+  return !looksLikeDraftFollowUpRevisionQuery(text) && !looksLikeDraftRiskAnalysisQuery(text);
 }
 
 function looksLikeDraftFollowUpRevisionQuery(userQuery: string): boolean {
@@ -339,6 +337,7 @@ export async function runUnifiedReactAgent(input: {
   adapter?: EditorAdapter;
   tools: ToolRegistry;
   allowedTools: string[];
+  signal?: AbortSignal;
   onStreamEvent?: (event: {
     route: "chat" | "analysis" | "draft";
     stage: "llm" | "progress";
@@ -355,7 +354,7 @@ export async function runUnifiedReactAgent(input: {
   let checkResult: AgentResult["checkResult"] | undefined;
   let locateResult: AgentResult["locateResult"] | undefined;
   let draftPlan: AgentResult["draftPlan"] | undefined = input.panelState.draftPlan;
-  let draftPreview: AgentResult["draftPreview"] | undefined;
+  let draftPreview: AgentResult["draftPreview"] | undefined = input.panelState.draftPreview;
   let draftValidation: AgentResult["draftValidation"] | undefined;
   let draftRisk: AgentResult["draftRisk"] | undefined;
   let mcpResources: AgentResult["mcpResources"] | undefined;
@@ -372,9 +371,7 @@ export async function runUnifiedReactAgent(input: {
       ? "revise_existing_draft"
       : looksLikeDraftRiskAnalysisQuery(input.userQuery)
         ? "analyze_existing_draft_risk"
-      : looksLikeDraftFollowUpSummaryQuery(input.userQuery)
-        ? "summarize_existing_draft"
-        : undefined);
+        : "summarize_existing_draft");
 
   const task: AgentTask = {
     type: resolvedTaskType,
@@ -432,7 +429,11 @@ export async function runUnifiedReactAgent(input: {
   );
 
   const system = buildSystemPrompt({
-    task,
+    task: {
+      ...task,
+      preferredOutputLanguage:
+        input.panelState?.customLlmConfig?.preferredOutputLanguage || task.preferredOutputLanguage,
+    },
     tools: toolList,
     skills: [
       { name: "analysis", description: "分析/检查原理图问题（建议用 rules_run_schematic_checks + schematic_review）" },
@@ -479,7 +480,9 @@ export async function runUnifiedReactAgent(input: {
   const deps: ReactAgentDeps = {
     task,
     allowedTools: toolList.map((t) => t.name),
-    invokeTool: (toolName, toolInput) => input.tools.invoke(toolName, toolInput),
+    signal: input.signal,
+    isCancelled: () => Boolean(input.signal?.aborted),
+    invokeTool: (toolName, toolInput) => input.tools.invoke(toolName, toolInput, { signal: input.signal }),
     listToolNames: () => input.tools.list().map((t) => t.name),
     onProgress: (payload) => {
       const route = inferRouteFromResult({
@@ -736,14 +739,30 @@ export async function runUnifiedReactAgent(input: {
         }
       : undefined,
     };
-  const route = loopResult.finalRoute ?? inferRouteFromResult({
+  const inferredFinalResult: AgentResult = {
     ...base,
-    analysisMarkdown: checkResult ? finalText : undefined,
-    naturalReply: checkResult ? undefined : finalText,
-  });
+    analysisMarkdown:
+      loopResult.finalRoute === "analysis"
+        ? finalText
+        : loopResult.finalRoute
+          ? undefined
+          : checkResult
+            ? finalText
+            : undefined,
+    naturalReply:
+      loopResult.finalRoute === "chat"
+        ? finalText
+        : loopResult.finalRoute
+          ? undefined
+          : checkResult
+            ? undefined
+            : finalText,
+  };
+  const route = loopResult.finalRoute ?? inferRouteFromResult(inferredFinalResult);
 
   const result: AgentResult = {
     ...base,
+    draftNarrative: route === "draft" ? finalText : undefined,
     analysisMarkdown: route === "analysis" ? finalText : undefined,
     naturalReply: route === "chat" ? finalText : undefined,
   };

@@ -1,6 +1,7 @@
 import type { AgentStepState, AgentToolTrace, AgentWorkingMemory } from "../shared/agentTypes";
 import type { AgentReactEvent, ReactAgentDeps, ReactAgentState } from "./reactTypes";
 import type { LlmMessage, LlmToolCall } from "../../services/llm/llmProxyClient";
+import { throwIfCancelled, isCancelledError } from "./cancelledError";
 
 type ReActDecision =
   | { type: "action"; tool: string; input?: unknown; rationale?: string }
@@ -60,6 +61,7 @@ export async function runReActLoop(input: {
 
   const observations: Array<{ tool: string; summary: string }> = [];
   const usedTools = new Set<string>();
+  const ensureNotCancelled = () => throwIfCancelled(deps.signal, deps.isCancelled);
 
   const messages: LlmMessage[] = [
     { role: "system", content: system },
@@ -189,6 +191,7 @@ export async function runReActLoop(input: {
   }));
 
   for (let i = 0; i < maxIterations; i += 1) {
+    ensureNotCancelled();
     const iterationLabel = `迭代 ${i + 1}`;
     const iterationEvent: AgentReactEvent = {
       kind: "task",
@@ -230,6 +233,7 @@ export async function runReActLoop(input: {
     onProgress?.(`ReAct 迭代 ${i + 1}/${maxIterations}`);
     let streamText = "";
     let streamReasoning = "";
+    ensureNotCancelled();
     const decision = await deps
       .invokeTool<
         {
@@ -247,6 +251,7 @@ export async function runReActLoop(input: {
         tools: toolsForModel,
         tool_choice: "auto",
         onEvent: (event) => {
+          ensureNotCancelled();
           if (event.type === "reasoning_delta" && event.reasoning_delta) {
             streamReasoning += event.reasoning_delta;
             thoughtEvent.text = streamReasoning.trim();
@@ -316,6 +321,7 @@ export async function runReActLoop(input: {
         }
         return { type: "retry", rationale: "model_output_parse_failed" };
       });
+    ensureNotCancelled();
 
     // Do not inject host-side "thought summary" into the stream. Reasoner-style thinking
     // should come from provider `reasoning_delta` only.
@@ -426,6 +432,7 @@ export async function runReActLoop(input: {
       stepStates: state.stepStates,
       workingMemory: state.workingMemory,
     });
+    ensureNotCancelled();
 
     const actionPayload =
       decision.input && typeof decision.input === "object" ? (decision.input as Record<string, unknown>) : undefined;
@@ -440,14 +447,19 @@ export async function runReActLoop(input: {
     const toolCallId = String(selectedToolCall?.id || `call_${i + 1}_${toolName}`);
     const assistantToolCalls =
       rawToolCalls.length > 0
-        ? rawToolCalls.map((call, index) => ({
-            id: String(call.id || `call_${i + 1}_${index}`),
-            type: call.type || "function",
-            function: {
-              name: String(call.function?.name || ""),
-              arguments: typeof call.function?.arguments === "string" ? call.function.arguments : "{}",
+        ? [
+            {
+              id: toolCallId,
+              type: selectedToolCall?.type || "function",
+              function: {
+                name: toolName,
+                arguments:
+                  typeof selectedToolCall?.function?.arguments === "string"
+                    ? selectedToolCall.function.arguments
+                    : JSON.stringify(toolInput ?? {}),
+              },
             },
-          }))
+          ]
         : [
             {
               id: toolCallId,
@@ -475,12 +487,19 @@ export async function runReActLoop(input: {
       stepKind: stepKind,
     };
     state.reactEvents.push(toolCallEvent);
+    deps.onProgress?.({
+      detail: `执行工具：${toolName}`,
+      reactEvents: state.reactEvents,
+      stepStates: state.stepStates,
+      workingMemory: state.workingMemory,
+    });
 
     try {
       const toolResult = isSpecial && specialTools
         ? await specialTools[toolName]({ toolName, toolInput, iteration: i, messages: messages.slice() })
         : undefined;
       const output = toolResult ? toolResult.output : await deps.invokeTool<typeof toolInput, unknown>(toolName, toolInput as never);
+      ensureNotCancelled();
       onToolResult?.(toolName, output);
       const formatted = formatObservation?.(toolName, output);
       const outputSummary = toolResult?.observationForUi ?? formatted?.summary ?? summarize(output, 900);
@@ -517,6 +536,9 @@ export async function runReActLoop(input: {
       });
       iterationEvent.status = "done";
     } catch (err) {
+      if (isCancelledError(err)) {
+        throw err;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       state.toolTraces.push({ toolName, status: "blocked", note: msg });
       toolCallEvent.status = "failed";

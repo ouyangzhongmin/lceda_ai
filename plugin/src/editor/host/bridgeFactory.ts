@@ -48,6 +48,7 @@ export function createStandardHostBridge(rawApi?: RawHostApi): HostEditorBridge 
       locate: Boolean(capabilities.locateObject),
     },
     {
+      createEmptySchematicPage: Boolean(capabilities.createEmptySchematicPage),
       previewApplyPlan: Boolean(capabilities.previewApplyPlan),
       applyPlan: Boolean(capabilities.applyPlan),
       rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
@@ -70,6 +71,12 @@ export function createStandardHostBridge(rawApi?: RawHostApi): HostEditorBridge 
         return;
       }
       throw new Error("standard host bridge locate is not available");
+    },
+    createEmptySchematicPage: async (input) => {
+      if (!capabilities.createEmptySchematicPage) {
+        throw new Error("standard host bridge createEmptySchematicPage is not available");
+      }
+      await capabilities.createEmptySchematicPage(input);
     },
     previewApplyPlan: capabilities.previewApplyPlan,
     applyPlan: capabilities.applyPlan,
@@ -104,6 +111,7 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
       locate: Boolean(capabilities.locateObject),
     },
     {
+      createEmptySchematicPage: Boolean(capabilities.createEmptySchematicPage),
       previewApplyPlan: Boolean(capabilities.previewApplyPlan),
       applyPlan: Boolean(capabilities.applyPlan),
       rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
@@ -127,6 +135,12 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
         return;
       }
       throw new Error("professional host bridge locate is not available");
+    },
+    createEmptySchematicPage: async (input) => {
+      if (!capabilities.createEmptySchematicPage) {
+        throw new Error("professional host bridge createEmptySchematicPage is not available");
+      }
+      await capabilities.createEmptySchematicPage(input);
     },
     previewApplyPlan: capabilities.previewApplyPlan,
     applyPlan: capabilities.applyPlan,

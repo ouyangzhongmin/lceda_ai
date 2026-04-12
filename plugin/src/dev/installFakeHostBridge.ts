@@ -3,7 +3,7 @@ import { installHostBridge } from "../editor/host/installHostBridge";
 import { previewDraftPlan } from "../editor/apply-plan/previewDraftPlan";
 
 export function installFakeHostBridge(channel: PluginChannel): void {
-  const context = buildFakeContext(channel);
+  let context = buildFakeContext(channel);
   let txSeq = 0;
 
   const locate = async (target: { objectId: string }): Promise<void> => {
@@ -26,6 +26,10 @@ export function installFakeHostBridge(channel: PluginChannel): void {
           getActiveSchematicContext: async () => context,
           getCurrentSelection: async () => context.selection,
           locateEntity: locate,
+          createEmptySchematicPage: async (input) => {
+            context = buildEmptyFakeContext(channel, input?.title || "Draft Plan");
+            return context;
+          },
         },
         system: {
           openBrowser: async (url) => {
@@ -109,6 +113,10 @@ export function installFakeHostBridge(channel: PluginChannel): void {
         getCurrentDocument: async () => context,
         getSelection: async () => context.selection,
         locateObject: locate,
+        createEmptyPage: async (input) => {
+          context = buildEmptyFakeContext(channel, input?.title || "Draft Plan");
+          return context;
+        },
       },
       shell: {
         openExternal: async (url) => {
@@ -168,6 +176,23 @@ function buildFakeContext(channel: PluginChannel) {
         isPower: true,
       },
     ],
+    selection: {
+      objectIds: [],
+    },
+  };
+}
+
+function buildEmptyFakeContext(channel: PluginChannel, pageName: string) {
+  return {
+    project: {
+      projectId: `${channel}-fake-project`,
+      pageId: `${channel}-fake-page-draft`,
+      pageName,
+      channel,
+    },
+    components: [],
+    pins: [],
+    nets: [],
     selection: {
       objectIds: [],
     },

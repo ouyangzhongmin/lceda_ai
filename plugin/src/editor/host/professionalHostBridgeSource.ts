@@ -96,9 +96,18 @@ export function resolveProfessionalRawHostApi(): ProfessionalRawHostApi | undefi
               ["selectShape", [target.objectId]],
               ["selectShape", target.objectId],
               ["locateShape", target.objectId],
-              ["focusShape", target.objectId],
-            ]);
-          },
+                ["focusShape", target.objectId],
+              ]);
+            },
+      createEmptySchematicPage: fromNamespace?.editor?.createEmptySchematicPage
+        ? fromNamespace.editor.createEmptySchematicPage
+        : async (input): Promise<unknown> =>
+            callApiCandidate(callApi, [
+              ["createEmptySchematicPage", input ?? {}],
+              ["createSchematicPage", input ?? {}],
+              ["newSchematicPage", input ?? {}],
+              ["createEmptyPage", input ?? {}],
+            ]),
     },
     system: {
       openBrowser: fromNamespace?.system?.openBrowser

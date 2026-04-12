@@ -12,6 +12,7 @@ export interface ProfessionalRawHostApi {
     getActiveSchematicContext?: () => Promise<unknown> | unknown;
     getCurrentSelection?: () => Promise<unknown> | unknown;
     locateEntity?: (target: { objectId: string; objectType: "component" | "pin" | "net" }) => Promise<void> | void;
+    createEmptySchematicPage?: (input?: { title?: string }) => Promise<unknown> | unknown;
   };
   system?: {
     openBrowser?: (url: string) => Promise<void> | void;
@@ -54,6 +55,7 @@ export interface ProfessionalHostCapabilities {
   getCurrentDocument?: () => Promise<unknown>;
   getSelection?: () => Promise<unknown>;
   locateObject?: (target: { objectId: string; objectType: "component" | "pin" | "net" }) => Promise<void>;
+  createEmptySchematicPage?: (input?: { title?: string }) => Promise<unknown>;
   openExternal?: (url: string) => Promise<void>;
   showToastMessage?: (message: string, timeoutMs?: number) => Promise<void>;
   searchLibraryDevices?: (input: {
@@ -97,6 +99,9 @@ export function resolveProfessionalHostCapabilities(
       ? async (target): Promise<void> => {
           await rawApi.editor!.locateEntity!(target);
         }
+      : undefined,
+    createEmptySchematicPage: rawApi?.editor?.createEmptySchematicPage
+      ? async (input): Promise<unknown> => rawApi.editor!.createEmptySchematicPage!(input)
       : undefined,
     openExternal: rawApi?.system?.openBrowser
       ? async (url: string): Promise<void> => {

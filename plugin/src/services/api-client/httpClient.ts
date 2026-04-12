@@ -2,6 +2,7 @@ export interface HttpRequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
   body?: string;
+  signal?: AbortSignal;
 }
 
 export class HttpError extends Error {
@@ -40,6 +41,7 @@ export class FetchHttpClient implements HttpClient {
       method: options.method ?? "GET",
       headers: options.headers,
       body: options.body,
+      signal: options.signal,
     });
 
     const responseText = await response.text();
@@ -70,6 +72,7 @@ export class FetchHttpClient implements HttpClient {
       method: options.method ?? "GET",
       headers: options.headers,
       body: options.body,
+      signal: options.signal,
     });
     if (!response.ok) {
       const responseText = await response.text();

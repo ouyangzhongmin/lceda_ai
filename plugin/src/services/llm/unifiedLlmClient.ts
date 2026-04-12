@@ -9,6 +9,7 @@ export interface UnifiedLlmInput {
   model?: string;
   stream?: boolean;
   onEvent?: (event: LlmStreamEvent) => void;
+  signal?: AbortSignal;
   messages: LlmMessage[];
   tools?: LlmTool[];
   tool_choice?: LlmToolChoice;
@@ -69,7 +70,7 @@ export class UnifiedLlmClient {
         let finalEvent: LlmStreamEvent | undefined;
         await this.customClient.generateStream(
           { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model },
-          { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice },
+          { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice, signal: input.signal },
           (event) => {
             if (event.type === "delta") {
               outputText += event.delta ?? "";
@@ -99,7 +100,7 @@ export class UnifiedLlmClient {
 
       const res = await this.customClient.generate(
         { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model },
-        { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice }
+        { model: input.model, messages: input.messages, tools: input.tools, tool_choice: input.tool_choice, signal: input.signal }
       );
       return {
         request_id: "custom",
@@ -137,6 +138,7 @@ export class UnifiedLlmClient {
           messages: input.messages,
           tools: input.tools,
           tool_choice: input.tool_choice,
+          signal: input.signal,
         },
         (event) => {
           if (event.type === "delta") {
@@ -170,6 +172,7 @@ export class UnifiedLlmClient {
       messages: input.messages,
       tools: input.tools,
       tool_choice: input.tool_choice,
+      signal: input.signal,
     });
   }
 }

@@ -5,7 +5,10 @@ export interface CustomLlmConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  preferredOutputLanguage: string;
 }
+
+export const DEFAULT_PREFERRED_OUTPUT_LANGUAGE = "zh-CN";
 
 export class CustomLlmConfigStore {
   constructor(
@@ -34,6 +37,10 @@ export class CustomLlmConfigStore {
       baseUrl: parsed.baseUrl,
       apiKey: parsed.apiKey,
       model: parsed.model,
+      preferredOutputLanguage:
+        typeof parsed.preferredOutputLanguage === "string" && parsed.preferredOutputLanguage.trim()
+          ? parsed.preferredOutputLanguage.trim()
+          : DEFAULT_PREFERRED_OUTPUT_LANGUAGE,
     };
   }
 

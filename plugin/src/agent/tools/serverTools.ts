@@ -1,4 +1,4 @@
-import type { AgentTool } from "./toolRegistry";
+import type { AgentTool, ToolExecutionContext } from "./toolRegistry";
 import type { RagClient } from "../../services/rag/ragClient";
 import type { LlmProxyClient } from "../../services/llm/llmProxyClient";
 import type { SessionStore } from "../../services/auth/sessionStore";
@@ -32,8 +32,8 @@ export function createServerTools(
         required: ["query"],
         additionalProperties: false,
       },
-      execute: async (input: { query: string; topK?: number }) =>
-        ragClient.search(input.query, input.topK ?? 3),
+      execute: async (input: { query: string; topK?: number }, context?: ToolExecutionContext) =>
+        ragClient.search(input.query, input.topK ?? 3, context?.signal),
     },
     {
       name: "rag_build_citations",
@@ -47,8 +47,8 @@ export function createServerTools(
         required: ["query"],
         additionalProperties: false,
       },
-      execute: async (input: { query: string; topK?: number }) =>
-        ragClient.buildCitations(input.query, input.topK ?? 3),
+      execute: async (input: { query: string; topK?: number }, context?: ToolExecutionContext) =>
+        ragClient.buildCitations(input.query, input.topK ?? 3, context?.signal),
     },
     {
       name: "llm_generate",
@@ -60,10 +60,11 @@ export function createServerTools(
         onEvent?: (event: import("../../services/llm/llmProxyClient").LlmStreamEvent) => void;
         tools?: import("../../services/llm/llmProxyClient").LlmTool[];
         tool_choice?: import("../../services/llm/llmProxyClient").LlmToolChoice;
+        signal?: AbortSignal;
         messages: LlmMessage[];
-      }) => {
+      }, context?: ToolExecutionContext) => {
         if (unifiedClient) {
-          return unifiedClient.generate(input);
+          return unifiedClient.generate({ ...input, signal: input.signal ?? context?.signal });
         }
         const session = await sessionStore.get();
         if (!session) {
@@ -80,6 +81,7 @@ export function createServerTools(
               messages: input.messages,
               tools: input.tools,
               tool_choice: input.tool_choice,
+              signal: input.signal ?? context?.signal,
             },
             (event) => {
               if (event.type === "delta") {
@@ -113,6 +115,7 @@ export function createServerTools(
           messages: input.messages,
           tools: input.tools,
           tool_choice: input.tool_choice,
+          signal: input.signal ?? context?.signal,
         });
       },
     },

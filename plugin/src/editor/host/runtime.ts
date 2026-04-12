@@ -61,6 +61,7 @@ export interface HostEditorBridge {
   getCurrentContext: () => Promise<SchematicContext>;
   getSelection: () => Promise<SchematicSelection>;
   locate: (target: LocateTarget) => Promise<void>;
+  createEmptySchematicPage?: (input?: { title?: string }) => Promise<SchematicContext | void>;
   previewApplyPlan?: (plan: DraftPlan) => Promise<DraftPreview>;
   applyPlan?: (plan: DraftPlan) => Promise<ApplyPlanResult>;
   rollbackApplyPlan?: (

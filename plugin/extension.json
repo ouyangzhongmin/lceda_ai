@@ -1,7 +1,7 @@
 {
   "name": "lceda-ai-assistant",
   "uuid": "8f6b9a9d4e8348a8b0fd67c2a1a4c9e1",
-  "displayName": "AI生成助手",
+  "displayName": "AI 生成助手",
   "description": "可以使用于嘉立创专业版与标准版的AI分析与生成原理图助手",
   "version": "0.1.0",
   "entry": "./dist/index",
@@ -25,7 +25,7 @@
     "sch": [
       {
         "id": "lceda-ai-assistant-root",
-        "title": "AI生成助手",
+        "title": "AI 生成助手",
         "menuItems": [
           {
             "id": "lceda-ai-assistant-open",

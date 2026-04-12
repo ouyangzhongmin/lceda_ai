@@ -268,6 +268,102 @@ test("runReActLoop preserves assistant tool_calls and tool messages across round
   ]);
 });
 
+test("runReActLoop only persists the executed tool_call when model returns multiple tool calls", async () => {
+  const llmMessages: unknown[][] = [];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "解释 J1 是什么器件" },
+    allowedTools: ["library_search_devices", "mcp_list_resources"],
+    listToolNames: () => ["library_search_devices", "mcp_list_resources", "llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName === "llm_generate") {
+        const payload = input as { messages?: unknown[] };
+        llmMessages.push((payload.messages ?? []).slice());
+        if (llmMessages.length === 1) {
+          return {
+            output_text: "",
+            tool_calls: [
+              {
+                id: "call_lib",
+                type: "function",
+                function: {
+                  name: "library_search_devices",
+                  arguments: "{\"query\":\"power connector\"}",
+                },
+              },
+              {
+                id: "call_mcp",
+                type: "function",
+                function: {
+                  name: "mcp_list_resources",
+                  arguments: "{}",
+                },
+              },
+            ],
+          } as never;
+        }
+        return { output_text: '{"type":"final","route":"chat","rationale":"done"}' } as never;
+      }
+      if (toolName === "library_search_devices") {
+        return [{ name: "HDR-TH_1X2" }] as never;
+      }
+      if (toolName === "mcp_list_resources") {
+        throw new Error("unexpected second tool execution");
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+    toolDefinitions: [
+      {
+        name: "library_search_devices",
+        description: "搜索器件",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "mcp_list_resources",
+        description: "列出资源",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      },
+    ],
+  });
+
+  assert.equal(llmMessages.length, 2);
+  assert.deepEqual(llmMessages[1], [
+    { role: "system", content: "system" },
+    { role: "user", content: "user" },
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_lib",
+          type: "function",
+          function: {
+            name: "library_search_devices",
+            arguments: "{\"query\":\"power connector\"}",
+          },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_lib",
+      content: JSON.stringify([{ name: "HDR-TH_1X2" }]),
+    },
+  ]);
+});
+
 test("runReActLoop creates stepStates when mapped tools execute", async () => {
   const deps: ReactAgentDeps = {
     task: { type: "natural_chat", userQuery: "分析当前原理图有什么问题" },
@@ -327,6 +423,200 @@ test("runReActLoop creates stepStates when mapped tools execute", async () => {
       observation: "已完成：editor_get_current_context",
     },
   ]);
+});
+
+test("runReActLoop emits running tool_call progress before tool finishes", async () => {
+  const progressSnapshots: Array<{
+    detail: string;
+    reactEvents: ReactAgentState["reactEvents"];
+    stepStates: ReactAgentState["stepStates"];
+  }> = [];
+  let releaseTool: (() => void) | undefined;
+  let llmCalls = 0;
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "调用上下文工具" },
+    allowedTools: ["editor_get_current_context"],
+    listToolNames: () => ["editor_get_current_context", "llm_generate"],
+    onProgress: (payload) => {
+      progressSnapshots.push({
+        detail: payload.detail,
+        reactEvents: payload.reactEvents.map((event) => ({ ...event })),
+        stepStates: payload.stepStates.map((step) => ({ ...step })),
+      });
+    },
+    invokeTool: async (toolName) => {
+      if (toolName === "llm_generate") {
+        llmCalls += 1;
+        if (llmCalls > 1) {
+          return { output_text: '{"type":"final","route":"chat","rationale":"done"}' } as never;
+        }
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "editor_get_current_context",
+                arguments: "{}",
+              },
+            },
+          ],
+        } as never;
+      }
+      if (toolName === "editor_get_current_context") {
+        await new Promise<void>((resolve) => {
+          releaseTool = resolve;
+        });
+        return createMinimalContext() as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  const runPromise = runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+    toolDefinitions: [{
+      name: "editor_get_current_context",
+      description: "读取当前编辑器中的原理图上下文",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    mapToolToStepKind: () => "context",
+  });
+
+  let runningSnapshot:
+    | {
+        detail: string;
+        reactEvents: ReactAgentState["reactEvents"];
+        stepStates: ReactAgentState["stepStates"];
+      }
+    | undefined;
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      runningSnapshot = progressSnapshots.find((snapshot) =>
+        snapshot.reactEvents.some(
+          (event) => event.kind === "tool_call" && event.toolName === "editor_get_current_context" && event.status === "running"
+        )
+      );
+      if (runningSnapshot) break;
+    }
+
+    assert.ok(runningSnapshot);
+    assert.equal(runningSnapshot?.detail, "执行工具：editor_get_current_context");
+    assert.equal(
+      runningSnapshot?.stepStates.some((step) => step.kind === "context" && step.status === "running"),
+      true
+    );
+  } finally {
+    releaseTool?.();
+    await runPromise;
+  }
+});
+
+test("runReActLoop aborts before starting llm generation when signal is already aborted", async () => {
+  let llmCalls = 0;
+  const controller = new AbortController();
+  controller.abort();
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "停止当前任务" },
+    allowedTools: ["editor_get_current_context"],
+    listToolNames: () => ["editor_get_current_context", "llm_generate"],
+    signal: controller.signal,
+    isCancelled: () => controller.signal.aborted,
+    invokeTool: async (toolName) => {
+      if (toolName === "llm_generate") {
+        llmCalls += 1;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      runReActLoop({
+        deps,
+        state: createState(),
+        system: "system",
+        user: "user",
+      }),
+    (error: unknown) => error instanceof Error && error.name === "CancelledError"
+  );
+
+  assert.equal(llmCalls, 0);
+});
+
+test("runReActLoop drops late tool result after cancellation and does not continue to next llm round", async () => {
+  let llmCalls = 0;
+  let releaseTool: (() => void) | undefined;
+  const controller = new AbortController();
+  const state = createState();
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "停止当前任务" },
+    allowedTools: ["editor_get_current_context"],
+    listToolNames: () => ["editor_get_current_context", "llm_generate"],
+    signal: controller.signal,
+    isCancelled: () => controller.signal.aborted,
+    invokeTool: async (toolName) => {
+      if (toolName === "llm_generate") {
+        llmCalls += 1;
+        if (llmCalls === 1) {
+          return {
+            output_text: "",
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: {
+                  name: "editor_get_current_context",
+                  arguments: "{}",
+                },
+              },
+            ],
+          } as never;
+        }
+        return { output_text: '{"type":"final","route":"chat","rationale":"done"}' } as never;
+      }
+      if (toolName === "editor_get_current_context") {
+        await new Promise<void>((resolve) => {
+          releaseTool = resolve;
+        });
+        return createMinimalContext() as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  const runPromise = runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    toolDefinitions: [{
+      name: "editor_get_current_context",
+      description: "读取当前编辑器中的原理图上下文",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    }],
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  controller.abort();
+  releaseTool?.();
+
+  await assert.rejects(
+    () => runPromise,
+    (error: unknown) => error instanceof Error && error.name === "CancelledError"
+  );
+
+  assert.equal(llmCalls, 1);
+  assert.deepEqual(state.toolTraces, []);
+  assert.equal(state.reactEvents.some((event) => event.kind === "observation"), false);
 });
 
 test("runUnifiedReactAgent treats draft confirmation follow-up summary as chat instead of regenerating draft", async () => {
@@ -419,6 +709,170 @@ test("runUnifiedReactAgent treats draft confirmation follow-up summary as chat i
   );
 });
 
+test("runUnifiedReactAgent treats generic draft follow-up why-question as chat instead of regenerating draft", async () => {
+  const calls: string[] = [];
+  const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => {
+      calls.push("draft_generate_plan");
+      return {};
+    },
+  } as AgentTool);
+  tools.register({
+    name: "draft_preview_plan",
+    description: "根据草案计划生成预览摘要",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => {
+      calls.push("draft_preview_plan");
+      return {};
+    },
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown) => {
+    if (name === "llm_generate") {
+      const payload = input as { messages?: Array<{ role: string; content: string }>; tools?: Array<{ function: { name: string } }> };
+      llmPayloads.push({
+        system: payload.messages?.find((item) => item.role === "system")?.content,
+        user: payload.messages?.find((item) => item.role === "user")?.content,
+        tools: payload.tools,
+      });
+      return {
+        output_text:
+          '{"type":"final","route":"chat","rationale":"explain existing draft","output":"J1、J2、J3 是为电源输入、调试接入和外设预留的连接器。"}',
+      } as any;
+    }
+    return originalInvoke(name, input);
+  }) as typeof tools.invoke;
+
+  const result = await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "为什么会出现J1,J2,J3三个power_connector呢？",
+    panelState: {
+      loggedIn: true,
+      agentRunState: "awaiting_confirmation",
+      draftPreview: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["J1", "J2", "J3", "U1"],
+        netNames: ["5V", "VBAT", "3V3"],
+        componentCount: 4,
+        netCount: 3,
+      },
+      draftPlan: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        components: [],
+        pins: [],
+        nets: [],
+      } as DraftPlan,
+      chatMessages: [],
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["draft_generate_plan", "draft_preview_plan", "llm_generate"],
+  });
+
+  assert.equal(result.result.naturalReply?.includes("J1、J2、J3"), true);
+  assert.deepEqual(calls, []);
+  assert.equal(
+    llmPayloads[0]?.system?.includes("## 现有草案追问任务定义"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.tools?.some((tool) => tool.function.name === "draft_generate_plan"),
+    false
+  );
+});
+
+test("runUnifiedReactAgent defaults unmatched draft follow-up questions to summarize existing draft", async () => {
+  const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "draft_preview_plan",
+    description: "根据草案计划生成预览摘要",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown) => {
+    if (name === "llm_generate") {
+      const payload = input as { messages?: Array<{ role: string; content: string }>; tools?: Array<{ function: { name: string } }> };
+      llmPayloads.push({
+        system: payload.messages?.find((item) => item.role === "system")?.content,
+        user: payload.messages?.find((item) => item.role === "user")?.content,
+        tools: payload.tools,
+      });
+      return {
+        output_text:
+          '{"type":"final","route":"chat","rationale":"answer existing draft follow-up","output":"这版草案目前偏最小化，后续可以继续补充音频前端。"}',
+      } as any;
+    }
+    return originalInvoke(name, input);
+  }) as typeof tools.invoke;
+
+  const result = await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "这个方案整体思路再说清楚一点",
+    panelState: {
+      loggedIn: true,
+      agentRunState: "awaiting_confirmation",
+      draftPreview: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["U1", "U2", "J1"],
+        netNames: ["5V", "VBAT", "3V3"],
+        componentCount: 3,
+        netCount: 3,
+      },
+      draftPlan: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        components: [],
+        pins: [],
+        nets: [],
+      } as DraftPlan,
+      chatMessages: [],
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["draft_generate_plan", "draft_preview_plan", "llm_generate"],
+  });
+
+  assert.equal(result.result.naturalReply?.includes("整体思路"), false);
+  assert.equal(
+    llmPayloads[0]?.system?.includes("## 现有草案追问任务定义"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.tools?.some((tool) => tool.function.name === "draft_generate_plan"),
+    false
+  );
+});
+
 test("runUnifiedReactAgent treats draft confirmation revision request as draft refinement", async () => {
   const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
   const tools = new ToolRegistry();
@@ -496,6 +950,88 @@ test("runUnifiedReactAgent treats draft confirmation revision request as draft r
   );
   assert.equal(
     llmPayloads[0]?.tools?.some((tool) => tool.function.name === "draft_generate_plan"),
+    true
+  );
+});
+
+test("runUnifiedReactAgent keeps draft component-count complaint in existing-draft follow-up mode without relying on keyword hardcoding", async () => {
+  const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "draft_preview_plan",
+    description: "根据草案计划生成预览摘要",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown) => {
+    if (name === "llm_generate") {
+      const payload = input as { messages?: Array<{ role: string; content: string }>; tools?: Array<{ function: { name: string } }> };
+      llmPayloads.push({
+        system: payload.messages?.find((item) => item.role === "system")?.content,
+        user: payload.messages?.find((item) => item.role === "user")?.content,
+        tools: payload.tools,
+      });
+      return {
+        output_text:
+          '{"type":"final","route":"chat","rationale":"answer follow-up","output":"当前器件偏少，是因为上一版还是最小占位草案。"}',
+      } as any;
+    }
+    return originalInvoke(name, input);
+  }) as typeof tools.invoke;
+
+  const result = await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "这个为什么只找到4个器件？",
+    panelState: {
+      loggedIn: true,
+      agentRunState: "awaiting_confirmation",
+      draftPreview: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["U1", "U2", "U3"],
+        netNames: ["5V", "VBAT", "3V3", "GND"],
+        componentCount: 3,
+        netCount: 4,
+      },
+      draftPlan: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        components: [],
+        pins: [],
+        nets: [],
+      } as DraftPlan,
+      chatMessages: [],
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["draft_generate_plan", "draft_preview_plan", "llm_generate"],
+  });
+
+  assert.equal(result.result.naturalReply?.includes("当前器件偏少"), true);
+  assert.equal(
+    llmPayloads[0]?.system?.includes("## 现有草案追问任务定义"),
+    true
+  );
+  assert.equal(
+    llmPayloads[0]?.tools?.some((tool) => tool.function.name === "draft_generate_plan"),
+    false
+  );
+  assert.equal(
+    llmPayloads[0]?.user?.includes("优先复用当前草案摘要直接回答"),
     true
   );
 });

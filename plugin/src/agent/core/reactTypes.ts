@@ -23,6 +23,8 @@ export interface ReactAgentDeps {
   allowedTools: string[];
   invokeTool<TInput, TOutput>(toolName: string, input: TInput): Promise<TOutput>;
   listToolNames(): string[];
+  signal?: AbortSignal;
+  isCancelled?: () => boolean;
   onProgress?: (payload: {
     detail: string;
     textDelta?: string;
