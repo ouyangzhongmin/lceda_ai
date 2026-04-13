@@ -2,14 +2,21 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 
 import {
+  applyCustomLlmConfigSavedState,
   appendAssistantMessages,
   appendUserChatMessage,
+  buildDraftApplyUnavailableMessage,
   buildDevicePickerApplyProgressText,
+  buildDevicePickerCandidatePresentation,
   buildDevicePickerSearchProgressText,
+  buildDevicePickerReasonLabel,
+  buildDevicePickerRoleLabel,
   deriveSessionHistoryEntries,
   finalizeDraftTurnMessages,
   formatDraftApplyErrorMessage,
   hasUnresolvedDraftDevices,
+  inferDraftComponentRole,
+  mergeAssistantFinalMessage,
   normalizeDevicePickerCandidates,
   shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
@@ -18,6 +25,7 @@ import {
 } from "../assistantRuntime";
 import { getAssistantCardLayout } from "../assistantCardLayout";
 import type { MainPanelState } from "../../ui/panels/mainPanel";
+import { previewDraftPlan } from "../../editor/apply-plan/previewDraftPlan";
 
 test("shouldIgnoreDuplicateSendWhileRunning returns true for the same pending prompt in an active turn", () => {
   assert.equal(
@@ -146,6 +154,15 @@ test("formatDraftApplyErrorMessage keeps generic errors readable", () => {
   );
 });
 
+test("formatDraftApplyErrorMessage converts unresolved placement device errors into actionable guidance", () => {
+  assert.equal(
+    formatDraftApplyErrorMessage(
+      new Error("typed placement requires all draft components to have resolved devices: B1, U3")
+    ),
+    "应用草案失败：以下器件还没有完成可放置器件选型：B1、U3。请先完成器件确认，再重新应用草案。"
+  );
+});
+
 test("draft confirmation follow-up summary requests should not auto-apply", () => {
   assert.equal(
     shouldAutoApplyDraftFromChatInput({
@@ -195,6 +212,85 @@ test("appendUserChatMessage preserves the confirm prompt before auto-applying a 
   assert.equal(merged.length, 3);
   assert.equal(merged[2]?.role, "user");
   assert.equal(merged[2]?.content, "确认");
+});
+
+test("mergeAssistantFinalMessage fully replaces streamed content while preserving progress metadata", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "{\"type\":\"final\",\"route\":\"analysis\"}",
+    streaming: true,
+    reactEvents: [
+      { kind: "thought" as const, label: "Reasoning", status: "done" as const, text: "思考中", stepKind: "llm" as const },
+    ],
+    stepStates: [
+      { kind: "llm" as const, required: true, note: "生成最终报告", status: "done" as const },
+    ],
+    workingMemory: {
+      hasContext: true,
+      mcpReady: false,
+      libraryReady: false,
+      llmReady: true,
+      rulesReady: false,
+      draftReady: false,
+      lastObservation: "已有最终结论",
+    },
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "# 原理图审查报告\n\n最终正文",
+    tone: "warning" as const,
+    structuredContent: [
+      { kind: "paragraph" as const, text: "最终结构化内容" },
+    ],
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(merged.streaming, false);
+  assert.equal(merged.title, "分析结果");
+  assert.equal(merged.content, "# 原理图审查报告\n\n最终正文");
+  assert.equal(Array.isArray(merged.structuredContent), true);
+  assert.equal(merged.reactEvents?.length, 1);
+  assert.equal(merged.stepStates?.length, 1);
+  assert.equal(merged.workingMemory?.lastObservation, "已有最终结论");
+});
+
+test("applyCustomLlmConfigSavedState keeps existing chat messages and uses toast instead", () => {
+  const state = {
+    chatMessages: [
+      { role: "user" as const, title: "你", content: "之前的对话" },
+      { role: "assistant" as const, title: "分析结果", content: "这里已经有内容" },
+    ],
+    summary: "旧状态",
+  } as MainPanelState;
+
+  const next = applyCustomLlmConfigSavedState(state, 123);
+
+  assert.equal(next.summary, "自定义 LLM 配置已保存。");
+  assert.equal(next.toast?.id, 123);
+  assert.equal(next.toast?.message, "自定义 LLM 配置已保存。");
+  assert.equal(next.chatMessages?.length, 2);
+  assert.equal(next.chatMessages?.[0]?.content, "之前的对话");
+  assert.equal(next.chatMessages?.[1]?.content, "这里已经有内容");
+});
+
+test("buildDraftApplyUnavailableMessage explains adapter source and missing apply capability", () => {
+  const message = buildDraftApplyUnavailableMessage({
+    adapterSource: "host",
+    capabilityReport: {
+      channel: "professional",
+      available: true,
+      missing: [],
+      optionalMissing: ["applyPlan", "rollbackApplyPlan"],
+    },
+  });
+
+  assert.equal(
+    message,
+    "应用草案失败：宿主未真正执行原理图应用。当前适配器来源：host；缺少能力：applyPlan、rollbackApplyPlan。请先检查宿主 applyPlan 能力是否已接通。"
+  );
 });
 
 test("getAssistantCardLayout places the final report after expanded steps when execution is complete", () => {
@@ -303,6 +399,95 @@ test("buildDevicePickerSearchProgressText returns expected progress text", () =>
 
 test("buildDevicePickerApplyProgressText returns expected progress text", () => {
   assert.equal(buildDevicePickerApplyProgressText(3, 7), "正在确认待确认器件（3/7）...");
+});
+
+test("buildDevicePickerRoleLabel humanizes internal role names", () => {
+  assert.equal(buildDevicePickerRoleLabel("power_connector"), "电源输入接口");
+  assert.equal(buildDevicePickerRoleLabel("battery_connector"), "电池接口");
+  assert.equal(buildDevicePickerRoleLabel("ldo_regulator"), "稳压器");
+  assert.equal(buildDevicePickerRoleLabel("generic"), "待确认器件");
+});
+
+test("inferDraftComponentRole recognizes LED-style refs instead of treating them as generic", () => {
+  assert.equal(inferDraftComponentRole("LED1"), "led");
+  assert.equal(inferDraftComponentRole("LED2"), "led");
+  assert.equal(inferDraftComponentRole("D1"), "led");
+  assert.equal(inferDraftComponentRole("BT1"), "battery_connector");
+});
+
+test("buildDevicePickerReasonLabel translates internal unresolved reasons into user-facing language", () => {
+  assert.equal(
+    buildDevicePickerReasonLabel({
+      reason: "all_candidates_filtered",
+      role: "power_connector",
+      query: "USB Type-C 16PIN",
+    }),
+    "自动筛选后没有找到完全符合当前用途的器件，下面展示的是接近的候选。"
+  );
+  assert.equal(
+    buildDevicePickerReasonLabel({
+      reason: "unresolved",
+      role: "battery_connector",
+      query: "JST PH 2P",
+    }),
+    "还没有找到可直接确认的电池接口。"
+  );
+});
+
+test("previewDraftPlan hides internal unresolved markers for battery connectors", () => {
+  const preview = previewDraftPlan({
+    title: "battery preview",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-bt1",
+        ref: "BT1",
+        name: "Battery Connector",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {
+          device_resolution_status: "unresolved",
+          device_resolution_reason: "no_search_results",
+          preferred_search_query: "JST PH 2P battery connector",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  } as any);
+
+  assert.deepEqual(preview.unresolvedDeviceDetails, ["BT1：电池接口，暂未自动匹配到可直接放置的器件。建议搜索：JST PH 2P battery connector"]);
+});
+
+test("buildDevicePickerCandidatePresentation explains why a usb-c receptacle fits a power connector slot", () => {
+  const presentation = buildDevicePickerCandidatePresentation(
+    {
+      role: "power_connector",
+      query: "USB Type-C 16PIN",
+    },
+    {
+      uuid: "cand-1",
+      name: "TYPE-C16PIN母座 板上四脚三次molding",
+      libraryUuid: "lib-1",
+      footprintName: "USB-SMD_TYPE-C16PIN",
+      supplierId: "C9900000202",
+      description: "Type-C receptacle connector",
+    },
+    1
+  );
+
+  assert.equal(presentation.fitLevel, "recommended");
+  assert.equal(presentation.fitLabel, "较匹配");
+  assert.equal(presentation.typeLabel, "USB Type-C 接口");
+  assert.equal(
+    presentation.summary,
+    "可作为电源输入接口使用，和当前“USB Type-C 16PIN”的查询目标基本一致。"
+  );
+  assert.equal(
+    presentation.reasons.includes("接口外形与查询目标接近，更可能适合作为当前接口位。"),
+    true
+  );
 });
 
 test("normalizeDevicePickerCandidates unwraps wrapped host payload and maps title-based fields", () => {

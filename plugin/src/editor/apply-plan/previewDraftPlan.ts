@@ -4,6 +4,7 @@ import { normalizeDraftPlan } from "./generateDraftPlan";
 function formatGuidanceRole(role: string): string {
   const map: Record<string, string> = {
     power_connector: "电源接口",
+    battery_connector: "电池接口",
     resistor: "限流电阻",
     led: "LED 器件",
     ldo_regulator: "LDO 稳压器",
@@ -69,22 +70,29 @@ export function previewDraftPlan(plan: DraftPlan): DraftPreview {
       if (item.manufacturer) {
         parts.push(`- ${item.manufacturer}`);
       }
+      if (typeof item.pinCount === "number") {
+        parts.push(`- pins=${item.pinCount}`);
+      }
+      if (item.pinSummary) {
+        parts.push(`- pin_sample=${item.pinSummary}`);
+      }
       return parts.join(" ");
     }),
     unresolvedDeviceDetails: normalized.components
       .filter((component) => component.properties?.device_resolution_status === "unresolved")
       .map((component) => {
         const ref = component.ref ?? component.id;
+        const upperRef = ref.toUpperCase();
         const role =
-          ref.startsWith("J") ? "power_connector" :
-          ref.startsWith("R") ? "resistor" :
-          ref.startsWith("D") ? "led" :
-          ref.startsWith("C") ? "input_capacitor" :
-          ref.startsWith("U") ? "ldo_regulator" :
+          upperRef.startsWith("BT") || upperRef.startsWith("BAT") ? "battery_connector" :
+          upperRef.startsWith("J") ? "power_connector" :
+          upperRef.startsWith("R") ? "resistor" :
+          upperRef.startsWith("D") || upperRef.startsWith("LED") ? "led" :
+          upperRef.startsWith("C") ? "input_capacitor" :
+          upperRef.startsWith("U") ? "ldo_regulator" :
           "generic";
-        const reason = component.properties?.device_resolution_reason || "unknown";
         const query = component.properties?.preferred_search_query;
-        return `${ref} / ${role}: unresolved (${reason})${query ? ` query=${query}` : ""}`;
+        return `${ref}：${formatGuidanceRole(role)}，暂未自动匹配到可直接放置的器件。${query ? `建议搜索：${query}` : ""}`;
       }),
     guidanceSummary: guidance
       ? {

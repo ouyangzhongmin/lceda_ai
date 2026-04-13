@@ -95,3 +95,160 @@ test("resolveDraftPlanDevices annotates unresolved status when all connector can
   assert.equal(resolved.components[0]?.properties.device_resolution_status, "unresolved");
   assert.equal(resolved.components[0]?.properties.device_resolution_reason, "all_candidates_filtered");
 });
+
+test("resolveDraftPlanDevices rewrites semantic draft pins to real library pins when device detail is available", async () => {
+  const draft = {
+    title: "voice device",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-u1",
+        ref: "U1",
+        name: "ESP32-S3-WROOM-1U",
+        packageName: "WIRELM-SMD_ESP32-S3-WROOM-1U",
+        value: "ESP32-S3",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {
+          role: "mcu_module",
+          preferred_search_query: "ESP32-S3-WROOM-1U",
+        },
+      },
+      {
+        id: "draft-u3",
+        ref: "U3",
+        name: "ES8388",
+        packageName: "QFN-28_L4.0-W4.0-P0.45-BL-EP",
+        value: "ES8388",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {
+          role: "audio_codec",
+          preferred_search_query: "ES8388",
+        },
+      },
+    ],
+    pins: [
+      { id: "draft-u1-i2s-sck", componentId: "draft-u1", pinName: "I2S_SCK", electricalType: "bidirectional" },
+      { id: "draft-u1-i2s-ws", componentId: "draft-u1", pinName: "I2S_WS", electricalType: "bidirectional" },
+      { id: "draft-u3-i2s-sck", componentId: "draft-u3", pinName: "I2S_SCK", electricalType: "input" },
+      { id: "draft-u3-i2s-ws", componentId: "draft-u3", pinName: "I2S_WS", electricalType: "input" },
+    ],
+    nets: [
+      { id: "net-bclk", name: "I2S_SCK", nodeIds: ["draft-u1-i2s-sck", "draft-u3-i2s-sck"] },
+      { id: "net-lrck", name: "I2S_LRCK", nodeIds: ["draft-u1-i2s-ws", "draft-u3-i2s-ws"] },
+    ],
+  } as any;
+
+  const resolved = await resolveDraftPlanDevices(
+    draft,
+    async (query) => {
+      if (query.includes("ESP32-S3")) {
+        return [{ uuid: "dev-u1", name: "ESP32-S3-WROOM-1U", libraryUuid: "lib-u1", footprintName: "WIRELM-SMD_ESP32-S3-WROOM-1U" }];
+      }
+      if (query.includes("ES8388")) {
+        return [{ uuid: "dev-u3", name: "ES8388", libraryUuid: "lib-u3", footprintName: "QFN-28_L4.0-W4.0-P0.45-BL-EP" }];
+      }
+      return [];
+    },
+    async ({ deviceUuid }) => {
+      if (deviceUuid === "dev-u1") {
+        return {
+          uuid: "dev-u1",
+          raw: {
+            pins: [
+              { id: "u1-bclk", pinName: "BCLK", pinNumber: "12" },
+              { id: "u1-lrck", pinName: "LRCK", pinNumber: "13" },
+            ],
+          },
+        };
+      }
+      if (deviceUuid === "dev-u3") {
+        return {
+          uuid: "dev-u3",
+          raw: {
+            pins: [
+              { id: "u3-bclk", pinName: "SCLK", pinNumber: "5" },
+              { id: "u3-lrck", pinName: "LRCK", pinNumber: "6" },
+            ],
+          },
+        };
+      }
+      return null as any;
+    }
+  );
+
+  const u1Bclk = resolved.pins.find((pin: any) => pin.id === "draft-u1-i2s-sck");
+  const u3Bclk = resolved.pins.find((pin: any) => pin.id === "draft-u3-i2s-sck");
+  const u1Lrck = resolved.pins.find((pin: any) => pin.id === "draft-u1-i2s-ws");
+  const u3Lrck = resolved.pins.find((pin: any) => pin.id === "draft-u3-i2s-ws");
+
+  assert.equal(u1Bclk?.pinName, "BCLK");
+  assert.equal(u1Bclk?.pinNumber, "12");
+  assert.equal(u3Bclk?.pinName, "SCLK");
+  assert.equal(u3Bclk?.pinNumber, "5");
+  assert.equal(u1Lrck?.pinName, "LRCK");
+  assert.equal(u3Lrck?.pinName, "LRCK");
+  assert.deepEqual(resolved.nets[0]?.nodeIds, ["draft-u1-i2s-sck", "draft-u3-i2s-sck"]);
+});
+
+test("buildDraftDeviceSearchQuery infers battery connector queries for BT refs", () => {
+  const query = buildDraftDeviceSearchQuery({
+    id: "draft-bt1",
+    ref: "BT1",
+    name: "Battery Connector",
+    packageName: "",
+    value: "",
+    componentType: "part",
+    addIntoBom: true,
+    addIntoPcb: true,
+    properties: {},
+  } as any);
+
+  assert.equal(query, "JST PH 2P battery connector");
+});
+
+test("resolveDraftPlanDevices falls back to alternative battery connector queries when the first search returns no results", async () => {
+  const plan = {
+    title: "battery",
+    rationale: "battery connector test",
+    components: [
+      {
+        id: "draft-bt1",
+        ref: "BT1",
+        name: "Battery Connector",
+        packageName: "",
+        value: "",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {},
+      },
+    ],
+    pins: [],
+    nets: [],
+  } as any;
+
+  const attemptedQueries: string[] = [];
+  const resolved = await resolveDraftPlanDevices(plan, async (query) => {
+    attemptedQueries.push(query);
+    if (query === "JST PH 2P") {
+      return [
+        {
+          uuid: "bt-dev-1",
+          name: "PH2.0-2P",
+          libraryUuid: "bt-lib-1",
+          footprintName: "CONN-SMD_PH2.0-1X2PW",
+        },
+      ];
+    }
+    return [];
+  });
+
+  assert.deepEqual(attemptedQueries, ["JST PH 2P battery connector", "JST PH 2P"]);
+  assert.equal(resolved.components[0]?.properties.device_uuid, "bt-dev-1");
+  assert.equal(resolved.components[0]?.properties.preferred_search_query, "JST PH 2P");
+  assert.equal(resolved.selectedDevices?.[0]?.role, "battery_connector");
+});

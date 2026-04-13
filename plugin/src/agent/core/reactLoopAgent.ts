@@ -70,6 +70,20 @@ export async function runReActLoop(input: {
   ];
 
   const normalizeToolName = (name: string) => String(name || "").trim();
+  const stripFinalControlPayload = (text: string): string => {
+    const raw = String(text || "");
+    const controlPrefixes = [
+      /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+    ];
+    for (const pattern of controlPrefixes) {
+      const match = raw.match(pattern);
+      if (match) {
+        return match[1] ?? "";
+      }
+    }
+    return raw;
+  };
 
   const normalizeTodoStatus = (value: unknown): "pending" | "running" | "done" | "failed" | "skipped" => {
     const raw = String(value || "").trim().toLowerCase();
@@ -265,9 +279,17 @@ export async function runReActLoop(input: {
             });
           } else if (event.type === "delta" && event.delta) {
             // Avoid leaking control JSON into the main content; still keep a lightweight progress indicator.
-            streamText += event.delta;
+            const nextStreamText = streamText + event.delta;
+            const sanitizedStreamText = stripFinalControlPayload(nextStreamText);
+            const emittedDelta = sanitizedStreamText.slice(streamText.length);
+            streamText = sanitizedStreamText;
+            if (!emittedDelta) {
+              return;
+            }
             deps.onProgress?.({
               detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
+              textDelta: emittedDelta,
+              text: streamText,
               reactEvents: state.reactEvents,
               stepStates: state.stepStates,
               workingMemory: state.workingMemory,

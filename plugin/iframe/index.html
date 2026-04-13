@@ -2795,6 +2795,30 @@
       white-space: pre-wrap;
     }
 
+    .device-picker-intent {
+      margin-top: 10px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid #dbe7f5;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .device-picker-intent-title {
+      margin-bottom: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    .device-picker-intent-text {
+      font-size: 13px;
+      line-height: 1.7;
+      color: #334155;
+      font-weight: 600;
+    }
+
     .device-picker-search-btn,
     .device-picker-close-btn,
     .device-picker-use-btn {
@@ -2827,6 +2851,81 @@
       font-size: 12px;
       font-weight: 700;
       color: var(--text);
+    }
+
+    .device-picker-candidate-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .device-picker-candidate-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid #d7e3f0;
+      background: #f8fbfe;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .device-picker-candidate-badge.fit-recommended {
+      background: #ecfdf5;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    .device-picker-candidate-badge.fit-possible {
+      background: #fff7ed;
+      border-color: #fed7aa;
+      color: #c2410c;
+    }
+
+    .device-picker-candidate-badge.fit-weak {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #b91c1c;
+    }
+
+    .device-picker-candidate-summary {
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #1f2937;
+      font-weight: 700;
+    }
+
+    .device-picker-candidate-points {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .device-picker-candidate-point {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #e5edf6;
+      background: #fbfdff;
+    }
+
+    .device-picker-candidate-point-title {
+      margin-bottom: 4px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    .device-picker-candidate-point-text {
+      font-size: 12px;
+      line-height: 1.65;
+      color: #334155;
+      white-space: pre-wrap;
     }
 
     .device-picker-candidate-actions {
@@ -4896,7 +4995,7 @@
         head.className = "device-picker-item-head";
         const title = document.createElement("div");
         title.className = "device-picker-item-title";
-        title.textContent = `${item.componentRef} / ${item.role}`;
+        title.textContent = `${item.componentRef} / ${item.roleLabel || "待确认器件"}`;
         const status = document.createElement("div");
         status.className = `device-picker-status ${item.status}`;
         status.textContent = item.status === "resolved" ? "已匹配" : "待确认";
@@ -4906,8 +5005,26 @@
 
         const meta = document.createElement("div");
         meta.className = "device-picker-meta";
-        meta.textContent = [`原因: ${item.reason || "-"}`, item.query ? `查询: ${item.query}` : ""].filter(Boolean).join("\n");
+        meta.textContent = [
+          `用途: ${item.roleLabel || item.role || "-"}`,
+          item.reasonLabel ? `状态说明: ${item.reasonLabel}` : "",
+          item.query ? `搜索目标: ${item.query}` : "",
+        ].filter(Boolean).join("\n");
         card.appendChild(meta);
+
+        if (item.usageHint) {
+          const intent = document.createElement("div");
+          intent.className = "device-picker-intent";
+          const intentTitle = document.createElement("div");
+          intentTitle.className = "device-picker-intent-title";
+          intentTitle.textContent = "你现在要判断什么";
+          const intentText = document.createElement("div");
+          intentText.className = "device-picker-intent-text";
+          intentText.textContent = item.usageHint;
+          intent.appendChild(intentTitle);
+          intent.appendChild(intentText);
+          card.appendChild(intent);
+        }
 
         if (item.selectedDeviceLabel) {
           const selected = document.createElement("div");
@@ -4948,6 +5065,51 @@
             const candidateTitle = document.createElement("div");
             candidateTitle.className = "device-picker-candidate-title";
             candidateTitle.textContent = candidate.name;
+            const candidateBadges = document.createElement("div");
+            candidateBadges.className = "device-picker-candidate-badges";
+            if (candidate.typeLabel) {
+              const typeBadge = document.createElement("div");
+              typeBadge.className = "device-picker-candidate-badge";
+              typeBadge.textContent = candidate.typeLabel;
+              candidateBadges.appendChild(typeBadge);
+            }
+            if (candidate.fitLabel) {
+              const fitBadge = document.createElement("div");
+              fitBadge.className = `device-picker-candidate-badge fit-${candidate.fitLevel || "possible"}`;
+              fitBadge.textContent = candidate.fitLabel;
+              candidateBadges.appendChild(fitBadge);
+            }
+            const candidateSummary = document.createElement("div");
+            candidateSummary.className = "device-picker-candidate-summary";
+            candidateSummary.textContent = candidate.summary || "这是一个候选器件，请结合当前用途确认是否适合。";
+            const candidatePoints = document.createElement("div");
+            candidatePoints.className = "device-picker-candidate-points";
+            if (Array.isArray(candidate.reasons) && candidate.reasons.length > 0) {
+              const reasonBox = document.createElement("div");
+              reasonBox.className = "device-picker-candidate-point";
+              const reasonTitle = document.createElement("div");
+              reasonTitle.className = "device-picker-candidate-point-title";
+              reasonTitle.textContent = "为什么会推荐它";
+              const reasonText = document.createElement("div");
+              reasonText.className = "device-picker-candidate-point-text";
+              reasonText.textContent = candidate.reasons.join("\n");
+              reasonBox.appendChild(reasonTitle);
+              reasonBox.appendChild(reasonText);
+              candidatePoints.appendChild(reasonBox);
+            }
+            if (Array.isArray(candidate.cautions) && candidate.cautions.length > 0) {
+              const cautionBox = document.createElement("div");
+              cautionBox.className = "device-picker-candidate-point";
+              const cautionTitle = document.createElement("div");
+              cautionTitle.className = "device-picker-candidate-point-title";
+              cautionTitle.textContent = "选择前注意";
+              const cautionText = document.createElement("div");
+              cautionText.className = "device-picker-candidate-point-text";
+              cautionText.textContent = candidate.cautions.join("\n");
+              cautionBox.appendChild(cautionTitle);
+              cautionBox.appendChild(cautionText);
+              candidatePoints.appendChild(cautionBox);
+            }
             const candidateMeta = document.createElement("div");
             candidateMeta.className = "device-picker-candidate-meta";
             candidateMeta.textContent = [
@@ -4970,6 +5132,13 @@
             });
             actions.appendChild(useBtn);
             candidateCard.appendChild(candidateTitle);
+            if (candidateBadges.childNodes.length > 0) {
+              candidateCard.appendChild(candidateBadges);
+            }
+            candidateCard.appendChild(candidateSummary);
+            if (candidatePoints.childNodes.length > 0) {
+              candidateCard.appendChild(candidatePoints);
+            }
             candidateCard.appendChild(candidateMeta);
             candidateCard.appendChild(actions);
             list.appendChild(candidateCard);
@@ -5570,7 +5739,43 @@ var edaEsbuildExportName = (() => {
       footprint: normalizeLinkedLibraryItem(record.footprint),
       model3D: normalizeLinkedLibraryItem(record.model3D),
       otherProperty: typeof record.otherProperty === "object" && record.otherProperty !== null ? record.otherProperty : void 0,
+      pins: normalizeLibraryDevicePins(record),
       raw: value
+    };
+  }
+  function normalizeLibraryDevicePins(record) {
+    const candidates = [
+      record.pins,
+      record.pinList,
+      record.symbolPins,
+      typeof record.symbol === "object" && record.symbol !== null ? record.symbol.pins : void 0,
+      typeof record.raw === "object" && record.raw !== null ? record.raw.pins : void 0
+    ];
+    const source = candidates.find(Array.isArray);
+    if (!Array.isArray(source)) {
+      return void 0;
+    }
+    const pins = source.map((item) => normalizeLibraryDevicePin(item)).filter((item) => Boolean(item));
+    return pins.length > 0 ? pins : void 0;
+  }
+  function normalizeLibraryDevicePin(value) {
+    if (typeof value !== "object" || value === null) {
+      return void 0;
+    }
+    const record = value;
+    const pinName = readStringRecord(record, ["pinName", "name", "PinName", "Name"]);
+    const pinNumber = readStringRecord(record, ["pinNumber", "number", "PinNumber", "Number"]);
+    const id = readStringRecord(record, ["id", "uuid", "primitiveId", "PrimitiveId"]);
+    if (!pinName && !pinNumber && !id) {
+      return void 0;
+    }
+    return {
+      id,
+      pinName,
+      name: pinName,
+      pinNumber,
+      number: pinNumber,
+      electricalType: readStringRecord(record, ["electricalType", "ElectricalType", "type", "Type"])
     };
   }
   async function normalizeTypedComponent(value) {
@@ -6648,6 +6853,7 @@ var edaEsbuildExportName = (() => {
   function formatGuidanceRole(role) {
     const map = {
       power_connector: "\u7535\u6E90\u63A5\u53E3",
+      battery_connector: "\u7535\u6C60\u63A5\u53E3",
       resistor: "\u9650\u6D41\u7535\u963B",
       led: "LED \u5668\u4EF6",
       ldo_regulator: "LDO \u7A33\u538B\u5668",
@@ -6700,14 +6906,20 @@ var edaEsbuildExportName = (() => {
         if (item.manufacturer) {
           parts.push(`- ${item.manufacturer}`);
         }
+        if (typeof item.pinCount === "number") {
+          parts.push(`- pins=${item.pinCount}`);
+        }
+        if (item.pinSummary) {
+          parts.push(`- pin_sample=${item.pinSummary}`);
+        }
         return parts.join(" ");
       }),
       unresolvedDeviceDetails: normalized.components.filter((component) => component.properties?.device_resolution_status === "unresolved").map((component) => {
         const ref = component.ref ?? component.id;
-        const role = ref.startsWith("J") ? "power_connector" : ref.startsWith("R") ? "resistor" : ref.startsWith("D") ? "led" : ref.startsWith("C") ? "input_capacitor" : ref.startsWith("U") ? "ldo_regulator" : "generic";
-        const reason = component.properties?.device_resolution_reason || "unknown";
+        const upperRef = ref.toUpperCase();
+        const role = upperRef.startsWith("BT") || upperRef.startsWith("BAT") ? "battery_connector" : upperRef.startsWith("J") ? "power_connector" : upperRef.startsWith("R") ? "resistor" : upperRef.startsWith("D") || upperRef.startsWith("LED") ? "led" : upperRef.startsWith("C") ? "input_capacitor" : upperRef.startsWith("U") ? "ldo_regulator" : "generic";
         const query = component.properties?.preferred_search_query;
-        return `${ref} / ${role}: unresolved (${reason})${query ? ` query=${query}` : ""}`;
+        return `${ref}\uFF1A${formatGuidanceRole(role)}\uFF0C\u6682\u672A\u81EA\u52A8\u5339\u914D\u5230\u53EF\u76F4\u63A5\u653E\u7F6E\u7684\u5668\u4EF6\u3002${query ? `\u5EFA\u8BAE\u641C\u7D22\uFF1A${query}` : ""}`;
       }),
       guidanceSummary: guidance ? {
         templateId: guidance.templateId,
@@ -6744,6 +6956,9 @@ var edaEsbuildExportName = (() => {
   function inferComponentRole(component) {
     const ref = String(component.ref || "").toUpperCase();
     const name = String(component.name || "").toLowerCase();
+    if (ref.startsWith("BT") || ref.startsWith("BAT") || ref.startsWith("B") && (name.includes("battery") || name.includes("cell")) || name.includes("battery connector") || name.includes("battery socket") || name.includes("battery holder")) {
+      return "battery_connector";
+    }
     if (ref.startsWith("R") || name.includes("resistor")) return "resistor";
     if (ref.startsWith("D") || name.includes("led")) return "led";
     if (ref.startsWith("J") || name.includes("header") || name.includes("connector")) return "power_connector";
@@ -6761,11 +6976,21 @@ var edaEsbuildExportName = (() => {
     const pkg = String(component.packageName || "").trim();
     if (role === "resistor") return [value, "resistor", pkg].filter(Boolean).join(" ");
     if (role === "led") return [value, "LED", pkg].filter(Boolean).join(" ");
+    if (role === "battery_connector") return "JST PH 2P battery connector";
     if (role === "power_connector") return ["header 2pin", pkg].filter(Boolean).join(" ");
     if (role === "input_capacitor") return [value, "capacitor", pkg].filter(Boolean).join(" ");
     if (role === "ldo_regulator") return [value, "ldo regulator", pkg].filter(Boolean).join(" ");
     const fallback = [String(component.name || "").trim(), value, pkg].filter(Boolean).join(" ");
     return fallback || null;
+  }
+  function buildDraftDeviceSearchFallbackQueries(component, primaryQuery) {
+    const role = inferComponentRole(component);
+    if (role === "battery_connector") {
+      return [primaryQuery, "JST PH 2P", "PH2.0-2P", "\u7535\u6C60\u8FDE\u63A5\u5668 2P"].filter(
+        (query, index, list) => Boolean(query) && list.indexOf(query) === index
+      );
+    }
+    return [primaryQuery];
   }
   function pickBestSearchResult(component, results) {
     const role = inferComponentRole(component);
@@ -6779,6 +7004,9 @@ var edaEsbuildExportName = (() => {
     if (role === "power_connector") {
       return results.some((item) => isSuitableTwoPinConnector(item));
     }
+    if (role === "battery_connector") {
+      return results.some((item) => isSuitableBatteryConnector(item));
+    }
     return results.length > 0;
   }
   function isSuitableTwoPinConnector(item) {
@@ -6786,6 +7014,12 @@ var edaEsbuildExportName = (() => {
     if (!haystack.trim()) return false;
     if (/(10x2|20p|20pin|32p|32pin|40p|40pin|16p|16pin)/i.test(haystack)) return false;
     return /(1x2|2pin|2p|hdr-th_1x2|header\s*1x2|header\s*2pin|conn.*2pin)/i.test(haystack);
+  }
+  function isSuitableBatteryConnector(item) {
+    const haystack = `${item.name || ""} ${item.footprintName || ""} ${item.description || ""}`.toLowerCase();
+    if (!haystack.trim()) return false;
+    if (/(10x2|20p|20pin|32p|32pin|40p|40pin|16p|16pin|42pin)/i.test(haystack)) return false;
+    return /(ph2\.?0|jst|battery|电池|1x2|2pin|2p|conn.*2p|conn.*2pin)/i.test(haystack);
   }
   function scoreSearchResult(component, item) {
     const role = inferComponentRole(component);
@@ -6800,6 +7034,10 @@ var edaEsbuildExportName = (() => {
     }
     if (role === "power_connector") {
       if (/(hdr-th_1x2|1x2|2pin)/i.test(haystack)) score += 120;
+    }
+    if (role === "battery_connector") {
+      if (/(ph2\.?0|jst|battery|电池)/i.test(haystack)) score += 150;
+      if (/(1x2|2pin|2p)/i.test(haystack)) score += 120;
     }
     if (role === "resistor") {
       if (matchesResistanceValue(haystack, value)) score += 140;
@@ -6821,8 +7059,11 @@ var edaEsbuildExportName = (() => {
     }
     return false;
   }
-  function toSelectedDevice(component, query, result) {
+  function toSelectedDevice(component, query, result, detail) {
+    const detailPins = extractDetailPins(detail);
     return {
+      componentId: component.id,
+      componentRef: component.ref,
       role: inferComponentRole(component),
       query,
       deviceUuid: result.uuid,
@@ -6832,21 +7073,184 @@ var edaEsbuildExportName = (() => {
       symbolUuid: result.symbolUuid,
       symbolName: result.symbolName,
       footprintUuid: result.footprintUuid,
-      footprintName: result.footprintName
+      footprintName: result.footprintName,
+      pinCount: detailPins.length,
+      pinSummary: detailPins.length > 0 ? detailPins.slice(0, 4).map((pin) => [pin.pinNumber, pin.pinName].filter(Boolean).join(":")).filter(Boolean).join(", ") : detail ? "device_detail_without_pins" : "device_detail_unavailable"
     };
   }
-  async function resolveDraftPlanDevices(plan, searchLibraryDevices) {
+  function normalizeToken(value) {
+    return value.trim().toLowerCase().replace(/[^a-z0-9+_-]+/g, "");
+  }
+  function splitTokens(value) {
+    return value.split(/[\s/()[\]-]+/g).map((item) => item.trim()).filter((item) => item.length > 0);
+  }
+  var PIN_SEMANTIC_ALIASES = {
+    i2s_sck: "i2s_bclk",
+    bclk: "i2s_bclk",
+    sclk: "i2s_bclk",
+    i2s_bclk: "i2s_bclk",
+    i2s_ws: "i2s_lrck",
+    ws: "i2s_lrck",
+    lrck: "i2s_lrck",
+    lrc: "i2s_lrck",
+    i2s_lrck: "i2s_lrck",
+    i2s_sd: "i2s_data",
+    sd: "i2s_data",
+    sdin: "i2s_data",
+    sdout: "i2s_data",
+    din: "i2s_data",
+    dout: "i2s_data",
+    adcdat: "i2s_data",
+    dacdat: "i2s_data",
+    i2s_din: "i2s_data",
+    i2s_dout: "i2s_data",
+    gnd: "ground",
+    agnd: "ground",
+    pgnd: "ground",
+    vss: "ground",
+    vbat: "battery",
+    bat: "battery",
+    "bat+": "battery_pos",
+    "bat-": "battery_neg",
+    pos: "positive",
+    neg: "negative"
+  };
+  function normalizePinSemantic(name, pinNumber) {
+    const aliases = /* @__PURE__ */ new Set();
+    const addAlias = (value) => {
+      const normalized = normalizeToken(value);
+      if (!normalized) {
+        return;
+      }
+      aliases.add(normalized);
+      const semantic = PIN_SEMANTIC_ALIASES[normalized];
+      if (semantic) {
+        aliases.add(semantic);
+      }
+    };
+    if (name) {
+      addAlias(name);
+      for (const token of splitTokens(name)) {
+        addAlias(token);
+      }
+    }
+    if (pinNumber) {
+      addAlias(pinNumber);
+    }
+    return [...aliases];
+  }
+  function extractDetailPins(detail) {
+    const direct = Array.isArray(detail?.pins) ? detail.pins : void 0;
+    const rawRecord = typeof detail?.raw === "object" && detail.raw !== null ? detail.raw : void 0;
+    const rawPins = rawRecord?.pins;
+    const source = direct ?? (Array.isArray(rawPins) ? rawPins : void 0);
+    if (!Array.isArray(source)) {
+      return [];
+    }
+    return source.map((item) => {
+      if (typeof item !== "object" || item === null) {
+        return void 0;
+      }
+      const record = item;
+      const pinName = typeof record.pinName === "string" ? record.pinName : typeof record.name === "string" ? record.name : void 0;
+      const pinNumber = typeof record.pinNumber === "string" ? record.pinNumber : typeof record.number === "string" ? record.number : void 0;
+      const electricalType = typeof record.electricalType === "string" ? record.electricalType : typeof record.type === "string" ? record.type : void 0;
+      if (!pinName && !pinNumber) {
+        return void 0;
+      }
+      return { pinName, pinNumber, electricalType };
+    }).filter((item) => Boolean(item));
+  }
+  function scoreRealPinMatch(planPin, realPin) {
+    let score = 0;
+    if (planPin.pinNumber && realPin.pinNumber && planPin.pinNumber === realPin.pinNumber) {
+      score += 100;
+    }
+    if (planPin.pinName && realPin.pinName && planPin.pinName === realPin.pinName) {
+      score += 90;
+    }
+    const planAliases = normalizePinSemantic(planPin.pinName, planPin.pinNumber);
+    const realAliases = normalizePinSemantic(realPin.pinName, realPin.pinNumber);
+    if (planAliases.some((alias) => realAliases.includes(alias))) {
+      score += 60;
+    }
+    return score;
+  }
+  function rewritePlanPinsWithResolvedDevicePins(plan, detailsByComponentId) {
+    if (detailsByComponentId.size === 0) {
+      return plan;
+    }
+    const usedRealPinKeys = /* @__PURE__ */ new Set();
+    const pins = plan.pins.map((pin) => {
+      const detail = detailsByComponentId.get(pin.componentId);
+      if (!detail) {
+        return pin;
+      }
+      const realPins = extractDetailPins(detail);
+      if (realPins.length === 0) {
+        return pin;
+      }
+      let bestScore = -1;
+      let bestMatch;
+      for (const realPin of realPins) {
+        const realKey = `${pin.componentId}:${realPin.pinNumber || ""}:${realPin.pinName || ""}`;
+        if (usedRealPinKeys.has(realKey)) {
+          continue;
+        }
+        const score = scoreRealPinMatch(pin, realPin);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = realPin;
+        }
+      }
+      if (!bestMatch || bestScore <= 0) {
+        return pin;
+      }
+      usedRealPinKeys.add(`${pin.componentId}:${bestMatch.pinNumber || ""}:${bestMatch.pinName || ""}`);
+      return {
+        ...pin,
+        pinName: bestMatch.pinName ?? pin.pinName,
+        pinNumber: bestMatch.pinNumber ?? pin.pinNumber,
+        electricalType: bestMatch.electricalType ?? pin.electricalType
+      };
+    });
+    return {
+      ...plan,
+      pins
+    };
+  }
+  async function resolveDraftPlanDevices(plan, searchLibraryDevices, getLibraryDevice) {
     const existingSelectedDevices = Array.isArray(plan.selectedDevices) ? plan.selectedDevices.slice() : [];
+    const detailsByComponentId = /* @__PURE__ */ new Map();
     const components = await Promise.all(
       plan.components.map(async (component) => {
         if (hasPlacementDevice(component)) {
+          if (getLibraryDevice && component.properties.device_uuid) {
+            const detail2 = await getLibraryDevice({
+              deviceUuid: component.properties.device_uuid,
+              libraryUuid: component.properties.library_uuid
+            });
+            if (detail2) {
+              detailsByComponentId.set(component.id, detail2);
+            }
+          }
           return withResolutionStatus(component, "resolved", "already_specified");
         }
         const query = buildDraftDeviceSearchQuery(component);
         if (!query) {
           return withResolutionStatus(component, "unresolved", "missing_search_query");
         }
-        const results = await searchLibraryDevices(query);
+        const queryCandidates = buildDraftDeviceSearchFallbackQueries(component, query);
+        let results = null;
+        let effectiveQuery = query;
+        for (const candidateQuery of queryCandidates) {
+          const attemptedResults = await searchLibraryDevices(candidateQuery);
+          if (attemptedResults && attemptedResults.length > 0) {
+            results = attemptedResults;
+            effectiveQuery = candidateQuery;
+            break;
+          }
+        }
         if (!results || results.length === 0) {
           return {
             ...withResolutionStatus(component, "unresolved", "no_search_results"),
@@ -6881,14 +7285,24 @@ var edaEsbuildExportName = (() => {
             }
           };
         }
-        existingSelectedDevices.push(toSelectedDevice(component, query, picked));
+        let detail;
+        if (getLibraryDevice) {
+          detail = await getLibraryDevice({
+            deviceUuid: picked.uuid,
+            libraryUuid: picked.libraryUuid
+          });
+          if (detail) {
+            detailsByComponentId.set(component.id, detail);
+          }
+        }
+        existingSelectedDevices.push(toSelectedDevice(component, effectiveQuery, picked, detail));
         return {
           ...component,
           libraryId: picked.uuid,
           packageName: picked.footprintName || component.packageName,
           properties: {
             ...component.properties,
-            preferred_search_query: query,
+            preferred_search_query: effectiveQuery,
             device_uuid: picked.uuid,
             library_uuid: picked.libraryUuid,
             symbol_uuid: picked.symbolUuid || "",
@@ -6900,7 +7314,7 @@ var edaEsbuildExportName = (() => {
       })
     );
     return {
-      ...plan,
+      ...rewritePlanPinsWithResolvedDevicePins(plan, detailsByComponentId),
       components,
       selectedDevices: existingSelectedDevices
     };
@@ -6918,6 +7332,11 @@ var edaEsbuildExportName = (() => {
             plan,
             async (query) => typedSearchLibraryDevices({ query, scope: "system", pageSize: 5 })
           );
+          if (hasAnyPlacementDevice(plan) && !canApplyByTypedPlacement(plan)) {
+            throw new Error(
+              `typed placement requires all draft components to have resolved devices: ${listUnresolvedPlacementComponents(plan).join(", ")}`
+            );
+          }
         }
         const transactionId = createTransactionId();
         if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
@@ -7028,6 +7447,20 @@ var edaEsbuildExportName = (() => {
       }
     };
   }
+  function hasAnyPlacementDevice(plan) {
+    return plan.components.some((component) => {
+      const deviceUuid = component.properties.device_uuid;
+      const libraryUuid = component.properties.library_uuid;
+      return typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid;
+    });
+  }
+  function listUnresolvedPlacementComponents(plan) {
+    return plan.components.filter((component) => {
+      const deviceUuid = component.properties.device_uuid;
+      const libraryUuid = component.properties.library_uuid;
+      return !(typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid);
+    }).map((component) => component.ref || component.name || component.id);
+  }
   function canApplyByTypedPlacement(plan) {
     if (typeof eda === "undefined") {
       return false;
@@ -7038,7 +7471,7 @@ var edaEsbuildExportName = (() => {
     if (typeof eda.sch_PrimitiveWire?.create !== "function") {
       return false;
     }
-    return plan.components.some((component) => {
+    return plan.components.length > 0 && plan.components.every((component) => {
       const deviceUuid = component.properties.device_uuid;
       const libraryUuid = component.properties.library_uuid;
       return typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid;
@@ -7198,7 +7631,7 @@ var edaEsbuildExportName = (() => {
     if (candidates.length === 0) {
       return void 0;
     }
-    const runtimeAliases = normalizePinSemantic(pinName, pinNumber);
+    const runtimeAliases = normalizePinSemantic2(pinName, pinNumber);
     let bestScore = -1;
     let bestMatch;
     for (const candidate of candidates) {
@@ -7209,7 +7642,7 @@ var edaEsbuildExportName = (() => {
       if (candidate.pinName && pinName && candidate.pinName === pinName) {
         score += 90;
       }
-      const candidateAliases = normalizePinSemantic(candidate.pinName, candidate.pinNumber);
+      const candidateAliases = normalizePinSemantic2(candidate.pinName, candidate.pinNumber);
       if (candidateAliases.some((alias) => runtimeAliases.includes(alias))) {
         score += 60;
       }
@@ -7226,22 +7659,22 @@ var edaEsbuildExportName = (() => {
     }
     return bestScore > 0 ? bestMatch : void 0;
   }
-  function normalizePinSemantic(name, pinNumber) {
+  function normalizePinSemantic2(name, pinNumber) {
     const aliases = /* @__PURE__ */ new Set();
     const addAlias = (value) => {
-      const normalized = normalizeToken(value);
+      const normalized = normalizeToken2(value);
       if (!normalized) {
         return;
       }
       aliases.add(normalized);
-      const semantic = PIN_SEMANTIC_ALIASES[normalized];
+      const semantic = PIN_SEMANTIC_ALIASES2[normalized];
       if (semantic) {
         aliases.add(semantic);
       }
     };
     if (name) {
       addAlias(name);
-      for (const token of splitTokens(name)) {
+      for (const token of splitTokens2(name)) {
         addAlias(token);
       }
     }
@@ -7262,13 +7695,13 @@ var edaEsbuildExportName = (() => {
         return void 0;
     }
   }
-  function normalizeToken(value) {
+  function normalizeToken2(value) {
     return value.trim().toLowerCase().replace(/[^a-z0-9+_-]+/g, "");
   }
-  function splitTokens(value) {
+  function splitTokens2(value) {
     return value.split(/[\s/()[\]-]+/g).map((item) => item.trim()).filter((item) => item.length > 0);
   }
-  var PIN_SEMANTIC_ALIASES = {
+  var PIN_SEMANTIC_ALIASES2 = {
     vin: "power_in",
     in: "power_in",
     vi: "power_in",
@@ -7287,6 +7720,10 @@ var edaEsbuildExportName = (() => {
     agnd: "ground",
     ground: "ground",
     vss: "ground",
+    i2c_sda: "i2c_sda",
+    sda: "i2c_sda",
+    i2c_scl: "i2c_scl",
+    scl: "i2c_scl",
     neg: "negative",
     minus: "negative",
     n: "negative",
@@ -7294,7 +7731,26 @@ var edaEsbuildExportName = (() => {
     pos: "positive",
     plus: "positive",
     p: "positive",
-    "+": "positive"
+    "+": "positive",
+    i2s_sck: "i2s_bclk",
+    bclk: "i2s_bclk",
+    sclk: "i2s_bclk",
+    i2s_bclk: "i2s_bclk",
+    i2s_ws: "i2s_lrck",
+    ws: "i2s_lrck",
+    lrck: "i2s_lrck",
+    lrc: "i2s_lrck",
+    i2s_lrck: "i2s_lrck",
+    i2s_sd: "i2s_data",
+    sd: "i2s_data",
+    sdin: "i2s_data",
+    sdout: "i2s_data",
+    din: "i2s_data",
+    dout: "i2s_data",
+    adcdat: "i2s_data",
+    dacdat: "i2s_data",
+    i2s_din: "i2s_data",
+    i2s_dout: "i2s_data"
   };
   function buildOrthogonalPolyline(points) {
     if (points.length < 2) {
@@ -8561,7 +9017,7 @@ var edaEsbuildExportName = (() => {
       evidence: dedupedEvidence.length > 0 ? dedupedEvidence : guidance.evidence
     };
   }
-  function createDraftTools(ragClient, searchLibraryDevices) {
+  function createDraftTools(ragClient, searchLibraryDevices, getLibraryDevice) {
     return [
       {
         name: "draft_generate_plan",
@@ -8616,7 +9072,12 @@ var edaEsbuildExportName = (() => {
           if (searchLibraryDevices) {
             plan = await resolveDraftPlanDevices(
               plan,
-              async (query2) => searchLibraryDevices({ query: query2, scope: "system", pageSize: 5 })
+              async (query2) => searchLibraryDevices({ query: query2, scope: "system", pageSize: 5 }),
+              getLibraryDevice ? async ({ deviceUuid, libraryUuid }) => getLibraryDevice({
+                deviceUuid,
+                libraryUuid,
+                scope: "system"
+              }) : void 0
             );
           }
           return plan;
@@ -10145,6 +10606,22 @@ var edaEsbuildExportName = (() => {
       return { role: m.role, content: m.content };
     });
   }
+  function normalizeParametersForOpenAiCompatible(parameters, strict) {
+    return parameters;
+  }
+  function normalizeToolsForOpenAiCompatible(tools) {
+    if (!Array.isArray(tools)) {
+      return tools;
+    }
+    return tools.map((tool) => ({
+      ...tool,
+      function: {
+        ...tool.function,
+        strict: void 0,
+        parameters: normalizeParametersForOpenAiCompatible(tool.function.parameters, tool.function.strict)
+      }
+    }));
+  }
   function mergeToolCalls(current, incoming) {
     const next = current.slice();
     for (let i = 0; i < incoming.length; i += 1) {
@@ -10180,15 +10657,16 @@ var edaEsbuildExportName = (() => {
         model: cfg.model,
         tool_choice: input.tool_choice,
         messages: summarizeMessages(input.messages),
-        tools: summarizeTools(input.tools)
+        tools: summarizeTools(normalizeToolsForOpenAiCompatible(input.tools))
       });
+      const normalizedTools = normalizeToolsForOpenAiCompatible(input.tools);
       const response = await fetch(`${cfg.baseUrl}/chat/completions`, {
         method: "POST",
         headers: toHeaders(cfg.apiKey),
         body: JSON.stringify({
           model: cfg.model,
           messages: mapMessages(input.messages),
-          tools: input.tools,
+          tools: normalizedTools,
           tool_choice: input.tool_choice,
           stream: false
         }),
@@ -10231,8 +10709,9 @@ var edaEsbuildExportName = (() => {
         model: cfg.model,
         tool_choice: input.tool_choice,
         messages: summarizeMessages(input.messages),
-        tools: summarizeTools(input.tools)
+        tools: summarizeTools(normalizeToolsForOpenAiCompatible(input.tools))
       });
+      const normalizedTools = normalizeToolsForOpenAiCompatible(input.tools);
       let outputText = "";
       let reasoningText = "";
       let toolCalls = [];
@@ -10245,7 +10724,7 @@ var edaEsbuildExportName = (() => {
         body: JSON.stringify({
           model: cfg.model,
           messages: mapMessages(input.messages),
-          tools: input.tools,
+          tools: normalizedTools,
           tool_choice: input.tool_choice,
           stream: true
         }),
@@ -10755,6 +11234,20 @@ var edaEsbuildExportName = (() => {
       { role: "user", content: user }
     ];
     const normalizeToolName = (name) => String(name || "").trim();
+    const stripFinalControlPayload = (text) => {
+      const raw = String(text || "");
+      const controlPrefixes = [
+        /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u
+      ];
+      for (const pattern of controlPrefixes) {
+        const match = raw.match(pattern);
+        if (match) {
+          return match[1] ?? "";
+        }
+      }
+      return raw;
+    };
     const normalizeTodoStatus = (value) => {
       const raw = String(value || "").trim().toLowerCase();
       if (raw === "not-started" || raw === "pending") return "pending";
@@ -10923,9 +11416,17 @@ var edaEsbuildExportName = (() => {
               workingMemory: state.workingMemory
             });
           } else if (event.type === "delta" && event.delta) {
-            streamText += event.delta;
+            const nextStreamText = streamText + event.delta;
+            const sanitizedStreamText = stripFinalControlPayload(nextStreamText);
+            const emittedDelta = sanitizedStreamText.slice(streamText.length);
+            streamText = sanitizedStreamText;
+            if (!emittedDelta) {
+              return;
+            }
             deps.onProgress?.({
               detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
+              textDelta: emittedDelta,
+              text: streamText,
               reactEvents: state.reactEvents,
               stepStates: state.stepStates,
               workingMemory: state.workingMemory
@@ -11272,6 +11773,9 @@ var edaEsbuildExportName = (() => {
       "- `nets` \u5FC5\u987B\u662F\u6570\u7EC4\uFF1B\u6BCF\u4E2A\u7F51\u7EDC\u81F3\u5C11\u5305\u542B\uFF1A`id`\uFF0C\u5E76\u5C3D\u91CF\u63D0\u4F9B `name`\u3001`isPower`\u3002",
       '- `connections` \u5FC5\u987B\u662F\u6570\u7EC4\uFF1B\u6BCF\u6761\u8FDE\u63A5\u5FC5\u987B\u4E25\u683C\u4F7F\u7528 `{ "netName": string, "pinIds": string[] }` \u7ED3\u6784\uFF0C\u7981\u6B62\u6539\u5199\u6210 `from/to/net/description` \u6216\u5B57\u7B26\u4E32\u5217\u8868\u3002',
       "- \u7981\u6B62\u81EA\u9020\u9876\u5C42\u5B57\u6BB5\u66FF\u4EE3\u6807\u51C6\u7ED3\u6784\uFF0C\u4F8B\u5982\uFF1A`powerNets`\u3001`signalNets`\u3001`key_connections`\u3001`powerSupply`\u3001`interfaces`\u3002\u8FD9\u4E9B\u4FE1\u606F\u5982\u679C\u9700\u8981\u8868\u8FBE\uFF0C\u5FC5\u987B\u6298\u53E0\u8FDB `components`\u3001`nets`\u3001`connections`\u3002",
+      "- \u5BF9\u53EF\u80FD\u8FDB\u5165\u5F85\u786E\u8BA4\u5668\u4EF6\u9009\u62E9\u7684\u7EC4\u4EF6\uFF0C\u5FC5\u987B\u4F18\u5148\u7ED9\u51FA\u7528\u6237\u53EF\u5728\u5143\u4EF6\u5E93\u4E2D\u76F4\u63A5\u68C0\u7D22\u7684\u5668\u4EF6\u5173\u952E\u8BCD\uFF0C\u4F8B\u5982\u578B\u53F7\u3001\u63A5\u53E3\u7C7B\u578B\u3001\u9488\u6570\u3001\u95F4\u8DDD\u3001\u5C01\u88C5\uFF1B\u4E0D\u8981\u53EA\u7ED9\u62BD\u8C61\u89D2\u8272\u540D\u3002",
+      "- `components[].name`\u3001`searchQuery` \u6216\u76F8\u5173\u63CF\u8FF0\u5FC5\u987B\u5C3D\u91CF\u5199\u6210\u7528\u6237\u53EF\u7406\u89E3\u3001\u53EF\u68C0\u7D22\u7684\u5668\u4EF6\u540D\u79F0\uFF1B\u7981\u6B62\u628A `generic`\u3001`power_connector`\u3001`ldo_regulator`\u3001`input_capacitor` \u8FD9\u7C7B\u5185\u90E8 role \u76F4\u63A5\u5F53\u6210\u7528\u6237\u53EF\u89C1\u5668\u4EF6\u540D\u3002",
+      "- \u8FDE\u63A5\u5668/\u7535\u6C60\u63A5\u53E3\u7C7B\u5668\u4EF6\u5FC5\u987B\u5C3D\u91CF\u8865\u5145\u63A5\u53E3\u7C7B\u578B\u3001\u9488\u6570\u3001\u95F4\u8DDD\u7B49\u53EF\u641C\u7D22\u4FE1\u606F\uFF0C\u4F8B\u5982 `USB Type-C 16PIN`\u3001`JST PH 2P`\u3001`PH2.0-2P \u7535\u6C60\u63A5\u53E3`\uFF0C\u907F\u514D\u53EA\u5199\u201C\u8FDE\u63A5\u5668\u201D\u6216\u201C\u7535\u6C60\u201D\u3002",
       "",
       "## \u6700\u5C0F\u5408\u6CD5 spec \u793A\u4F8B",
       "```json",
@@ -13010,7 +13514,11 @@ ${summarizeDraftRationale(preview.rationale)}`
         tools.register(tool);
       }
     }
-    for (const tool of createDraftTools(deps.ragClient, deps.hostBridge?.searchLibraryDevices)) {
+    for (const tool of createDraftTools(
+      deps.ragClient,
+      deps.hostBridge?.searchLibraryDevices,
+      deps.hostBridge?.getLibraryDevice
+    )) {
       tools.register(tool);
     }
     for (const tool of createRuleTools()) {
@@ -14092,6 +14600,14 @@ ${content}`;
     const message = error instanceof Error ? error.message : String(error);
     const emptyPageMatch = message.match(/draft apply requires an empty schematic page(?:: current page "([^"]+)" already has content)?/i);
     if (!emptyPageMatch) {
+      const unresolvedPlacementMatch = message.match(
+        /typed placement requires all draft components to have resolved devices:\s*(.+)$/i
+      );
+      if (unresolvedPlacementMatch) {
+        const rawRefs = unresolvedPlacementMatch[1].split(",").map((item) => item.trim()).filter(Boolean);
+        const refs = rawRefs.join("\u3001");
+        return `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A\u4EE5\u4E0B\u5668\u4EF6\u8FD8\u6CA1\u6709\u5B8C\u6210\u53EF\u653E\u7F6E\u5668\u4EF6\u9009\u578B\uFF1A${refs}\u3002\u8BF7\u5148\u5B8C\u6210\u5668\u4EF6\u786E\u8BA4\uFF0C\u518D\u91CD\u65B0\u5E94\u7528\u8349\u6848\u3002`;
+      }
       return `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A${message}`;
     }
     const pageName = emptyPageMatch[1];
@@ -14108,6 +14624,19 @@ ${content}`;
   function buildDevicePickerApplyProgressText(current, total) {
     return `\u6B63\u5728\u786E\u8BA4\u5F85\u786E\u8BA4\u5668\u4EF6\uFF08${current}/${total}\uFF09...`;
   }
+  function applyCustomLlmConfigSavedState(state, toastId) {
+    state.summary = "\u81EA\u5B9A\u4E49 LLM \u914D\u7F6E\u5DF2\u4FDD\u5B58\u3002";
+    state.toast = {
+      id: toastId,
+      message: state.summary
+    };
+    return state;
+  }
+  function buildDraftApplyUnavailableMessage(input) {
+    const missing = [...input.capabilityReport?.missing ?? [], ...input.capabilityReport?.optionalMissing ?? []].filter((item) => item === "applyPlan" || item === "rollbackApplyPlan");
+    const missingText = missing.length > 0 ? `\uFF1B\u7F3A\u5C11\u80FD\u529B\uFF1A${missing.join("\u3001")}` : "";
+    return `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A\u5BBF\u4E3B\u672A\u771F\u6B63\u6267\u884C\u539F\u7406\u56FE\u5E94\u7528\u3002\u5F53\u524D\u9002\u914D\u5668\u6765\u6E90\uFF1A${input.adapterSource}${missingText}\u3002\u8BF7\u5148\u68C0\u67E5\u5BBF\u4E3B applyPlan \u80FD\u529B\u662F\u5426\u5DF2\u63A5\u901A\u3002`;
+  }
   function shouldUseDraftReplyLeadNarrative(input) {
     const draftNarrative = String(input.draftNarrative || "").trim();
     if (draftNarrative) {
@@ -14115,6 +14644,100 @@ ${content}`;
     }
     const naturalReply = String(input.naturalReply || "").trim();
     return naturalReply || void 0;
+  }
+  function buildDevicePickerRoleLabel(role) {
+    switch (String(role || "").trim()) {
+      case "power_connector":
+        return "\u7535\u6E90\u8F93\u5165\u63A5\u53E3";
+      case "battery_connector":
+        return "\u7535\u6C60\u63A5\u53E3";
+      case "ldo_regulator":
+        return "\u7A33\u538B\u5668";
+      case "resistor":
+        return "\u7535\u963B";
+      case "led":
+        return "LED \u6307\u793A\u706F";
+      case "input_capacitor":
+        return "\u8F93\u5165\u7535\u5BB9";
+      default:
+        return "\u5F85\u786E\u8BA4\u5668\u4EF6";
+    }
+  }
+  function buildDevicePickerReasonLabel(input) {
+    const reason = String(input.reason || "").trim();
+    if (reason === "all_candidates_filtered") {
+      return "\u81EA\u52A8\u7B5B\u9009\u540E\u6CA1\u6709\u627E\u5230\u5B8C\u5168\u7B26\u5408\u5F53\u524D\u7528\u9014\u7684\u5668\u4EF6\uFF0C\u4E0B\u9762\u5C55\u793A\u7684\u662F\u63A5\u8FD1\u7684\u5019\u9009\u3002";
+    }
+    if (reason === "manual_selection") {
+      return "\u8BE5\u5668\u4EF6\u7531\u4F60\u624B\u52A8\u786E\u8BA4\uFF0C\u540E\u7EED\u4F1A\u6309\u8FD9\u4E2A\u9009\u62E9\u7EE7\u7EED\u5E94\u7528\u8349\u6848\u3002";
+    }
+    if (reason === "resolved_from_library") {
+      return "\u5DF2\u4ECE\u5668\u4EF6\u5E93\u4E2D\u627E\u5230\u53EF\u76F4\u63A5\u4F7F\u7528\u7684\u5339\u914D\u5668\u4EF6\u3002";
+    }
+    if (reason === "unresolved") {
+      return `\u8FD8\u6CA1\u6709\u627E\u5230\u53EF\u76F4\u63A5\u786E\u8BA4\u7684${buildDevicePickerRoleLabel(input.role)}\u3002`;
+    }
+    if (reason) {
+      return `\u5F53\u524D\u9700\u8981\u4F60\u786E\u8BA4\u8FD9\u4E2A${buildDevicePickerRoleLabel(input.role)}\u662F\u5426\u5408\u9002\u3002`;
+    }
+    return `\u5F53\u524D\u9700\u8981\u4F60\u786E\u8BA4\u8FD9\u4E2A${buildDevicePickerRoleLabel(input.role)}\u662F\u5426\u9002\u5408\u653E\u5728\u8FD9\u91CC\u3002`;
+  }
+  function inferCandidateTypeLabel(candidate) {
+    const haystack = [candidate.name, candidate.description, candidate.footprintName].filter(Boolean).join(" ").toLowerCase();
+    if (/type-?c|usb[-\s]?c/.test(haystack)) return "USB Type-C \u63A5\u53E3";
+    if (/usb/.test(haystack)) return "USB \u63A5\u53E3";
+    if (/header|conn|connector|母座|插座|接口|座子/.test(haystack)) return "\u8FDE\u63A5\u5668";
+    if (/ldo|regulator|稳压/.test(haystack)) return "\u7A33\u538B\u5668";
+    if (/resistor|电阻/.test(haystack)) return "\u7535\u963B";
+    if (/led/.test(haystack)) return "LED";
+    return "\u901A\u7528\u5668\u4EF6";
+  }
+  function buildDevicePickerCandidatePresentation(item, candidate, index) {
+    const haystack = [candidate.name, candidate.description, candidate.footprintName].filter(Boolean).join(" ").toLowerCase();
+    const query = String(item.query || "").trim();
+    const queryLower = query.toLowerCase();
+    const reasons = [];
+    const cautions = [];
+    let fitLevel = index === 0 ? "possible" : "weak";
+    if (item.role === "power_connector") {
+      if (/type-?c|usb[-\s]?c/.test(haystack)) {
+        fitLevel = "recommended";
+        reasons.push("\u63A5\u53E3\u5916\u5F62\u4E0E\u67E5\u8BE2\u76EE\u6807\u63A5\u8FD1\uFF0C\u66F4\u53EF\u80FD\u9002\u5408\u4F5C\u4E3A\u5F53\u524D\u63A5\u53E3\u4F4D\u3002");
+        if (/16pin/.test(haystack) || /16pin/.test(queryLower)) {
+          reasons.push("\u5F15\u811A\u6570\u4E0E\u67E5\u8BE2\u8BCD\u91CC\u7684 16PIN \u65B9\u5411\u4E00\u81F4\u3002");
+        }
+        cautions.push("\u5982\u679C\u8FD9\u4E00\u8DEF\u53EA\u62FF\u6765\u4F9B\u7535\uFF0C\u4E0D\u505A USB \u6570\u636E\uFF0C\u540E\u7EED\u8FD8\u8981\u786E\u8BA4\u662F\u5426\u771F\u7684\u9700\u8981\u5B8C\u6574 16Pin \u65B9\u6848\u3002");
+      } else if (/usb/.test(haystack) || /connector|母座|插座|接口|座子/.test(haystack)) {
+        fitLevel = "possible";
+        reasons.push("\u5B83\u5C5E\u4E8E\u63A5\u53E3/\u8FDE\u63A5\u5668\u7C7B\u5668\u4EF6\uFF0C\u6709\u53EF\u80FD\u7528\u4E8E\u5916\u90E8\u4F9B\u7535\u8F93\u5165\u3002");
+        cautions.push("\u4F46\u540D\u79F0\u91CC\u6CA1\u6709\u660E\u786E\u663E\u793A\u4E3A Type-C\uFF0C\u9700\u8981\u518D\u786E\u8BA4\u63A5\u53E3\u5F62\u6001\u548C\u5F15\u811A\u5B9A\u4E49\u3002");
+      } else {
+        fitLevel = "weak";
+        cautions.push("\u4ECE\u540D\u79F0\u4E0A\u770B\u4E0D\u50CF\u5178\u578B\u7684\u7535\u6E90\u8F93\u5165\u8FDE\u63A5\u5668\uFF0C\u5EFA\u8BAE\u8C28\u614E\u9009\u62E9\u3002");
+      }
+    }
+    if (query && haystack.includes(queryLower.replace(/\s+/g, "").replace(/-/g, ""))) {
+      reasons.push("\u5668\u4EF6\u540D\u79F0\u4E0E\u5F53\u524D\u67E5\u8BE2\u8BCD\u9AD8\u5EA6\u63A5\u8FD1\u3002");
+    }
+    const fitLabel = fitLevel === "recommended" ? "\u8F83\u5339\u914D" : fitLevel === "possible" ? "\u53EF\u8003\u8651" : "\u9700\u8C28\u614E";
+    let summary = "\u8FD9\u662F\u4E00\u4E2A\u53EF\u4F9B\u4F60\u8FDB\u4E00\u6B65\u786E\u8BA4\u7684\u5019\u9009\u5668\u4EF6\u3002";
+    if (item.role === "power_connector") {
+      if (fitLevel === "recommended") {
+        summary = `\u53EF\u4F5C\u4E3A\u7535\u6E90\u8F93\u5165\u63A5\u53E3\u4F7F\u7528\uFF0C\u548C\u5F53\u524D\u201C${query || "\u76EE\u6807\u63A5\u53E3"}\u201D\u7684\u67E5\u8BE2\u76EE\u6807\u57FA\u672C\u4E00\u81F4\u3002`;
+      } else if (fitLevel === "possible") {
+        summary = "\u5B83\u770B\u8D77\u6765\u5C5E\u4E8E\u8FDE\u63A5\u5668\u7C7B\u5668\u4EF6\uFF0C\u4F46\u662F\u5426\u5B8C\u5168\u7B26\u5408\u5F53\u524D\u63A5\u53E3\u7528\u9014\u8FD8\u9700\u8981\u4F60\u518D\u786E\u8BA4\u3002";
+      } else {
+        summary = "\u5B83\u88AB\u641C\u5230\u4E86\uFF0C\u4F46\u4ECE\u540D\u79F0\u770B\u548C\u5F53\u524D\u63A5\u53E3\u7528\u9014\u7684\u5339\u914D\u5EA6\u4E0D\u9AD8\u3002";
+      }
+    }
+    return {
+      typeLabel: inferCandidateTypeLabel(candidate),
+      fitLabel,
+      fitLevel,
+      summary,
+      reasons,
+      cautions
+    };
   }
   function readSearchString(record, keys) {
     for (const key of keys) {
@@ -14165,12 +14788,15 @@ ${content}`;
     }).filter((item) => Boolean(item));
   }
   function inferDraftComponentRole(refOrName) {
-    const value = String(refOrName || "").toUpperCase();
+    const raw = String(refOrName || "").trim();
+    const value = raw.toUpperCase();
+    if (value.startsWith("BT") || value.startsWith("BAT")) return "battery_connector";
     if (value.startsWith("J")) return "power_connector";
     if (value.startsWith("R")) return "resistor";
-    if (value.startsWith("D")) return "led";
+    if (value.startsWith("LED") || value.startsWith("D")) return "led";
     if (value.startsWith("C")) return "input_capacitor";
     if (value.startsWith("U")) return "ldo_regulator";
+    if (/LED|指示灯|充电指示灯|电源指示灯/i.test(raw)) return "led";
     return "generic";
   }
   function buildDevicePickerState(plan) {
@@ -14188,9 +14814,16 @@ ${content}`;
         componentId: component.id,
         componentRef: ref,
         role: inferDraftComponentRole(ref),
+        roleLabel: buildDevicePickerRoleLabel(inferDraftComponentRole(ref)),
         query: component.properties?.preferred_search_query,
         status,
         reason: component.properties?.device_resolution_reason,
+        reasonLabel: buildDevicePickerReasonLabel({
+          reason: component.properties?.device_resolution_reason,
+          role: inferDraftComponentRole(ref),
+          query: component.properties?.preferred_search_query
+        }),
+        usageHint: inferDraftComponentRole(ref) === "power_connector" ? "\u8FD9\u91CC\u9700\u8981\u7684\u662F\u5916\u90E8\u4F9B\u7535\u63A5\u53E3\uFF0C\u4F18\u5148\u770B\u5B83\u662F\u4E0D\u662F\u9002\u5408\u4F5C\u4E3A\u7535\u6E90\u8F93\u5165\u53E3\u3002" : void 0,
         selectedDeviceLabel: selected ? `${selected.name}${selected.footprintName ? ` [${selected.footprintName}]` : ""}` : void 0,
         candidates: void 0
       };
@@ -14688,7 +15321,13 @@ ${content}`;
       try {
         const result = await adapter.applyPlan(draftPlan);
         if (!result.applied) {
-          throw new Error("\u5BBF\u4E3B\u5F53\u524D\u672A\u771F\u6B63\u6267\u884C\u539F\u7406\u56FE\u5E94\u7528\uFF0C\u8BF7\u68C0\u67E5 applyPlan \u80FD\u529B\u662F\u5426\u5DF2\u63A5\u901A");
+          const capabilityReport = await adapter.getCapabilityReport().catch(() => null);
+          throw new Error(
+            buildDraftApplyUnavailableMessage({
+              adapterSource: adapter.source,
+              capabilityReport
+            })
+          );
         }
         internals.lastApplyTransactionId = result.transactionId;
         internals.draftBlocked = false;
@@ -14738,6 +15377,18 @@ ${content}`;
       }
       const rawCandidates = await bridge.searchLibraryDevices({ query, scope: "system", pageSize: 8 });
       const candidates = normalizeDevicePickerCandidates(rawCandidates);
+      const role = inferDraftComponentRole(component.ref ?? component.id);
+      const presentedCandidates = candidates.map((candidate, index) => ({
+        ...candidate,
+        ...buildDevicePickerCandidatePresentation(
+          {
+            role,
+            query
+          },
+          candidate,
+          index
+        )
+      }));
       const previousPicker = state.devicePicker;
       const picker = buildDevicePickerState(plan) ?? { open: true, items: [] };
       picker.open = true;
@@ -14748,11 +15399,11 @@ ${content}`;
         }
         return {
           ...item,
-          candidates
+          candidates: presentedCandidates
         };
       });
       state.devicePicker = picker;
-      return { state, updated: true, candidateCount: candidates.length };
+      return { state, updated: true, candidateCount: presentedCandidates.length };
     }
     function chooseDraftDeviceCandidateInternal(state, input) {
       const plan = internals.draftPlan;
@@ -15178,6 +15829,11 @@ ${content}`;
               if (event.stage === "llm") {
                 lastMessage.streaming = true;
                 lastMessage.title = event.route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : event.route === "analysis" ? "\u5206\u6790\u4E2D" : "\u5904\u7406\u4E2D";
+                if (event.textDelta) {
+                  lastMessage.content = `${lastMessage.content === "\u6B63\u5728\u601D\u8003..." ? "" : lastMessage.content || ""}${event.textDelta}`;
+                } else if (event.text !== void 0 && String(event.text || "").trim()) {
+                  lastMessage.content = event.text || lastMessage.content || "";
+                }
                 if (event.reasoningDelta) {
                   upsertLlmReasoningEvent(lastMessage, event.reasoningDelta);
                 }
@@ -15496,8 +16152,7 @@ ${content}`;
             preferredOutputLanguage: (input.preferredOutputLanguage || DEFAULT_PREFERRED_OUTPUT_LANGUAGE).trim() || DEFAULT_PREFERRED_OUTPUT_LANGUAGE
           });
           await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore2);
-          state.summary = "\u81EA\u5B9A\u4E49 LLM \u914D\u7F6E\u5DF2\u4FDD\u5B58\u3002";
-          state.chatMessages = pluginAgent.buildConfigSavedMessages();
+          applyCustomLlmConfigSavedState(state, Date.now());
         } catch (error) {
           state.summary = `\u4FDD\u5B58 LLM \u914D\u7F6E\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
           state.toast = {
@@ -15681,40 +16336,38 @@ ${content}`;
         });
         if (newMessages.length > 0) {
           const newMessage = newMessages[0];
-          lastMessage.streaming = false;
-          lastMessage.title = newMessage.title;
-          lastMessage.tone = newMessage.tone;
-          lastMessage.content = newMessage.content;
-          lastMessage.structuredContent = newMessage.structuredContent;
-          lastMessage.evidenceItems = newMessage.evidenceItems;
-          lastMessage.analysisReport = newMessage.analysisReport;
-          lastMessage.suggestions = newMessage.suggestions;
-          lastMessage.actions = newMessage.actions;
-          lastMessage.reactEvents = preferNonEmptyArray(newMessage.reactEvents, lastMessage.reactEvents);
-          lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(lastMessage.reactEvents) ?? newMessage.stepTranscript ?? lastMessage.stepTranscript;
-          lastMessage.stepStates = preferNonEmptyArray(newMessage.stepStates, lastMessage.stepStates);
-          lastMessage.workingMemory = newMessage.workingMemory || lastMessage.workingMemory;
-          lastMessage.toolTraces = newMessage.toolTraces || lastMessage.toolTraces;
-          lastMessage.executionTraces = newMessage.executionTraces || lastMessage.executionTraces;
-          lastMessage.uiEvents = newMessage.uiEvents || lastMessage.uiEvents;
+          const mergedMessage = mergeAssistantFinalMessage(lastMessage, newMessage);
           if (typeof console !== "undefined") {
             console.log(`${LOG_PREFIX} applyTurnResultToState.update-in-place`, {
-              hasReactEvents: Boolean(lastMessage.reactEvents),
-              reactEventsCount: lastMessage.reactEvents?.length ?? 0,
-              hasStepStates: Boolean(lastMessage.stepStates),
-              stepStatesCount: lastMessage.stepStates?.length ?? 0
+              hasReactEvents: Boolean(mergedMessage.reactEvents),
+              reactEventsCount: mergedMessage.reactEvents?.length ?? 0,
+              hasStepStates: Boolean(mergedMessage.stepStates),
+              stepStatesCount: mergedMessage.stepStates?.length ?? 0
             });
           }
+          analyzed.chatMessages = [
+            ...input.userMessages.slice(0, -1),
+            ...replannedFromDraft ? pluginAgent.buildStatusMessages({
+              title: "\u81EA\u52A8\u91CD\u89C4\u5212",
+              tone: "warning",
+              content: "\u8349\u6848\u56E0\u9AD8\u98CE\u9669\u95EE\u9898\u88AB\u963B\u65AD\uFF0C\u5DF2\u81EA\u52A8\u5207\u6362\u5230\u5206\u6790\u6A21\u5F0F\u3002"
+            }) : [],
+            mergedMessage
+          ];
+        } else {
+          analyzed.chatMessages = [
+            ...input.userMessages.slice(0, -1),
+            ...replannedFromDraft ? pluginAgent.buildStatusMessages({
+              title: "\u81EA\u52A8\u91CD\u89C4\u5212",
+              tone: "warning",
+              content: "\u8349\u6848\u56E0\u9AD8\u98CE\u9669\u95EE\u9898\u88AB\u963B\u65AD\uFF0C\u5DF2\u81EA\u52A8\u5207\u6362\u5230\u5206\u6790\u6A21\u5F0F\u3002"
+            }) : [],
+            {
+              ...lastMessage,
+              streaming: false
+            }
+          ];
         }
-        analyzed.chatMessages = [
-          ...input.userMessages.slice(0, -1),
-          ...replannedFromDraft ? pluginAgent.buildStatusMessages({
-            title: "\u81EA\u52A8\u91CD\u89C4\u5212",
-            tone: "warning",
-            content: "\u8349\u6848\u56E0\u9AD8\u98CE\u9669\u95EE\u9898\u88AB\u963B\u65AD\uFF0C\u5DF2\u81EA\u52A8\u5207\u6362\u5230\u5206\u6790\u6A21\u5F0F\u3002"
-          }) : [],
-          lastMessage
-        ];
       } else {
         analyzed.chatMessages = replaceTrailingPendingAssistant(input.userMessages, [
           ...replannedFromDraft ? pluginAgent.buildStatusMessages({
@@ -15946,6 +16599,24 @@ ${content}`;
   }
   function finalizeDraftTurnMessages(previousMessages, draftMessages) {
     return replaceTrailingPendingAssistant(previousMessages, draftMessages);
+  }
+  function mergeAssistantFinalMessage(pendingMessage, finalMessage) {
+    const preservedReactEvents = pendingMessage.reactEvents;
+    const preservedStepStates = pendingMessage.stepStates;
+    const preservedWorkingMemory = pendingMessage.workingMemory;
+    const mergedReactEvents = preferNonEmptyArray(finalMessage.reactEvents, preservedReactEvents);
+    return {
+      ...finalMessage,
+      role: "assistant",
+      streaming: false,
+      reactEvents: mergedReactEvents,
+      stepTranscript: buildStepTranscriptFromReactEvents(mergedReactEvents) ?? finalMessage.stepTranscript ?? pendingMessage.stepTranscript,
+      stepStates: preferNonEmptyArray(finalMessage.stepStates, preservedStepStates),
+      workingMemory: finalMessage.workingMemory || preservedWorkingMemory,
+      toolTraces: finalMessage.toolTraces || pendingMessage.toolTraces,
+      executionTraces: finalMessage.executionTraces || pendingMessage.executionTraces,
+      uiEvents: finalMessage.uiEvents || pendingMessage.uiEvents
+    };
   }
   function appendAssistantMessages(previousMessages, nextMessages) {
     return [...sanitizeChatMessages(previousMessages), ...nextMessages];

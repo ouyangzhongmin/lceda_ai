@@ -56,9 +56,12 @@ export interface MainPanelState {
       componentId: string;
       componentRef: string;
       role: string;
+      roleLabel?: string;
       query?: string;
       status: "resolved" | "unresolved";
       reason?: string;
+      reasonLabel?: string;
+      usageHint?: string;
       selectedDeviceLabel?: string;
       candidates?: Array<{
         uuid: string;
@@ -69,6 +72,12 @@ export interface MainPanelState {
         supplier?: string;
         supplierId?: string;
         description?: string;
+        typeLabel?: string;
+        fitLabel?: string;
+        fitLevel?: "recommended" | "possible" | "weak";
+        summary?: string;
+        reasons?: string[];
+        cautions?: string[];
       }>;
     }>;
   };

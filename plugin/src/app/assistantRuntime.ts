@@ -263,6 +263,17 @@ export function formatDraftApplyErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const emptyPageMatch = message.match(/draft apply requires an empty schematic page(?:: current page "([^"]+)" already has content)?/i);
   if (!emptyPageMatch) {
+    const unresolvedPlacementMatch = message.match(
+      /typed placement requires all draft components to have resolved devices:\s*(.+)$/i
+    );
+    if (unresolvedPlacementMatch) {
+      const rawRefs = unresolvedPlacementMatch[1]
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const refs = rawRefs.join("、");
+      return `应用草案失败：以下器件还没有完成可放置器件选型：${refs}。请先完成器件确认，再重新应用草案。`;
+    }
     return `应用草案失败：${message}`;
   }
   const pageName = emptyPageMatch[1];
@@ -283,6 +294,30 @@ export function buildDevicePickerSearchProgressText(current: number, total: numb
 
 export function buildDevicePickerApplyProgressText(current: number, total: number): string {
   return `正在确认待确认器件（${current}/${total}）...`;
+}
+
+export function applyCustomLlmConfigSavedState(state: MainPanelState, toastId: number): MainPanelState {
+  state.summary = "自定义 LLM 配置已保存。";
+  state.toast = {
+    id: toastId,
+    message: state.summary,
+  };
+  return state;
+}
+
+export function buildDraftApplyUnavailableMessage(input: {
+  adapterSource: "host" | "mock" | "unimplemented";
+  capabilityReport?: {
+    channel: string;
+    available: boolean;
+    missing: string[];
+    optionalMissing: string[];
+  } | null;
+}): string {
+  const missing = [...(input.capabilityReport?.missing ?? []), ...(input.capabilityReport?.optionalMissing ?? [])]
+    .filter((item) => item === "applyPlan" || item === "rollbackApplyPlan");
+  const missingText = missing.length > 0 ? `；缺少能力：${missing.join("、")}` : "";
+  return `应用草案失败：宿主未真正执行原理图应用。当前适配器来源：${input.adapterSource}${missingText}。请先检查宿主 applyPlan 能力是否已接通。`;
 }
 
 export function shouldUseDraftReplyLeadNarrative(input: {
@@ -313,6 +348,131 @@ export interface DevicePickerCandidate {
   supplier?: string;
   supplierId?: string;
   description?: string;
+}
+
+export function buildDevicePickerRoleLabel(role: string | undefined): string {
+  switch (String(role || "").trim()) {
+    case "power_connector":
+      return "电源输入接口";
+    case "battery_connector":
+      return "电池接口";
+    case "ldo_regulator":
+      return "稳压器";
+    case "resistor":
+      return "电阻";
+    case "led":
+      return "LED 指示灯";
+    case "input_capacitor":
+      return "输入电容";
+    default:
+      return "待确认器件";
+  }
+}
+
+export function buildDevicePickerReasonLabel(input: {
+  reason?: string;
+  role?: string;
+  query?: string;
+}): string {
+  const reason = String(input.reason || "").trim();
+  if (reason === "all_candidates_filtered") {
+    return "自动筛选后没有找到完全符合当前用途的器件，下面展示的是接近的候选。";
+  }
+  if (reason === "manual_selection") {
+    return "该器件由你手动确认，后续会按这个选择继续应用草案。";
+  }
+  if (reason === "resolved_from_library") {
+    return "已从器件库中找到可直接使用的匹配器件。";
+  }
+  if (reason === "unresolved") {
+    return `还没有找到可直接确认的${buildDevicePickerRoleLabel(input.role)}。`;
+  }
+  if (reason) {
+    return `当前需要你确认这个${buildDevicePickerRoleLabel(input.role)}是否合适。`;
+  }
+  return `当前需要你确认这个${buildDevicePickerRoleLabel(input.role)}是否适合放在这里。`;
+}
+
+function inferCandidateTypeLabel(candidate: DevicePickerCandidate): string {
+  const haystack = [candidate.name, candidate.description, candidate.footprintName]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/type-?c|usb[-\s]?c/.test(haystack)) return "USB Type-C 接口";
+  if (/usb/.test(haystack)) return "USB 接口";
+  if (/header|conn|connector|母座|插座|接口|座子/.test(haystack)) return "连接器";
+  if (/ldo|regulator|稳压/.test(haystack)) return "稳压器";
+  if (/resistor|电阻/.test(haystack)) return "电阻";
+  if (/led/.test(haystack)) return "LED";
+  return "通用器件";
+}
+
+export function buildDevicePickerCandidatePresentation(
+  item: { role?: string; query?: string },
+  candidate: DevicePickerCandidate,
+  index: number
+): {
+  typeLabel: string;
+  fitLabel: string;
+  fitLevel: "recommended" | "possible" | "weak";
+  summary: string;
+  reasons: string[];
+  cautions: string[];
+} {
+  const haystack = [candidate.name, candidate.description, candidate.footprintName]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const query = String(item.query || "").trim();
+  const queryLower = query.toLowerCase();
+  const reasons: string[] = [];
+  const cautions: string[] = [];
+  let fitLevel: "recommended" | "possible" | "weak" = index === 0 ? "possible" : "weak";
+
+  if (item.role === "power_connector") {
+    if (/type-?c|usb[-\s]?c/.test(haystack)) {
+      fitLevel = "recommended";
+      reasons.push("接口外形与查询目标接近，更可能适合作为当前接口位。");
+      if (/16pin/.test(haystack) || /16pin/.test(queryLower)) {
+        reasons.push("引脚数与查询词里的 16PIN 方向一致。");
+      }
+      cautions.push("如果这一路只拿来供电，不做 USB 数据，后续还要确认是否真的需要完整 16Pin 方案。");
+    } else if (/usb/.test(haystack) || /connector|母座|插座|接口|座子/.test(haystack)) {
+      fitLevel = "possible";
+      reasons.push("它属于接口/连接器类器件，有可能用于外部供电输入。");
+      cautions.push("但名称里没有明确显示为 Type-C，需要再确认接口形态和引脚定义。");
+    } else {
+      fitLevel = "weak";
+      cautions.push("从名称上看不像典型的电源输入连接器，建议谨慎选择。");
+    }
+  }
+
+  if (query && haystack.includes(queryLower.replace(/\s+/g, "").replace(/-/g, ""))) {
+    reasons.push("器件名称与当前查询词高度接近。");
+  }
+
+  const fitLabel =
+    fitLevel === "recommended" ? "较匹配" : fitLevel === "possible" ? "可考虑" : "需谨慎";
+
+  let summary = "这是一个可供你进一步确认的候选器件。";
+  if (item.role === "power_connector") {
+    if (fitLevel === "recommended") {
+      summary = `可作为电源输入接口使用，和当前“${query || "目标接口"}”的查询目标基本一致。`;
+    } else if (fitLevel === "possible") {
+      summary = "它看起来属于连接器类器件，但是否完全符合当前接口用途还需要你再确认。";
+    } else {
+      summary = "它被搜到了，但从名称看和当前接口用途的匹配度不高。";
+    }
+  }
+
+  return {
+    typeLabel: inferCandidateTypeLabel(candidate),
+    fitLabel,
+    fitLevel,
+    summary,
+    reasons,
+    cautions,
+  };
 }
 
 function readSearchString(record: Record<string, unknown>, keys: string[]): string | undefined {
@@ -379,13 +539,16 @@ export function normalizeDevicePickerCandidates(payload: unknown): DevicePickerC
     .filter((item): item is DevicePickerCandidate => Boolean(item));
 }
 
-function inferDraftComponentRole(refOrName: string): string {
-  const value = String(refOrName || "").toUpperCase();
+export function inferDraftComponentRole(refOrName: string): string {
+  const raw = String(refOrName || "").trim();
+  const value = raw.toUpperCase();
+  if (value.startsWith("BT") || value.startsWith("BAT")) return "battery_connector";
   if (value.startsWith("J")) return "power_connector";
   if (value.startsWith("R")) return "resistor";
-  if (value.startsWith("D")) return "led";
+  if (value.startsWith("LED") || value.startsWith("D")) return "led";
   if (value.startsWith("C")) return "input_capacitor";
   if (value.startsWith("U")) return "ldo_regulator";
+  if (/LED|指示灯|充电指示灯|电源指示灯/i.test(raw)) return "led";
   return "generic";
 }
 
@@ -407,9 +570,19 @@ function buildDevicePickerState(plan?: DraftPlan): MainPanelState["devicePicker"
       componentId: component.id,
       componentRef: ref,
       role: inferDraftComponentRole(ref),
+      roleLabel: buildDevicePickerRoleLabel(inferDraftComponentRole(ref)),
       query: component.properties?.preferred_search_query,
       status,
       reason: component.properties?.device_resolution_reason,
+      reasonLabel: buildDevicePickerReasonLabel({
+        reason: component.properties?.device_resolution_reason,
+        role: inferDraftComponentRole(ref),
+        query: component.properties?.preferred_search_query,
+      }),
+      usageHint:
+        inferDraftComponentRole(ref) === "power_connector"
+          ? "这里需要的是外部供电接口，优先看它是不是适合作为电源输入口。"
+          : undefined,
       selectedDeviceLabel: selected
         ? `${selected.name}${selected.footprintName ? ` [${selected.footprintName}]` : ""}`
         : undefined,
@@ -1016,7 +1189,13 @@ function createAssistantRuntime(): AssistantRuntime {
     try {
       const result = await adapter.applyPlan(draftPlan);
       if (!result.applied) {
-        throw new Error("宿主当前未真正执行原理图应用，请检查 applyPlan 能力是否已接通");
+        const capabilityReport = await adapter.getCapabilityReport().catch(() => null);
+        throw new Error(
+          buildDraftApplyUnavailableMessage({
+            adapterSource: adapter.source,
+            capabilityReport,
+          })
+        );
       }
       internals.lastApplyTransactionId = result.transactionId;
       internals.draftBlocked = false;
@@ -1070,6 +1249,18 @@ function createAssistantRuntime(): AssistantRuntime {
     }
     const rawCandidates = await bridge.searchLibraryDevices({ query, scope: "system", pageSize: 8 });
     const candidates = normalizeDevicePickerCandidates(rawCandidates);
+    const role = inferDraftComponentRole(component.ref ?? component.id);
+    const presentedCandidates = candidates.map((candidate, index) => ({
+      ...candidate,
+      ...buildDevicePickerCandidatePresentation(
+        {
+          role,
+          query,
+        },
+        candidate,
+        index
+      ),
+    }));
     const previousPicker = state.devicePicker;
     const picker = buildDevicePickerState(plan) ?? { open: true, items: [] };
     picker.open = true;
@@ -1082,11 +1273,11 @@ function createAssistantRuntime(): AssistantRuntime {
         }
         return {
           ...item,
-          candidates,
+          candidates: presentedCandidates,
         };
       });
     state.devicePicker = picker;
-    return { state, updated: true, candidateCount: candidates.length };
+    return { state, updated: true, candidateCount: presentedCandidates.length };
   }
 
   function chooseDraftDeviceCandidateInternal(
@@ -1569,8 +1760,13 @@ function createAssistantRuntime(): AssistantRuntime {
           if (event.stage === "llm") {
             lastMessage.streaming = true;
             lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "analysis" ? "分析中" : "处理中";
-            // 执行期 llm 事件只更新思考/步骤，不写入 message.content。
-            // 最终正文统一在 applyTurnResultToState 中落盘，避免主内容区与思考区重复流式渲染。
+            // 对 reasoning 模型，思考区走 reasoningDelta；对非 reasoning 模型，
+            // 普通文本 delta 需要进入正文区，否则用户只会看到工具进度而看不到任何生成过程。
+            if (event.textDelta) {
+              lastMessage.content = `${lastMessage.content === "正在思考..." ? "" : lastMessage.content || ""}${event.textDelta}`;
+            } else if (event.text !== undefined && String(event.text || "").trim()) {
+              lastMessage.content = event.text || lastMessage.content || "";
+            }
             if (event.reasoningDelta) {
               upsertLlmReasoningEvent(lastMessage, event.reasoningDelta);
             }
@@ -1896,8 +2092,7 @@ function createAssistantRuntime(): AssistantRuntime {
           preferredOutputLanguage: (input.preferredOutputLanguage || DEFAULT_PREFERRED_OUTPUT_LANGUAGE).trim() || DEFAULT_PREFERRED_OUTPUT_LANGUAGE,
         });
         await fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore);
-        state.summary = "自定义 LLM 配置已保存。";
-        state.chatMessages = pluginAgent.buildConfigSavedMessages();
+        applyCustomLlmConfigSavedState(state, Date.now());
       } catch (error) {
         state.summary = `保存 LLM 配置失败：${error instanceof Error ? error.message : String(error)}`;
         state.toast = {
@@ -2110,49 +2305,44 @@ async function generateDraftStateFromResult(
       
       if (newMessages.length > 0) {
         const newMessage = newMessages[0];
-        // 合并：保留streaming期间的reactEvents，使用新的content和其他字段
-        lastMessage.streaming = false;
-        lastMessage.title = newMessage.title;
-        lastMessage.tone = newMessage.tone;
-        lastMessage.content = newMessage.content;
-        lastMessage.structuredContent = newMessage.structuredContent;
-        lastMessage.evidenceItems = newMessage.evidenceItems;
-        lastMessage.analysisReport = newMessage.analysisReport;
-        lastMessage.suggestions = newMessage.suggestions;
-        lastMessage.actions = newMessage.actions;
-        // 保留streaming期间累积的reactEvents（如果新消息没有的话）
-        lastMessage.reactEvents = preferNonEmptyArray(newMessage.reactEvents, lastMessage.reactEvents);
-        lastMessage.stepTranscript =
-          buildStepTranscriptFromReactEvents(lastMessage.reactEvents) ??
-          newMessage.stepTranscript ??
-          lastMessage.stepTranscript;
-        lastMessage.stepStates = preferNonEmptyArray(newMessage.stepStates, lastMessage.stepStates);
-        lastMessage.workingMemory = newMessage.workingMemory || lastMessage.workingMemory;
-        lastMessage.toolTraces = newMessage.toolTraces || lastMessage.toolTraces;
-        lastMessage.executionTraces = newMessage.executionTraces || lastMessage.executionTraces;
-        lastMessage.uiEvents = newMessage.uiEvents || lastMessage.uiEvents;
+        const mergedMessage = mergeAssistantFinalMessage(lastMessage, newMessage);
         
         if (typeof console !== "undefined") {
           console.log(`${LOG_PREFIX} applyTurnResultToState.update-in-place`, {
-            hasReactEvents: Boolean(lastMessage.reactEvents),
-            reactEventsCount: lastMessage.reactEvents?.length ?? 0,
-            hasStepStates: Boolean(lastMessage.stepStates),
-            stepStatesCount: lastMessage.stepStates?.length ?? 0,
+            hasReactEvents: Boolean(mergedMessage.reactEvents),
+            reactEventsCount: mergedMessage.reactEvents?.length ?? 0,
+            hasStepStates: Boolean(mergedMessage.stepStates),
+            stepStatesCount: mergedMessage.stepStates?.length ?? 0,
           });
         }
+
+        analyzed.chatMessages = [
+          ...input.userMessages.slice(0, -1),
+          ...(replannedFromDraft
+            ? pluginAgent.buildStatusMessages({
+                title: "自动重规划",
+                tone: "warning",
+                content: "草案因高风险问题被阻断，已自动切换到分析模式。",
+              })
+            : []),
+          mergedMessage,
+        ];
+      } else {
+        analyzed.chatMessages = [
+          ...input.userMessages.slice(0, -1),
+          ...(replannedFromDraft
+            ? pluginAgent.buildStatusMessages({
+                title: "自动重规划",
+                tone: "warning",
+                content: "草案因高风险问题被阻断，已自动切换到分析模式。",
+              })
+            : []),
+          {
+            ...lastMessage,
+            streaming: false,
+          },
+        ];
       }
-      
-      analyzed.chatMessages = [
-        ...input.userMessages.slice(0, -1),
-        ...(replannedFromDraft
-          ? pluginAgent.buildStatusMessages({
-              title: "自动重规划",
-              tone: "warning",
-              content: "草案因高风险问题被阻断，已自动切换到分析模式。",
-            })
-          : []),
-        lastMessage,
-      ];
     } else {
       // 没有streaming消息，使用原来的逻辑
       analyzed.chatMessages = replaceTrailingPendingAssistant(input.userMessages, [
@@ -2463,6 +2653,32 @@ export function finalizeDraftTurnMessages(
   draftMessages: NonNullable<MainPanelState["chatMessages"]>
 ): NonNullable<MainPanelState["chatMessages"]> {
   return replaceTrailingPendingAssistant(previousMessages, draftMessages);
+}
+
+export function mergeAssistantFinalMessage(
+  pendingMessage: NonNullable<MainPanelState["chatMessages"]>[number],
+  finalMessage: NonNullable<MainPanelState["chatMessages"]>[number]
+): NonNullable<MainPanelState["chatMessages"]>[number] {
+  const preservedReactEvents = pendingMessage.reactEvents;
+  const preservedStepStates = pendingMessage.stepStates;
+  const preservedWorkingMemory = pendingMessage.workingMemory;
+
+  const mergedReactEvents = preferNonEmptyArray(finalMessage.reactEvents, preservedReactEvents);
+  return {
+    ...finalMessage,
+    role: "assistant",
+    streaming: false,
+    reactEvents: mergedReactEvents,
+    stepTranscript:
+      buildStepTranscriptFromReactEvents(mergedReactEvents) ??
+      finalMessage.stepTranscript ??
+      pendingMessage.stepTranscript,
+    stepStates: preferNonEmptyArray(finalMessage.stepStates, preservedStepStates),
+    workingMemory: finalMessage.workingMemory || preservedWorkingMemory,
+    toolTraces: finalMessage.toolTraces || pendingMessage.toolTraces,
+    executionTraces: finalMessage.executionTraces || pendingMessage.executionTraces,
+    uiEvents: finalMessage.uiEvents || pendingMessage.uiEvents,
+  };
 }
 
 export function appendAssistantMessages(

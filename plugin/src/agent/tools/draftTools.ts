@@ -6,7 +6,7 @@ import { draftSpecToPlan, isDraftDesignSpec } from "../../editor/apply-plan/draf
 import type { RagClient } from "../../services/rag/ragClient";
 import type { AgentTool } from "./toolRegistry";
 import type { DraftDesignSpec, DraftPlanGuidance, DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
-import type { LibrarySearchResultItem } from "../../editor/host/runtime";
+import type { LibraryDeviceDetail, LibrarySearchResultItem } from "../../editor/host/runtime";
 
 function mergeGuidanceEvidence(
   guidance: DraftPlanGuidance | undefined,
@@ -40,9 +40,16 @@ type SearchLibraryDevices = (input: {
   page?: number;
 }) => Promise<LibrarySearchResultItem[]>;
 
+type GetLibraryDevice = (input: {
+  deviceUuid: string;
+  libraryUuid?: string;
+  scope?: "system" | "project" | "personal" | "favorite";
+}) => Promise<LibraryDeviceDetail>;
+
 export function createDraftTools(
   ragClient?: RagClient,
-  searchLibraryDevices?: SearchLibraryDevices
+  searchLibraryDevices?: SearchLibraryDevices,
+  getLibraryDevice?: GetLibraryDevice
 ): AgentTool[] {
   return [
     {
@@ -120,7 +127,15 @@ export function createDraftTools(
         });
         if (searchLibraryDevices) {
           plan = await resolveDraftPlanDevices(plan, async (query) =>
-            searchLibraryDevices({ query, scope: "system", pageSize: 5 })
+            searchLibraryDevices({ query, scope: "system", pageSize: 5 }),
+            getLibraryDevice
+              ? async ({ deviceUuid, libraryUuid }) =>
+                  getLibraryDevice({
+                    deviceUuid,
+                    libraryUuid,
+                    scope: "system",
+                  })
+              : undefined
           );
         }
         return plan;

@@ -163,6 +163,24 @@ function mapMessages(messages: LlmMessage[]): Array<Record<string, unknown>> {
   });
 }
 
+function normalizeParametersForOpenAiCompatible(parameters: unknown, strict?: boolean): unknown {
+  return parameters;
+}
+
+export function normalizeToolsForOpenAiCompatible(tools?: LlmTool[]): LlmTool[] | undefined {
+  if (!Array.isArray(tools)) {
+    return tools;
+  }
+  return tools.map((tool) => ({
+    ...tool,
+    function: {
+      ...tool.function,
+      strict: undefined,
+      parameters: normalizeParametersForOpenAiCompatible(tool.function.parameters, tool.function.strict),
+    },
+  }));
+}
+
 function mergeToolCalls(
   current: Array<{
     index?: number;
@@ -221,8 +239,10 @@ export class OpenAiCompatibleClient {
       model: cfg.model,
       tool_choice: input.tool_choice,
       messages: summarizeMessages(input.messages),
-      tools: summarizeTools(input.tools),
+      tools: summarizeTools(normalizeToolsForOpenAiCompatible(input.tools)),
     });
+
+    const normalizedTools = normalizeToolsForOpenAiCompatible(input.tools);
 
     const response = await fetch(`${cfg.baseUrl}/chat/completions`, {
       method: "POST",
@@ -230,7 +250,7 @@ export class OpenAiCompatibleClient {
       body: JSON.stringify({
         model: cfg.model,
         messages: mapMessages(input.messages),
-        tools: input.tools,
+        tools: normalizedTools,
         tool_choice: input.tool_choice,
         stream: false,
       }),
@@ -283,8 +303,10 @@ export class OpenAiCompatibleClient {
       model: cfg.model,
       tool_choice: input.tool_choice,
       messages: summarizeMessages(input.messages),
-      tools: summarizeTools(input.tools),
+      tools: summarizeTools(normalizeToolsForOpenAiCompatible(input.tools)),
     });
+
+    const normalizedTools = normalizeToolsForOpenAiCompatible(input.tools);
 
     let outputText = "";
     let reasoningText = "";
@@ -303,7 +325,7 @@ export class OpenAiCompatibleClient {
       body: JSON.stringify({
         model: cfg.model,
         messages: mapMessages(input.messages),
-        tools: input.tools,
+        tools: normalizedTools,
         tool_choice: input.tool_choice,
         stream: true,
       }),

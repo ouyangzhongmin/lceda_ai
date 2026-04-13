@@ -30,6 +30,11 @@ export function createApiApplyPlanAdapter(
         plan = await resolveDraftPlanDevices(plan, async (query) =>
           typedSearchLibraryDevices({ query, scope: "system", pageSize: 5 })
         );
+        if (hasAnyPlacementDevice(plan) && !canApplyByTypedPlacement(plan)) {
+          throw new Error(
+            `typed placement requires all draft components to have resolved devices: ${listUnresolvedPlacementComponents(plan).join(", ")}`
+          );
+        }
       }
       const transactionId = createTransactionId();
       if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
@@ -148,6 +153,24 @@ export function createApiApplyPlanAdapter(
   };
 }
 
+function hasAnyPlacementDevice(plan: DraftPlan): boolean {
+  return plan.components.some((component) => {
+    const deviceUuid = component.properties.device_uuid;
+    const libraryUuid = component.properties.library_uuid;
+    return typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid;
+  });
+}
+
+function listUnresolvedPlacementComponents(plan: DraftPlan): string[] {
+  return plan.components
+    .filter((component) => {
+      const deviceUuid = component.properties.device_uuid;
+      const libraryUuid = component.properties.library_uuid;
+      return !(typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid);
+    })
+    .map((component) => component.ref || component.name || component.id);
+}
+
 function canApplyByTypedPlacement(plan: DraftPlan): boolean {
   if (typeof eda === "undefined") {
     return false;
@@ -158,7 +181,7 @@ function canApplyByTypedPlacement(plan: DraftPlan): boolean {
   if (typeof eda.sch_PrimitiveWire?.create !== "function") {
     return false;
   }
-  return plan.components.some((component) => {
+  return plan.components.length > 0 && plan.components.every((component) => {
     const deviceUuid = component.properties.device_uuid;
     const libraryUuid = component.properties.library_uuid;
     return typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid;
@@ -459,6 +482,10 @@ const PIN_SEMANTIC_ALIASES: Record<string, string> = {
   agnd: "ground",
   ground: "ground",
   vss: "ground",
+  i2c_sda: "i2c_sda",
+  sda: "i2c_sda",
+  i2c_scl: "i2c_scl",
+  scl: "i2c_scl",
   neg: "negative",
   minus: "negative",
   n: "negative",
@@ -467,6 +494,25 @@ const PIN_SEMANTIC_ALIASES: Record<string, string> = {
   plus: "positive",
   p: "positive",
   "+": "positive",
+  i2s_sck: "i2s_bclk",
+  bclk: "i2s_bclk",
+  sclk: "i2s_bclk",
+  i2s_bclk: "i2s_bclk",
+  i2s_ws: "i2s_lrck",
+  ws: "i2s_lrck",
+  lrck: "i2s_lrck",
+  lrc: "i2s_lrck",
+  i2s_lrck: "i2s_lrck",
+  i2s_sd: "i2s_data",
+  sd: "i2s_data",
+  sdin: "i2s_data",
+  sdout: "i2s_data",
+  din: "i2s_data",
+  dout: "i2s_data",
+  adcdat: "i2s_data",
+  dacdat: "i2s_data",
+  i2s_din: "i2s_data",
+  i2s_dout: "i2s_data",
 };
 
 function buildOrthogonalPolyline(points: Array<{ x: number; y: number }>): number[] {

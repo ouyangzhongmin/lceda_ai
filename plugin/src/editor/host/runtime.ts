@@ -52,6 +52,14 @@ export interface LibraryDeviceDetail {
     libraryUuid?: string;
   };
   otherProperty?: Record<string, boolean | number | string | undefined>;
+  pins?: Array<{
+    id?: string;
+    pinNumber?: string;
+    pinName?: string;
+    name?: string;
+    number?: string;
+    electricalType?: string;
+  }>;
   raw?: unknown;
 }
 

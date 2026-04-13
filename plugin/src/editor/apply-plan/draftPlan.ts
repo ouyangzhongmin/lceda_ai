@@ -15,6 +15,8 @@ export interface DraftPlanSelectedDevice {
   symbolName?: string;
   footprintUuid?: string;
   footprintName?: string;
+  pinCount?: number;
+  pinSummary?: string;
 }
 
 export interface DraftPlanGuidance {

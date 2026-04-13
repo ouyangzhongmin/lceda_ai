@@ -386,7 +386,49 @@ function normalizeLibraryDeviceDetail(value: unknown): LibraryDeviceDetail {
       typeof record.otherProperty === "object" && record.otherProperty !== null
         ? (record.otherProperty as Record<string, boolean | number | string | undefined>)
         : undefined,
+    pins: normalizeLibraryDevicePins(record),
     raw: value,
+  };
+}
+
+function normalizeLibraryDevicePins(record: Record<string, unknown>): LibraryDeviceDetail["pins"] | undefined {
+  const candidates = [
+    record.pins,
+    record.pinList,
+    record.symbolPins,
+    typeof record.symbol === "object" && record.symbol !== null ? (record.symbol as Record<string, unknown>).pins : undefined,
+    typeof record.raw === "object" && record.raw !== null ? (record.raw as Record<string, unknown>).pins : undefined,
+  ];
+  const source = candidates.find(Array.isArray);
+  if (!Array.isArray(source)) {
+    return undefined;
+  }
+  const pins = source
+    .map((item) => normalizeLibraryDevicePin(item))
+    .filter((item): item is NonNullable<LibraryDeviceDetail["pins"]>[number] => Boolean(item));
+  return pins.length > 0 ? pins : undefined;
+}
+
+function normalizeLibraryDevicePin(
+  value: unknown
+): NonNullable<LibraryDeviceDetail["pins"]>[number] | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const pinName = readStringRecord(record, ["pinName", "name", "PinName", "Name"]);
+  const pinNumber = readStringRecord(record, ["pinNumber", "number", "PinNumber", "Number"]);
+  const id = readStringRecord(record, ["id", "uuid", "primitiveId", "PrimitiveId"]);
+  if (!pinName && !pinNumber && !id) {
+    return undefined;
+  }
+  return {
+    id,
+    pinName,
+    name: pinName,
+    pinNumber,
+    number: pinNumber,
+    electricalType: readStringRecord(record, ["electricalType", "ElectricalType", "type", "Type"]),
   };
 }
 

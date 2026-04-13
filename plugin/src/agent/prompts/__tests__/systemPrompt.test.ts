@@ -30,6 +30,10 @@ test("buildSystemPrompt includes strict DraftDesignSpec guidance for schematic_d
   assert.equal(prompt.includes("powerNets"), true);
   assert.equal(prompt.includes("signalNets"), true);
   assert.equal(prompt.includes("key_connections"), true);
+  assert.equal(prompt.includes("待确认器件"), true);
+  assert.equal(prompt.includes("元件库中直接检索"), true);
+  assert.equal(prompt.includes("禁止把 `generic`"), true);
+  assert.equal(prompt.includes("连接器/电池接口"), true);
 });
 
 test("buildSystemPrompt includes existing draft follow-up instructions when draft summary mode is enabled", () => {

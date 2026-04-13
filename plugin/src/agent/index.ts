@@ -1355,7 +1355,11 @@ function createAgentToolRegistry(
       tools.register(tool);
     }
   }
-  for (const tool of createDraftTools(deps.ragClient, deps.hostBridge?.searchLibraryDevices)) {
+  for (const tool of createDraftTools(
+    deps.ragClient,
+    deps.hostBridge?.searchLibraryDevices,
+    deps.hostBridge?.getLibraryDevice
+  )) {
     tools.register(tool);
   }
   for (const tool of createRuleTools()) {
