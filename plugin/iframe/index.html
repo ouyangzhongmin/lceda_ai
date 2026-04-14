@@ -3424,7 +3424,7 @@
       if (message?.title === "你") {
         return "user";
       }
-      if (message?.reactEvents?.length || message?.stepStates?.length || message?.actions?.length) {
+      if (message?.stepItems?.length || message?.reactEvents?.length || message?.stepStates?.length || message?.actions?.length) {
         return "assistant";
       }
       return "user";
@@ -3479,21 +3479,10 @@
         topPane.appendChild(head);
       }
 
-      let thinkingHost = null;
-      if (role !== "user") {
-        thinkingHost = document.createElement("div");
-        thinkingHost.className = "assistant-thinking";
-        thinkingHost.hidden = true;
-      }
-
       const stepsHost = document.createElement("div");
       stepsHost.className = role === "user" ? "message-steps-host" : "assistant-steps-simple";
       stepsHost.hidden = true;
       card.appendChild(stepsHost);
-
-      if (thinkingHost) {
-        card.appendChild(thinkingHost);
-      }
 
       const content = document.createElement("div");
       content.className = role === "user" ? "message-content" : "assistant-summary";
@@ -3514,7 +3503,6 @@
         mainPaneEl: null,
         stepsHostEl: stepsHost,
         stepsToggleHostEl: stepsBtnEl,
-        thinkingHostEl: thinkingHost,
         actionsHostEl: null,
         statusEl,
         role,
@@ -3540,6 +3528,7 @@
 
     function buildMessageSignature(message) {
       if (!message || typeof message !== "object") return "";
+      const stepItemsCount = Array.isArray(message.stepItems) ? message.stepItems.length : 0;
       const reactEventsCount = Array.isArray(message.reactEvents) ? message.reactEvents.length : 0;
       const stepStatesCount = Array.isArray(message.stepStates) ? message.stepStates.length : 0;
       const actionsCount = Array.isArray(message.actions) ? message.actions.length : 0;
@@ -3551,6 +3540,7 @@
         message.reportMarkdown || "",
         message.streaming ? "1" : "0",
         message.tone || "",
+        stepItemsCount,
         reactEventsCount,
         stepStatesCount,
         actionsCount,
@@ -3610,7 +3600,6 @@
     function getAssistantCardLayoutState(input) {
       if (input.contextCompaction) {
         return {
-          showThinking: false,
           showSteps: false,
           showReport: Boolean(input.hasReport),
           useSplitLayout: false,
@@ -3620,16 +3609,14 @@
 
       if (input.streaming) {
         return {
-          showThinking: Boolean(input.hasThinking),
           showSteps: Boolean(input.hasSteps),
           showReport: Boolean(input.hasReport),
-          useSplitLayout: Boolean(input.hasThinking || input.hasSteps),
+          useSplitLayout: Boolean(input.hasSteps),
           reportFillsRemainingHeight: false,
         };
       }
 
       return {
-        showThinking: false,
         showSteps: Boolean(input.hasSteps && input.stepsOpen),
         showReport: Boolean(input.hasReport),
         useSplitLayout: false,
@@ -3652,49 +3639,6 @@
       const nextStreaming = role === "assistant" && Boolean(message.streaming);
       const prevText = dom.lastText || "";
       const nextText = message.content || "";
-
-      // Thinking and steps should coexist while streaming:
-      // - Show the latest thought/reasoning whenever it exists during streaming.
-      // - Show steps timeline once tool_call / observation appears (or stepStates exist).
-      if (role === "assistant") {
-        const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : [];
-        const hasThought = reactEvents.some((e) => e && e.kind === "thought" && String(e.text || "").trim());
-        const showThinking = Boolean(dom.thinkingHostEl && hasThought && nextStreaming);
-        if (dom.thinkingHostEl) {
-          dom.thinkingHostEl.hidden = !showThinking;
-          dom.thinkingHostEl.classList.toggle("live", showThinking);
-          if (showThinking) {
-            // Pick the latest thought text as the visible content.
-            const latest = [...reactEvents].reverse().find((e) => e && e.kind === "thought" && String(e.text || "").trim());
-            const rawThoughtText = latest ? String(latest.text || "").trim() : "";
-            const thoughtText = rawThoughtText.length > 2000 ? rawThoughtText.slice(0, 2000) + "…" : rawThoughtText;
-            dom.thinkingHostEl.innerHTML = "";
-            const head = document.createElement("div");
-            head.className = "assistant-thinking-head";
-            const label = document.createElement("div");
-            label.className = "assistant-thinking-label";
-            label.textContent = "思考摘要";
-            head.appendChild(label);
-            dom.thinkingHostEl.appendChild(head);
-
-            const body = document.createElement("div");
-            body.className = "assistant-thinking-body";
-            const spinner = document.createElement("div");
-            spinner.className = "assistant-thinking-spinner";
-            body.appendChild(spinner);
-            const text = document.createElement("div");
-            text.className = "assistant-thinking-copy";
-            text.textContent = thoughtText;
-            body.appendChild(text);
-            dom.thinkingHostEl.appendChild(body);
-            requestAnimationFrame(() => {
-              body.scrollTop = body.scrollHeight;
-            });
-          }
-        }
-
-        // Steps visibility is managed by renderStepsUI.
-      }
 
       if (dom.statusEl) {
         const tone =
@@ -3760,18 +3704,6 @@
 
       if (!(structured && structured.length > 0 && !preferMarkdownOverStructured)) dom.lastText = nextText;
 
-      if (
-        role === "assistant" &&
-        dom.thinkingHostEl &&
-        !dom.thinkingHostEl.hidden &&
-        String(nextText || "").trim() === "正在思考..."
-      ) {
-        dom.contentEl.classList.remove("md", "structured");
-        dom.contentEl.textContent = "";
-        dom.lastText = "";
-        dom.lastWasMarkdown = false;
-      }
-
       if (role === "assistant") {
         const hasStructuredContent = Boolean(structured && structured.length > 0 && !preferMarkdownOverStructured);
         const hasReportMarkdown = reportMarkdown.length > 0;
@@ -3785,16 +3717,13 @@
 
       if (role === "assistant") {
         renderMessageActions(dom, message);
-         const stepEntries = collectStepEntries(message);
-         const stepLines = stepEntries.map(formatStepEntryLine).filter(Boolean);
-         const hadRenderedSteps = Boolean(dom.stepsUI && dom.stepsUI.lines.length);
-         const hasExplicitSteps = Array.isArray(message.stepStates) ? message.stepStates.length > 0 : false;
-         const hasTooling = stepEntries.some((e) => e && (e.kind === "tool_call" || e.kind === "observation"));
-         // Only show Steps UI after actual tool execution starts.
-         if ((stepLines.length && (hasTooling || hasExplicitSteps)) || hadRenderedSteps) {
-           const activeUI = simpleEnsureStepsUI(dom, nextStreaming);
-           activeUI.streaming = nextStreaming;
-           const shouldReplaceWithCurrent = stepLines.length > 0;
+          const stepEntries = collectStepEntries(message);
+          const stepLines = stepEntries.map(formatStepEntryLine).filter(Boolean);
+          const hadRenderedSteps = Boolean(dom.stepsUI && dom.stepsUI.lines.length);
+          if (stepLines.length > 0 || hadRenderedSteps) {
+            const activeUI = simpleEnsureStepsUI(dom, nextStreaming);
+            activeUI.streaming = nextStreaming;
+            const shouldReplaceWithCurrent = stepLines.length > 0;
            if (shouldReplaceWithCurrent && activeUI.reactLen > stepLines.length) {
              activeUI.lines = [];
              activeUI.events = [];
@@ -3819,15 +3748,10 @@
         const layout = getAssistantCardLayoutState({
           contextCompaction: Boolean(message && message.contextCompaction),
           streaming: nextStreaming,
-          hasThinking: Boolean(dom.thinkingHostEl && !dom.thinkingHostEl.hidden),
           hasSteps: stepLineCount > 0,
           hasReport: !dom.contentEl.hidden,
           stepsOpen: nextStreaming || Boolean(dom.stepsUI && dom.stepsUI.open),
         });
-
-        if (dom.thinkingHostEl) {
-          dom.thinkingHostEl.hidden = !layout.showThinking;
-        }
         if (dom.stepsHostEl) {
           dom.stepsHostEl.hidden = !layout.showSteps;
         }
@@ -3846,11 +3770,31 @@
       if (event.kind === "thought") return `思考: ${event.text || event.label || ""}`;
       if (event.kind === "tool_call") return `Tool: ${(event.label || event.toolName || "tool")}${event.inputSummary ? ` ${event.inputSummary}` : ""}`;
       if (event.kind === "observation") return `观察: ${event.outputSummary || event.text || ""}`;
-      if (event.kind === "final") return `完成: ${event.text || event.label || ""}`;
+      if (event.kind === "status") return `完成: ${event.text || event.label || ""}`;
       return `${event.kind}: ${event.text || event.label || ""}`;
     }
 
     function collectStepEntries(message) {
+      const stepItems = Array.isArray(message.stepItems) ? message.stepItems : [];
+      if (stepItems.length > 0) {
+        const allowedTimelineTypes = new Set(["task", "thought", "tool_call", "observation", "status"]);
+        return stepItems
+          .filter((item) => item && allowedTimelineTypes.has(String(item.type || "").trim()))
+          .map((item) => ({
+            kind: item.type,
+            status: item.status || (item.type === "status" ? "done" : "pending"),
+            stepKind: item.phase,
+            title: item.type === "tool_call" ? (item.title || item.toolName || "工具调用") : String(item.title || ""),
+            meta: item.type === "tool_call" ? String(item.inputSummary || "") : "",
+            text:
+              item.type === "tool_call"
+                ? summarizeExecutionText("tool_call", item.text || item.inputSummary || "", item.title || item.toolName || "")
+                : item.type === "observation"
+                  ? summarizeExecutionText("observation", item.outputSummary || item.text || "", item.title || "")
+                  : String(item.text || item.title || ""),
+            details: [],
+          }));
+      }
       const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : [];
       if (reactEvents.length > 0) {
         return reactEvents
@@ -3859,14 +3803,14 @@
             if (event.kind === "task" && /^迭代\s+\d+$/u.test(String(event.label || "").trim())) {
               return false;
             }
-            if (event.kind === "thought") {
+            if (event.kind === "final") {
               return false;
             }
             return true;
           })
           .map((event) => ({
             kind: event.kind,
-            status: event.status || (event.kind === "final" ? "done" : "pending"),
+            status: event.status || "pending",
             stepKind: event.stepKind,
             title: event.kind === "tool_call" ? (event.label || event.toolName || "工具调用") : "",
             meta: event.kind === "tool_call" ? (event.inputSummary || "") : "",
@@ -3911,7 +3855,7 @@
       if (entry.kind === "thought") return `思考: ${entry.text || ""}`;
       if (entry.kind === "tool_call") return `Tool: ${entry.title || "工具调用"}${entry.meta ? ` ${entry.meta}` : ""}`;
       if (entry.kind === "observation") return `观察: ${entry.text || ""}`;
-      if (entry.kind === "final") return `完成: ${entry.text || ""}`;
+      if (entry.kind === "status") return `完成: ${entry.text || entry.title || ""}`;
       return entry.text || "";
     }
 
@@ -3997,7 +3941,7 @@
         case "thought": return "思考";
         case "tool_call": return "工具";
         case "observation": return "观察";
-        case "final": return "完成";
+        case "status": return "完成";
         default: return "记录";
       }
     }
@@ -4086,7 +4030,7 @@
       if (entry && entry.stepKind) return `step:${entry.stepKind}`;
       if (entry && entry.kind === "tool_call") return `tool:${entry.title || entry.text || index}`;
       if (entry && entry.kind === "observation") return `observation:${entry.title || entry.text || index}`;
-      if (entry && entry.kind === "final") return `final:${entry.title || entry.text || index}`;
+      if (entry && entry.kind === "status") return `status:${entry.title || entry.text || index}`;
       if (entry && entry.kind === "task") return `task:${entry.title || entry.text || index}`;
       return `entry:${index}`;
     }
@@ -4155,7 +4099,7 @@
         "任务": "task",
         "思考": "thought",
         "观察": "observation",
-        "完成": "final",
+        "完成": "status",
       };
       return {
         kind: kindMap[rawKind] || "observation",
@@ -4315,7 +4259,7 @@
         case "thought": return "思考";
         case "tool_call": return "工具";
         case "observation": return "观察";
-        case "final": return "完成";
+        case "status": return "完成";
         default: return "记录";
       }
     }

@@ -13,6 +13,7 @@ function createState(): ReactAgentState {
   return {
     toolTraces: [],
     stepStates: [],
+    stepItems: [],
     workingMemory: {
       hasContext: false,
       mcpReady: false,
@@ -572,6 +573,75 @@ test("runReActLoop forwards plain text deltas as textDelta progress for non-reas
   );
   assert.equal(
     progressEvents.some((event) => event.reasoningDelta),
+    false
+  );
+});
+
+test("runReActLoop keeps a single thought step item while reasoning deltas stream", async () => {
+  const state = createState();
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: [],
+    listToolNames: () => ["llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      const payload = input as {
+        onEvent?: (event: {
+          type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+          reasoning_delta?: string;
+        }) => void;
+      };
+      payload.onEvent?.({ type: "start" });
+      payload.onEvent?.({ type: "reasoning_delta", reasoning_delta: "先读取上下文。" });
+      payload.onEvent?.({ type: "reasoning_delta", reasoning_delta: "再确认关键网络。" });
+      payload.onEvent?.({ type: "done" });
+      return {
+        output_text: '{"type":"final","route":"analysis","rationale":"done","output":"## 报告"}',
+      } as never;
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+  });
+
+  const thoughtItems = state.stepItems.filter((item) => item.type === "thought");
+  assert.equal(thoughtItems.length, 1);
+  assert.equal(thoughtItems[0]?.text, "先读取上下文。再确认关键网络。");
+  assert.equal(thoughtItems[0]?.status, "done");
+});
+
+test("runReActLoop does not append final as visible step item", async () => {
+  const state = createState();
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "直接给结论" },
+    allowedTools: [],
+    listToolNames: () => ["llm_generate"],
+    invokeTool: async (toolName) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      return {
+        output_text: '{"type":"final","route":"chat","rationale":"done","output":"ok"}',
+      } as never;
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+  });
+
+  assert.equal(
+    state.stepItems.some((item) => item.type === "status" || /final|finish/i.test(item.title)),
     false
   );
 });
@@ -1422,6 +1492,7 @@ test("runReActLoop settles tool_call react event status after tool result", asyn
 test("runReActLoop blocks draft final until required draft tools are completed", async () => {
   let llmCalls = 0;
   const toolCalls: string[] = [];
+  const state = createState();
   const deps: ReactAgentDeps = {
     task: { type: "natural_chat", userQuery: "帮我设计一个基于ESP32-S3的语音设备原理图" },
     allowedTools: ["draft_generate_plan", "draft_preview_plan"],
@@ -1492,7 +1563,7 @@ test("runReActLoop blocks draft final until required draft tools are completed",
 
   const result = await runReActLoop({
     deps,
-    state: createState(),
+    state,
     system: "system",
     user: "user",
     toolDefinitions: [
@@ -1515,6 +1586,10 @@ test("runReActLoop blocks draft final until required draft tools are completed",
   assert.equal(result.finalOutput, "with preview");
   assert.deepEqual(toolCalls, ["draft_generate_plan", "draft_preview_plan"]);
   assert.deepEqual(result.observations.map((item) => item.tool), ["draft_generate_plan", "draft_preview_plan"]);
+  assert.equal(
+    state.stepItems.some((item) => item.type === "task" && item.id === "react-task-2" && item.status === "running"),
+    false
+  );
 });
 
 test("runUnifiedReactAgent forces analysis queries to fetch context and run checks", async () => {

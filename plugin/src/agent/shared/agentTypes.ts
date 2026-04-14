@@ -60,6 +60,21 @@ export interface AgentReactEvent {
   outputSummary?: string;
 }
 
+export interface AgentStepItem {
+  id: string;
+  phase: AgentPlanStepKind | "system";
+  type: "task" | "thought" | "tool_call" | "observation" | "status";
+  status: AgentStepStatus;
+  title: string;
+  text: string;
+  toolName?: string;
+  inputSummary?: string;
+  outputSummary?: string;
+  startedAt?: string;
+  updatedAt?: string;
+  streaming?: boolean;
+}
+
 export type AgentRoute = "chat" | "analysis" | "draft";
 
 export type AgentPlanStepKind = "context" | "mcp" | "rules" | "library" | "llm" | "draft";
@@ -198,6 +213,7 @@ export interface AgentResult {
   locateLabel?: string;
   uiEvents?: AgentUiEvent[];
   reactEvents?: AgentReactEvent[];
+  stepItems?: AgentStepItem[];
   stepStates?: AgentStepState[];
   workingMemory?: AgentWorkingMemory;
 }

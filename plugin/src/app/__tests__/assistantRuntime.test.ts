@@ -258,6 +258,191 @@ test("mergeAssistantFinalMessage fully replaces streamed content while preservin
   assert.equal(merged.workingMemory?.lastObservation, "已有最终结论");
 });
 
+test("mergeAssistantFinalMessage preserves pending process stepItems when final message omits them", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "streaming...",
+    streaming: true,
+    stepItems: [
+      {
+        id: "step-1",
+        phase: "llm" as const,
+        type: "thought" as const,
+        status: "running" as const,
+        title: "Reasoning",
+        text: "正在思考",
+        startedAt: "2026-04-14T10:00:00.000Z",
+        streaming: true,
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "最终答案",
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(Array.isArray(merged.stepItems), true);
+  assert.equal(merged.stepItems?.length, 1);
+  assert.equal(merged.stepItems?.[0]?.id, "step-1");
+  assert.equal(merged.stepItems?.[0]?.type, "thought");
+  assert.equal(merged.stepItems?.[0]?.text, "正在思考");
+});
+
+test("mergeAssistantFinalMessage converts legacy reactEvents into stepItems without final entries", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "streaming...",
+    streaming: true,
+    reactEvents: [
+      {
+        kind: "thought" as const,
+        label: "Reasoning",
+        status: "running" as const,
+        text: "正在思考",
+        stepKind: "llm" as const,
+      },
+      {
+        kind: "final" as const,
+        label: "完成",
+        status: "done" as const,
+        text: "最终结论",
+        stepKind: "llm" as const,
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "最终答案",
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(Array.isArray(merged.stepItems), true);
+  assert.equal(merged.stepItems?.length, 1);
+  assert.equal(merged.stepItems?.[0]?.type, "thought");
+  assert.equal(merged.stepItems?.[0]?.title, "Reasoning");
+});
+
+test("mergeAssistantFinalMessage respects explicit empty final stepItems without fallback", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "streaming...",
+    streaming: true,
+    stepItems: [
+      {
+        id: "step-1",
+        phase: "llm" as const,
+        type: "thought" as const,
+        status: "running" as const,
+        title: "Reasoning",
+        text: "正在思考",
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "最终答案",
+    stepItems: [],
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(Array.isArray(merged.stepItems), true);
+  assert.equal(merged.stepItems?.length, 0);
+});
+
+test("mergeAssistantFinalMessage strips final-control-like text from converted stepItems", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "streaming...",
+    streaming: true,
+    reactEvents: [
+      {
+        kind: "thought" as const,
+        label: "Reasoning",
+        status: "done" as const,
+        text: "先输出概览。\n\n```json\n{\n  \"type\": \"final\",\n  \"route\": \"analysis\"\n}",
+        stepKind: "llm" as const,
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "最终答案",
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(merged.stepItems?.[0]?.text, "先输出概览。");
+});
+
+test("mergeAssistantFinalMessage keeps explicit empty final reactEvents without fallback", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "streaming...",
+    streaming: true,
+    reactEvents: [
+      {
+        kind: "thought" as const,
+        label: "Reasoning",
+        status: "running" as const,
+        text: "正在思考",
+        stepKind: "llm" as const,
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "最终答案",
+    reactEvents: [],
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(Array.isArray(merged.reactEvents), true);
+  assert.equal(merged.reactEvents?.length, 0);
+});
+
+test("mergeAssistantFinalMessage keeps explicit empty final stepStates without fallback", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "streaming...",
+    streaming: true,
+    stepStates: [
+      {
+        kind: "llm" as const,
+        required: true,
+        note: "生成最终报告",
+        status: "running" as const,
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "最终答案",
+    stepStates: [],
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(Array.isArray(merged.stepStates), true);
+  assert.equal(merged.stepStates?.length, 0);
+});
+
 test("stripFinalControlLikeText removes fenced final payload from UI text", () => {
   assert.equal(
     stripFinalControlLikeText("先输出概览。\n\n```json\n{\n  \"type\": \"final\",\n  \"route\": \"analysis\"\n}"),
