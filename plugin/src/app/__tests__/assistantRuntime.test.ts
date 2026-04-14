@@ -18,6 +18,7 @@ import {
   inferDraftComponentRole,
   mergeAssistantFinalMessage,
   normalizeDevicePickerCandidates,
+  stripFinalControlLikeText,
   shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
   shouldIgnoreDuplicateSendWhileRunning,
@@ -255,6 +256,17 @@ test("mergeAssistantFinalMessage fully replaces streamed content while preservin
   assert.equal(merged.reactEvents?.length, 1);
   assert.equal(merged.stepStates?.length, 1);
   assert.equal(merged.workingMemory?.lastObservation, "已有最终结论");
+});
+
+test("stripFinalControlLikeText removes fenced final payload from UI text", () => {
+  assert.equal(
+    stripFinalControlLikeText("先输出概览。\n\n```json\n{\n  \"type\": \"final\",\n  \"route\": \"analysis\"\n}"),
+    "先输出概览。"
+  );
+});
+
+test("stripFinalControlLikeText removes split final control prefix", () => {
+  assert.equal(stripFinalControlLikeText("{\n\"type\""), "");
 });
 
 test("applyCustomLlmConfigSavedState keeps existing chat messages and uses toast instead", () => {

@@ -11248,6 +11248,35 @@ var edaEsbuildExportName = (() => {
       }
       return raw;
     };
+    const stripFinalControlPayloadEarly = (text) => {
+      const raw = String(text || "");
+      const startPatterns = [
+        /(?:\n|\r|^)\s*```(?:json)?\s*$/u,
+        /(?:\n|\r|^)\s*```json\s*(?:\n|\r)/u,
+        /(?:\n|\r|^)\s*```\s*(?:\n|\r)\s*\{\s*"type"\s*:\s*"final"/u,
+        /(?:\n|\r|^)\s*Final:\s*$/u,
+        /(?:\n|\r|^)\s*Final:\s*\{/u,
+        /(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+        /(?:\n|\r|^)\s*\{\s*"type"\s*:\s*$/u,
+        /(?:\n|\r|^)\s*\{\s*"type"\s*$/u,
+        /(?:\n|\r|^)\s*\{\s*"type"$/u,
+        /(?:\n|\r|^)\s*```\s*$/u,
+        /(?:\n|\r|^)\s*``$/u,
+        /(?:\n|\r|^)\s*`$/u,
+        /(?:\n|\r|^)\s*\{$/u
+      ];
+      let cutIndex = -1;
+      for (const pattern of startPatterns) {
+        const match = pattern.exec(raw);
+        if (!match) continue;
+        const nextIndex = match.index;
+        if (cutIndex < 0 || nextIndex < cutIndex) {
+          cutIndex = nextIndex;
+        }
+      }
+      return cutIndex >= 0 ? raw.slice(0, cutIndex) : raw;
+    };
+    const sanitizeStreamPayload = (text) => stripFinalControlPayloadEarly(stripFinalControlPayload(text));
     const normalizeTodoStatus = (value) => {
       const raw = String(value || "").trim().toLowerCase();
       if (raw === "not-started" || raw === "pending") return "pending";
@@ -11393,7 +11422,9 @@ var edaEsbuildExportName = (() => {
         workingMemory: state.workingMemory
       });
       onProgress?.(`ReAct \u8FED\u4EE3 ${i + 1}/${maxIterations}`);
+      let rawStreamText = "";
       let streamText = "";
+      let rawStreamReasoning = "";
       let streamReasoning = "";
       ensureNotCancelled();
       const decision = await deps.invokeTool("llm_generate", {
@@ -11405,9 +11436,13 @@ var edaEsbuildExportName = (() => {
         onEvent: (event) => {
           ensureNotCancelled();
           if (event.type === "reasoning_delta" && event.reasoning_delta) {
-            streamReasoning += event.reasoning_delta;
+            rawStreamReasoning += event.reasoning_delta;
+            streamReasoning = sanitizeStreamPayload(rawStreamReasoning);
             thoughtEvent.text = streamReasoning.trim();
             thoughtEvent.status = "running";
+            if (!streamReasoning.trim()) {
+              return;
+            }
             deps.onProgress?.({
               detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
               reasoningDelta: event.reasoning_delta,
@@ -11416,8 +11451,8 @@ var edaEsbuildExportName = (() => {
               workingMemory: state.workingMemory
             });
           } else if (event.type === "delta" && event.delta) {
-            const nextStreamText = streamText + event.delta;
-            const sanitizedStreamText = stripFinalControlPayload(nextStreamText);
+            rawStreamText += event.delta;
+            const sanitizedStreamText = sanitizeStreamPayload(rawStreamText);
             const emittedDelta = sanitizedStreamText.slice(streamText.length);
             streamText = sanitizedStreamText;
             if (!emittedDelta) {
@@ -15818,6 +15853,10 @@ ${content}`;
             onStreamEvent: (event) => {
               if (internals.activeTurnId !== turnId) return;
               touchTurnActivity?.();
+              const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
+              const sanitizedText = stripFinalControlLikeText(event.text);
+              const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
+              const sanitizedReactEvents = sanitizeReactEventsForUi(event.reactEvents);
               const messages2 = current.chatMessages ?? [];
               const lastMessage = messages2[messages2.length - 1];
               if (!lastMessage || lastMessage.role !== "assistant") {
@@ -15829,17 +15868,17 @@ ${content}`;
               if (event.stage === "llm") {
                 lastMessage.streaming = true;
                 lastMessage.title = event.route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : event.route === "analysis" ? "\u5206\u6790\u4E2D" : "\u5904\u7406\u4E2D";
-                if (event.textDelta) {
-                  lastMessage.content = `${lastMessage.content === "\u6B63\u5728\u601D\u8003..." ? "" : lastMessage.content || ""}${event.textDelta}`;
-                } else if (event.text !== void 0 && String(event.text || "").trim()) {
-                  lastMessage.content = event.text || lastMessage.content || "";
+                if (sanitizedTextDelta) {
+                  lastMessage.content = `${lastMessage.content === "\u6B63\u5728\u601D\u8003..." ? "" : lastMessage.content || ""}${sanitizedTextDelta}`;
+                } else if (event.text !== void 0 && String(sanitizedText || "").trim()) {
+                  lastMessage.content = sanitizedText || lastMessage.content || "";
                 }
-                if (event.reasoningDelta) {
-                  upsertLlmReasoningEvent(lastMessage, event.reasoningDelta);
+                if (sanitizedReasoningDelta) {
+                  upsertLlmReasoningEvent(lastMessage, sanitizedReasoningDelta);
                 }
-                if (event.reactEvents) {
-                  lastMessage.reactEvents = event.reactEvents;
-                  lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+                if (sanitizedReactEvents) {
+                  lastMessage.reactEvents = sanitizedReactEvents;
+                  lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
                 }
                 if (event.stepStates) {
                   lastMessage.stepStates = event.stepStates;
@@ -15850,9 +15889,9 @@ ${content}`;
               } else if (event.stage === "progress") {
                 lastMessage.streaming = true;
                 lastMessage.title = event.route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : "\u5206\u6790\u4E2D";
-                if (event.reactEvents) {
-                  lastMessage.reactEvents = event.reactEvents;
-                  lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+                if (sanitizedReactEvents) {
+                  lastMessage.reactEvents = sanitizedReactEvents;
+                  lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
                 }
                 if (event.stepStates) {
                   lastMessage.stepStates = event.stepStates;
@@ -16532,6 +16571,42 @@ ${content}`;
   }
   function stripInitialWelcomeMessages(messages) {
     return messages;
+  }
+  function stripFinalControlLikeText(text) {
+    const raw = String(text || "");
+    if (!raw) return "";
+    const patterns = [
+      /([\s\S]*?)(?:\n|\r|^)\s*```(?:json)?\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*```json\s*(?:\n|\r)/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*```\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*``$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*`$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{$/u
+    ];
+    for (const pattern of patterns) {
+      const match = raw.match(pattern);
+      if (match) {
+        return (match[1] ?? "").trimEnd();
+      }
+    }
+    return raw;
+  }
+  function sanitizeReactEventsForUi(reactEvents) {
+    if (!Array.isArray(reactEvents)) {
+      return reactEvents;
+    }
+    return reactEvents.map(
+      (event) => event && event.kind === "thought" ? {
+        ...event,
+        text: stripFinalControlLikeText(event.text)
+      } : event
+    );
   }
   function createPendingAssistantMessage(route) {
     return {

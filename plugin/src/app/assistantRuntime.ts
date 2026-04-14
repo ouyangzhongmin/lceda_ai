@@ -1749,6 +1749,10 @@ function createAssistantRuntime(): AssistantRuntime {
             // Ignore late events from previous turns to prevent UI getting stuck.
             if (internals.activeTurnId !== turnId) return;
             touchTurnActivity?.();
+            const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
+            const sanitizedText = stripFinalControlLikeText(event.text);
+            const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
+            const sanitizedReactEvents = sanitizeReactEventsForUi(event.reactEvents);
             const messages = current.chatMessages ?? [];
             const lastMessage = messages[messages.length - 1];
             if (!lastMessage || lastMessage.role !== "assistant") {
@@ -1762,17 +1766,17 @@ function createAssistantRuntime(): AssistantRuntime {
             lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "analysis" ? "分析中" : "处理中";
             // 对 reasoning 模型，思考区走 reasoningDelta；对非 reasoning 模型，
             // 普通文本 delta 需要进入正文区，否则用户只会看到工具进度而看不到任何生成过程。
-            if (event.textDelta) {
-              lastMessage.content = `${lastMessage.content === "正在思考..." ? "" : lastMessage.content || ""}${event.textDelta}`;
-            } else if (event.text !== undefined && String(event.text || "").trim()) {
-              lastMessage.content = event.text || lastMessage.content || "";
+            if (sanitizedTextDelta) {
+              lastMessage.content = `${lastMessage.content === "正在思考..." ? "" : lastMessage.content || ""}${sanitizedTextDelta}`;
+            } else if (event.text !== undefined && String(sanitizedText || "").trim()) {
+              lastMessage.content = sanitizedText || lastMessage.content || "";
             }
-            if (event.reasoningDelta) {
-              upsertLlmReasoningEvent(lastMessage, event.reasoningDelta);
+            if (sanitizedReasoningDelta) {
+              upsertLlmReasoningEvent(lastMessage, sanitizedReasoningDelta);
             }
-            if (event.reactEvents) {
-              lastMessage.reactEvents = event.reactEvents;
-              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+            if (sanitizedReactEvents) {
+              lastMessage.reactEvents = sanitizedReactEvents;
+              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
             }
             if (event.stepStates) {
               lastMessage.stepStates = event.stepStates;
@@ -1784,9 +1788,9 @@ function createAssistantRuntime(): AssistantRuntime {
             lastMessage.streaming = true;
             lastMessage.title = event.route === "draft" ? "草案生成中" : "分析中";
             // progress 阶段只更新 header/steps，不写入 message.content，避免污染最终流式报告。
-            if (event.reactEvents) {
-              lastMessage.reactEvents = event.reactEvents;
-              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+            if (sanitizedReactEvents) {
+              lastMessage.reactEvents = sanitizedReactEvents;
+              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
             }
             if (event.stepStates) {
               lastMessage.stepStates = event.stepStates;
@@ -2562,6 +2566,48 @@ function stripInitialWelcomeMessages(
   messages: NonNullable<MainPanelState["chatMessages"]>
 ): NonNullable<MainPanelState["chatMessages"]> {
   return messages;
+}
+
+export function stripFinalControlLikeText(text: string | undefined): string {
+  const raw = String(text || "");
+  if (!raw) return "";
+  const patterns = [
+    /([\s\S]*?)(?:\n|\r|^)\s*```(?:json)?\s*$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*```json\s*(?:\n|\r)/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*```\s*$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*``$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*`$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*\{$/u,
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match) {
+      return (match[1] ?? "").trimEnd();
+    }
+  }
+  return raw;
+}
+
+function sanitizeReactEventsForUi(
+  reactEvents: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"]
+): NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] {
+  if (!Array.isArray(reactEvents)) {
+    return reactEvents;
+  }
+  return reactEvents.map((event) =>
+    event && event.kind === "thought"
+      ? {
+          ...event,
+          text: stripFinalControlLikeText(event.text),
+        }
+      : event
+  );
 }
 
 function createPendingAssistantMessage(route: "chat" | "analysis" | "draft"): NonNullable<MainPanelState["chatMessages"]>[number] {

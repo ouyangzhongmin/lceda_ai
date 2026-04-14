@@ -674,6 +674,104 @@ test("runReActLoop does not forward raw final json object as textDelta progress"
   assert.equal(progressEvents.some((event) => event.textDelta === "现在生成最终报告。"), true);
 });
 
+test("runReActLoop does not forward split final json chunks as textDelta progress", async () => {
+  const progressEvents: Array<{ detail: string; textDelta?: string; text?: string }> = [];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: [],
+    listToolNames: () => ["llm_generate"],
+    onProgress: (payload) => {
+      progressEvents.push({
+        detail: payload.detail,
+        textDelta: payload.textDelta,
+        text: payload.text,
+      });
+    },
+    invokeTool: async (toolName, input) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      const payload = input as {
+        onEvent?: (event: {
+          type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+          delta?: string;
+        }) => void;
+      };
+      payload.onEvent?.({ type: "start" });
+      payload.onEvent?.({ type: "delta", delta: "先输出结论摘要。\n" });
+      payload.onEvent?.({ type: "delta", delta: "{\n  \"type\"" });
+      payload.onEvent?.({ type: "delta", delta: ": \"final\",\n  \"route\": \"analysis\"" });
+      payload.onEvent?.({ type: "delta", delta: ",\n  \"output\": \"## 报告\"\n}" });
+      payload.onEvent?.({ type: "done" });
+      return {
+        output_text: '{"type":"final","route":"analysis","rationale":"done","output":"## 报告"}',
+      } as never;
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+  });
+
+  assert.equal(progressEvents.some((event) => String(event.textDelta || "").includes('"type"')), false);
+  assert.equal(progressEvents.some((event) => String(event.text || "").includes('"route"')), false);
+  assert.equal(progressEvents.some((event) => event.textDelta === "先输出结论摘要。\n"), true);
+});
+
+test("runReActLoop does not forward fenced final json chunks as textDelta progress", async () => {
+  const progressEvents: Array<{ detail: string; textDelta?: string; text?: string }> = [];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: [],
+    listToolNames: () => ["llm_generate"],
+    onProgress: (payload) => {
+      progressEvents.push({
+        detail: payload.detail,
+        textDelta: payload.textDelta,
+        text: payload.text,
+      });
+    },
+    invokeTool: async (toolName, input) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      const payload = input as {
+        onEvent?: (event: {
+          type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+          delta?: string;
+        }) => void;
+      };
+      payload.onEvent?.({ type: "start" });
+      payload.onEvent?.({ type: "delta", delta: "先输出概览。\n\n" });
+      payload.onEvent?.({ type: "delta", delta: "```json\n" });
+      payload.onEvent?.({ type: "delta", delta: "{\n" });
+      payload.onEvent?.({ type: "delta", delta: '  "type": "final",\n' });
+      payload.onEvent?.({ type: "delta", delta: '  "route": "analysis"\n' });
+      payload.onEvent?.({ type: "done" });
+      return {
+        output_text: '{"type":"final","route":"analysis","rationale":"done","output":"## 报告"}',
+      } as never;
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+  });
+
+  assert.equal(progressEvents.some((event) => String(event.textDelta || "").includes("```json")), false);
+  assert.equal(progressEvents.some((event) => String(event.textDelta || "").includes('"type": "final"')), false);
+  assert.equal(progressEvents.some((event) => String(event.text || "").includes('"route": "analysis"')), false);
+  assert.equal(progressEvents.some((event) => event.textDelta === "先输出概览。\n\n"), true);
+});
+
 test("runReActLoop aborts before starting llm generation when signal is already aborted", async () => {
   let llmCalls = 0;
   const controller = new AbortController();

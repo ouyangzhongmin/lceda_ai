@@ -84,6 +84,35 @@ export async function runReActLoop(input: {
     }
     return raw;
   };
+  const stripFinalControlPayloadEarly = (text: string): string => {
+    const raw = String(text || "");
+    const startPatterns = [
+      /(?:\n|\r|^)\s*```(?:json)?\s*$/u,
+      /(?:\n|\r|^)\s*```json\s*(?:\n|\r)/u,
+      /(?:\n|\r|^)\s*```\s*(?:\n|\r)\s*\{\s*"type"\s*:\s*"final"/u,
+      /(?:\n|\r|^)\s*Final:\s*$/u,
+      /(?:\n|\r|^)\s*Final:\s*\{/u,
+      /(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+      /(?:\n|\r|^)\s*\{\s*"type"\s*:\s*$/u,
+      /(?:\n|\r|^)\s*\{\s*"type"\s*$/u,
+      /(?:\n|\r|^)\s*\{\s*"type"$/u,
+      /(?:\n|\r|^)\s*```\s*$/u,
+      /(?:\n|\r|^)\s*``$/u,
+      /(?:\n|\r|^)\s*`$/u,
+      /(?:\n|\r|^)\s*\{$/u,
+    ];
+    let cutIndex = -1;
+    for (const pattern of startPatterns) {
+      const match = pattern.exec(raw);
+      if (!match) continue;
+      const nextIndex = match.index;
+      if (cutIndex < 0 || nextIndex < cutIndex) {
+        cutIndex = nextIndex;
+      }
+    }
+    return cutIndex >= 0 ? raw.slice(0, cutIndex) : raw;
+  };
+  const sanitizeStreamPayload = (text: string): string => stripFinalControlPayloadEarly(stripFinalControlPayload(text));
 
   const normalizeTodoStatus = (value: unknown): "pending" | "running" | "done" | "failed" | "skipped" => {
     const raw = String(value || "").trim().toLowerCase();
@@ -245,7 +274,9 @@ export async function runReActLoop(input: {
       workingMemory: state.workingMemory,
     });
     onProgress?.(`ReAct 迭代 ${i + 1}/${maxIterations}`);
+    let rawStreamText = "";
     let streamText = "";
+    let rawStreamReasoning = "";
     let streamReasoning = "";
     ensureNotCancelled();
     const decision = await deps
@@ -267,9 +298,13 @@ export async function runReActLoop(input: {
         onEvent: (event) => {
           ensureNotCancelled();
           if (event.type === "reasoning_delta" && event.reasoning_delta) {
-            streamReasoning += event.reasoning_delta;
+            rawStreamReasoning += event.reasoning_delta;
+            streamReasoning = sanitizeStreamPayload(rawStreamReasoning);
             thoughtEvent.text = streamReasoning.trim();
             thoughtEvent.status = "running";
+            if (!streamReasoning.trim()) {
+              return;
+            }
             deps.onProgress?.({
               detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
               reasoningDelta: event.reasoning_delta,
@@ -279,8 +314,8 @@ export async function runReActLoop(input: {
             });
           } else if (event.type === "delta" && event.delta) {
             // Avoid leaking control JSON into the main content; still keep a lightweight progress indicator.
-            const nextStreamText = streamText + event.delta;
-            const sanitizedStreamText = stripFinalControlPayload(nextStreamText);
+            rawStreamText += event.delta;
+            const sanitizedStreamText = sanitizeStreamPayload(rawStreamText);
             const emittedDelta = sanitizedStreamText.slice(streamText.length);
             streamText = sanitizedStreamText;
             if (!emittedDelta) {
