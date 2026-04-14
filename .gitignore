@@ -118,6 +118,7 @@ coverage/
 __debug_bin*
 
 .gocache/
+.worktrees/
 
 # Lock files (optional, uncomment if needed)
 # package-lock.json
