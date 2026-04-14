@@ -2,7 +2,7 @@ import type { MainPanelState } from "../../ui/panels/mainPanel";
 import type { EditorAdapter } from "../../editor/adapters/editorAdapter";
 import type { SchematicContext } from "../../types/schematic";
 import type { DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
-import type { AgentResult, AgentStepState, AgentTask, AgentTaskType, AgentWorkingMemory } from "../shared/agentTypes";
+import type { AgentResult, AgentStepItem, AgentStepState, AgentTask, AgentTaskType, AgentWorkingMemory } from "../shared/agentTypes";
 import type { ReactAgentDeps, ReactAgentRunResult, ReactAgentState } from "./reactTypes";
 import { runReActLoop } from "./reactLoopAgent";
 import { buildSystemPrompt } from "../prompts/systemPrompt";
@@ -346,6 +346,7 @@ export async function runUnifiedReactAgent(input: {
     reasoningDelta?: string;
     detail?: string;
     reactEvents?: AgentResult["reactEvents"];
+    stepItems?: AgentStepItem[];
     stepStates?: AgentResult["stepStates"];
     workingMemory?: AgentResult["workingMemory"];
   }) => void;
@@ -394,6 +395,7 @@ export async function runUnifiedReactAgent(input: {
   const state: ReactAgentState = {
     toolTraces: [],
     stepStates: [],
+    stepItems: [],
     workingMemory: createWorkingMemory(task),
     reactEvents: [],
   };
@@ -505,6 +507,7 @@ export async function runUnifiedReactAgent(input: {
         text: payload.text,
         reasoningDelta: payload.reasoningDelta,
         reactEvents: payload.reactEvents,
+        stepItems: payload.stepItems,
         stepStates: payload.stepStates,
         workingMemory: payload.workingMemory,
       });
@@ -620,7 +623,15 @@ export async function runUnifiedReactAgent(input: {
         analysisMarkdown: undefined,
         naturalReply: undefined,
       });
-      input.onStreamEvent?.({ route, stage: "progress", detail, reactEvents: state.reactEvents, stepStates: state.stepStates, workingMemory: state.workingMemory });
+      input.onStreamEvent?.({
+        route,
+        stage: "progress",
+        detail,
+        reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
+        stepStates: state.stepStates,
+        workingMemory: state.workingMemory,
+      });
     },
     onThought: (t) => {
       const route = inferRouteFromResult({
@@ -634,7 +645,15 @@ export async function runUnifiedReactAgent(input: {
         analysisMarkdown: undefined,
         naturalReply: undefined,
       });
-      input.onStreamEvent?.({ route, stage: "progress", detail: `思考：${t}`, reactEvents: state.reactEvents, stepStates: state.stepStates, workingMemory: state.workingMemory });
+      input.onStreamEvent?.({
+        route,
+        stage: "progress",
+        detail: `思考：${t}`,
+        reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
+        stepStates: state.stepStates,
+        workingMemory: state.workingMemory,
+      });
     },
     onToolResult: (toolName, output) => {
       if (toolName === "editor_get_current_context") {
@@ -716,6 +735,7 @@ export async function runUnifiedReactAgent(input: {
       message: e.text,
     })),
     stepStates: state.stepStates,
+    stepItems: state.stepItems,
     workingMemory: state.workingMemory,
     reactEvents: state.reactEvents,
     checkResult,
@@ -767,5 +787,5 @@ export async function runUnifiedReactAgent(input: {
     naturalReply: route === "chat" ? finalText : undefined,
   };
 
-  return { result, reactEvents: state.reactEvents };
+  return { result, reactEvents: state.reactEvents, stepItems: state.stepItems };
 }

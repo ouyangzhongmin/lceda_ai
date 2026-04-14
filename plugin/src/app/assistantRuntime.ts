@@ -687,7 +687,12 @@ function buildSessionStateStorageKey(sessionId: string): string {
   return `${PANEL_SESSION_STATE_PREFIX}${sessionId}`;
 }
 
-function formatReactEventLine(event: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T> ? T : never): string {
+type MessageReactEvent = NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"] extends Array<infer T>
+  ? T
+  : never;
+type MessageStepItem = NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"] extends Array<infer T> ? T : never;
+
+function formatReactEventLine(event: MessageReactEvent): string {
   if (!event || !event.kind) return "";
   if (event.kind === "task") return `任务: ${event.text || event.label || ""}`;
   if (event.kind === "thought") return `思考: ${event.text || event.label || ""}`;
@@ -704,6 +709,27 @@ function buildStepTranscriptFromReactEvents(
     return undefined;
   }
   const lines = reactEvents.map(formatReactEventLine).filter(Boolean);
+  return lines.length > 0 ? lines : undefined;
+}
+
+function formatStepItemLine(stepItem: MessageStepItem): string {
+  if (!stepItem || !stepItem.type) return "";
+  if (stepItem.type === "task") return `任务: ${stepItem.text || stepItem.title || ""}`;
+  if (stepItem.type === "thought") return `思考: ${stepItem.text || stepItem.title || ""}`;
+  if (stepItem.type === "tool_call")
+    return `Tool: ${(stepItem.title || stepItem.toolName || "tool")}${stepItem.inputSummary ? ` ${stepItem.inputSummary}` : ""}`;
+  if (stepItem.type === "observation") return `观察: ${stepItem.outputSummary || stepItem.text || ""}`;
+  if (stepItem.type === "status") return `状态: ${stepItem.text || stepItem.title || ""}`;
+  return `${stepItem.type}: ${stepItem.text || stepItem.title || ""}`;
+}
+
+function buildStepTranscriptFromStepItems(
+  stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"]
+): string[] | undefined {
+  if (!Array.isArray(stepItems) || stepItems.length === 0) {
+    return undefined;
+  }
+  const lines = stepItems.map(formatStepItemLine).filter(Boolean);
   return lines.length > 0 ? lines : undefined;
 }
 
@@ -1014,9 +1040,15 @@ function createAssistantRuntime(): AssistantRuntime {
             }
           } else {
             // progress 阶段只更新步骤，不写入 content；content 留给最终流式报告。
-            if (event.reactEvents) {
-              lastMessage.reactEvents = event.reactEvents;
-              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+            if (event.stepItems !== undefined || event.reactEvents !== undefined) {
+              const normalizedProcess = normalizeProcessFields({
+                ...lastMessage,
+                stepItems: event.stepItems ?? lastMessage.stepItems,
+                reactEvents: event.reactEvents ?? lastMessage.reactEvents,
+              });
+              lastMessage.stepItems = normalizedProcess.stepItems;
+              lastMessage.reactEvents = normalizedProcess.reactEvents;
+              lastMessage.stepTranscript = normalizedProcess.stepTranscript;
             }
             if (event.stepStates) {
               lastMessage.stepStates = event.stepStates;
@@ -1758,6 +1790,11 @@ function createAssistantRuntime(): AssistantRuntime {
             if (!lastMessage || lastMessage.role !== "assistant") {
               return;
             }
+            const normalizedStreamProcess = normalizeProcessFields({
+              ...lastMessage,
+              stepItems: event.stepItems ?? lastMessage.stepItems,
+              reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents,
+            });
           if (event.detail) {
             current.agentRunDetail = event.detail;
           }
@@ -1774,9 +1811,16 @@ function createAssistantRuntime(): AssistantRuntime {
             if (sanitizedReasoningDelta) {
               upsertLlmReasoningEvent(lastMessage, sanitizedReasoningDelta);
             }
-            if (sanitizedReactEvents) {
-              lastMessage.reactEvents = sanitizedReactEvents;
-              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
+            if (event.stepItems !== undefined || sanitizedReactEvents !== undefined || sanitizedReasoningDelta) {
+              const normalizedAfterReasoning = normalizeProcessFields(lastMessage);
+              lastMessage.stepItems = normalizedAfterReasoning.stepItems;
+              lastMessage.reactEvents = normalizedAfterReasoning.reactEvents;
+              lastMessage.stepTranscript = normalizedAfterReasoning.stepTranscript;
+            }
+            if (event.stepItems !== undefined || sanitizedReactEvents !== undefined) {
+              lastMessage.stepItems = normalizedStreamProcess.stepItems;
+              lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
+              lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
             }
             if (event.stepStates) {
               lastMessage.stepStates = event.stepStates;
@@ -1788,9 +1832,10 @@ function createAssistantRuntime(): AssistantRuntime {
             lastMessage.streaming = true;
             lastMessage.title = event.route === "draft" ? "草案生成中" : "分析中";
             // progress 阶段只更新 header/steps，不写入 message.content，避免污染最终流式报告。
-            if (sanitizedReactEvents) {
-              lastMessage.reactEvents = sanitizedReactEvents;
-              lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
+            if (event.stepItems !== undefined || sanitizedReactEvents !== undefined) {
+              lastMessage.stepItems = normalizedStreamProcess.stepItems;
+              lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
+              lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
             }
             if (event.stepStates) {
               lastMessage.stepStates = event.stepStates;
@@ -2541,19 +2586,10 @@ function attachStateVersion(state: MainPanelState, stateVersion: number): MainPa
 function normalizeChatMessagesForPersistence(
   messages: MainPanelState["chatMessages"]
 ): NonNullable<MainPanelState["chatMessages"]> {
-  return sanitizeChatMessages(messages).map((message) => {
-    const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : undefined;
-    const stepTranscript =
-      Array.isArray(message.stepTranscript) && message.stepTranscript.length > 0
-        ? message.stepTranscript
-        : buildStepTranscriptFromReactEvents(reactEvents);
-    return {
-      ...message,
-      reactEvents,
-      stepTranscript,
-      streaming: false,
-    };
-  });
+  return sanitizeChatMessages(messages).map((message) => ({
+    ...normalizeProcessFields(message),
+    streaming: false,
+  }));
 }
 
 function sanitizeChatMessages(
@@ -2610,6 +2646,53 @@ function sanitizeReactEventsForUi(
   );
 }
 
+function convertReactEventsToStepItems(
+  reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"]
+): NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"] | undefined {
+  if (!Array.isArray(reactEvents) || reactEvents.length === 0) {
+    return undefined;
+  }
+  const stepItems: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"] = reactEvents
+    .map((event, index) => {
+      if (!event || event.kind === "final") {
+        return undefined;
+      }
+      const type = event.kind;
+      const phase = event.stepKind ?? "system";
+      const title = String(event.label || event.toolName || type).trim() || type;
+      const text = stripFinalControlLikeText(event.text) || "";
+      return {
+        id: `legacy-react-${index}-${type}`,
+        phase,
+        type,
+        status: event.status,
+        title,
+        text,
+        toolName: event.toolName,
+        inputSummary: event.inputSummary,
+        outputSummary: event.outputSummary,
+      };
+    })
+    .filter((item): item is NonNullable<typeof stepItems>[number] => Boolean(item));
+  return stepItems.length > 0 ? stepItems : [];
+}
+
+function normalizeProcessFields(message: NonNullable<MainPanelState["chatMessages"]>[number]): NonNullable<MainPanelState["chatMessages"]>[number] {
+  const reactEvents = Array.isArray(message.reactEvents) ? sanitizeReactEventsForUi(message.reactEvents) : undefined;
+  const explicitStepItems = Array.isArray(message.stepItems) ? message.stepItems : undefined;
+  const stepItems = explicitStepItems ?? convertReactEventsToStepItems(reactEvents);
+  const stepTranscript =
+    Array.isArray(message.stepTranscript) && message.stepTranscript.length > 0
+      ? message.stepTranscript
+      : buildStepTranscriptFromStepItems(stepItems) ?? buildStepTranscriptFromReactEvents(reactEvents);
+  return {
+    ...message,
+    reactEvents,
+    stepItems,
+    stepTranscript,
+  };
+}
+
 function createPendingAssistantMessage(route: "chat" | "analysis" | "draft"): NonNullable<MainPanelState["chatMessages"]>[number] {
   return {
     role: "assistant",
@@ -2657,7 +2740,8 @@ function replaceTrailingPendingAssistant(
   const normalized = Array.isArray(replacements) ? replacements : [replacements];
   
   if (last?.role === "assistant" && last.streaming) {
-    // 保留streaming消息中的reactEvents和stepStates
+    // 保留streaming消息中的过程信息和状态信息
+    const preservedStepItems = last.stepItems;
     const preservedReactEvents = last.reactEvents;
     const preservedStepStates = last.stepStates;
     const preservedWorkingMemory = last.workingMemory;
@@ -2675,13 +2759,20 @@ function replaceTrailingPendingAssistant(
     
     // 将保留的数据合并到新消息中
     const mergedReplacements = normalized.map((msg, idx) => {
-      if (idx === 0 && msg.role === "assistant") {
-        const mergedReactEvents = preferNonEmptyArray(msg.reactEvents, preservedReactEvents);
+        if (idx === 0 && msg.role === "assistant") {
+        const mergedStepItems = msg.stepItems === undefined ? preservedStepItems : msg.stepItems;
+        const mergedReactEvents = preferDefinedArray(msg.reactEvents, preservedReactEvents);
+        const normalizedProcess = normalizeProcessFields({
+          ...msg,
+          stepItems: mergedStepItems,
+          reactEvents: mergedReactEvents,
+        });
         return {
           ...msg,
-          reactEvents: mergedReactEvents,
-          stepTranscript: buildStepTranscriptFromReactEvents(mergedReactEvents) ?? msg.stepTranscript,
-          stepStates: preferNonEmptyArray(msg.stepStates, preservedStepStates),
+          stepItems: normalizedProcess.stepItems,
+          reactEvents: normalizedProcess.reactEvents,
+          stepTranscript: normalizedProcess.stepTranscript,
+          stepStates: preferDefinedArray(msg.stepStates, preservedStepStates),
           workingMemory: msg.workingMemory || preservedWorkingMemory,
         };
       }
@@ -2705,25 +2796,32 @@ export function mergeAssistantFinalMessage(
   pendingMessage: NonNullable<MainPanelState["chatMessages"]>[number],
   finalMessage: NonNullable<MainPanelState["chatMessages"]>[number]
 ): NonNullable<MainPanelState["chatMessages"]>[number] {
-  const preservedReactEvents = pendingMessage.reactEvents;
+  const normalizedPending = normalizeProcessFields(pendingMessage);
+  const normalizedFinal = normalizeProcessFields(finalMessage);
+  const preservedStepItems = normalizedPending.stepItems;
+  const preservedReactEvents = normalizedPending.reactEvents;
   const preservedStepStates = pendingMessage.stepStates;
   const preservedWorkingMemory = pendingMessage.workingMemory;
 
-  const mergedReactEvents = preferNonEmptyArray(finalMessage.reactEvents, preservedReactEvents);
+  const mergedStepItems = normalizedFinal.stepItems === undefined ? preservedStepItems : normalizedFinal.stepItems;
+  const mergedReactEvents = preferDefinedArray(normalizedFinal.reactEvents, preservedReactEvents);
+  const mergedProcess = normalizeProcessFields({
+    ...normalizedFinal,
+    stepItems: mergedStepItems,
+    reactEvents: mergedReactEvents,
+  });
   return {
-    ...finalMessage,
+    ...normalizedFinal,
     role: "assistant",
     streaming: false,
-    reactEvents: mergedReactEvents,
-    stepTranscript:
-      buildStepTranscriptFromReactEvents(mergedReactEvents) ??
-      finalMessage.stepTranscript ??
-      pendingMessage.stepTranscript,
-    stepStates: preferNonEmptyArray(finalMessage.stepStates, preservedStepStates),
-    workingMemory: finalMessage.workingMemory || preservedWorkingMemory,
-    toolTraces: finalMessage.toolTraces || pendingMessage.toolTraces,
-    executionTraces: finalMessage.executionTraces || pendingMessage.executionTraces,
-    uiEvents: finalMessage.uiEvents || pendingMessage.uiEvents,
+    stepItems: mergedProcess.stepItems,
+    reactEvents: mergedProcess.reactEvents,
+    stepTranscript: mergedProcess.stepTranscript ?? normalizedFinal.stepTranscript ?? normalizedPending.stepTranscript,
+    stepStates: preferDefinedArray(normalizedFinal.stepStates, preservedStepStates),
+    workingMemory: normalizedFinal.workingMemory || preservedWorkingMemory,
+    toolTraces: normalizedFinal.toolTraces || pendingMessage.toolTraces,
+    executionTraces: normalizedFinal.executionTraces || pendingMessage.executionTraces,
+    uiEvents: normalizedFinal.uiEvents || pendingMessage.uiEvents,
   };
 }
 
@@ -2756,6 +2854,10 @@ function preferNonEmptyArray<T>(primary?: T[], fallback?: T[]): T[] | undefined 
     return fallback;
   }
   return primary ?? fallback;
+}
+
+function preferDefinedArray<T>(primary?: T[], fallback?: T[]): T[] | undefined {
+  return primary === undefined ? fallback : primary;
 }
 
 async function fillSettingsState(

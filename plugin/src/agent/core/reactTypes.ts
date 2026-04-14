@@ -1,4 +1,11 @@
-import type { AgentResult, AgentStepState, AgentTask, AgentToolTrace, AgentWorkingMemory } from "../shared/agentTypes";
+import type {
+  AgentResult,
+  AgentStepItem,
+  AgentStepState,
+  AgentTask,
+  AgentToolTrace,
+  AgentWorkingMemory,
+} from "../shared/agentTypes";
 
 export type ReactEventKind = "task" | "thought" | "tool_call" | "observation" | "final";
 
@@ -16,6 +23,7 @@ export interface AgentReactEvent {
 export interface ReactAgentRunResult {
   result: AgentResult;
   reactEvents: AgentReactEvent[];
+  stepItems: AgentStepItem[];
 }
 
 export interface ReactAgentDeps {
@@ -31,6 +39,7 @@ export interface ReactAgentDeps {
     text?: string;
     reasoningDelta?: string;
     reactEvents: AgentReactEvent[];
+    stepItems: AgentStepItem[];
     stepStates: AgentStepState[];
     workingMemory: AgentWorkingMemory;
   }) => void;
@@ -39,6 +48,7 @@ export interface ReactAgentDeps {
 export interface ReactAgentState {
   toolTraces: AgentToolTrace[];
   stepStates: AgentStepState[];
+  stepItems: AgentStepItem[];
   workingMemory: AgentWorkingMemory;
   reactEvents: AgentReactEvent[];
 }

@@ -7232,9 +7232,14 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
                 } else if (event.detail) {
                   lastMessage.content = event.detail;
                 }
-                if (event.reactEvents) {
-                  lastMessage.reactEvents = event.reactEvents;
-                }
+                const normalizedStreamProcess = normalizeMessageProcess({
+                  stepItems: Array.isArray(event.stepItems) ? event.stepItems : lastMessage.stepItems,
+                  reactEvents: Array.isArray(event.reactEvents) ? event.reactEvents : lastMessage.reactEvents,
+                  stepTranscript: lastMessage.stepTranscript
+                });
+                lastMessage.stepItems = normalizedStreamProcess.stepItems;
+                lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
+                lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
                 if (event.stepStates) {
                   lastMessage.stepStates = event.stepStates;
                 }
@@ -7557,6 +7562,7 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
     }
   }
   function commitState(internals, state, storage) {
+    state.chatMessages = normalizeStateChatMessages(state.chatMessages);
     internals.stateVersion += 1;
     const nextState = attachStateVersion(state, internals.stateVersion);
     internals.currentState = nextState;
@@ -7576,6 +7582,139 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
     state.__stateVersion = stateVersion;
     return state;
   }
+  function normalizeStateChatMessages(messages) {
+    return sanitizeChatMessages(messages).map((message) => {
+      if (!message || message.role !== "assistant") {
+        return message;
+      }
+      const normalized = normalizeMessageProcess(message);
+      return {
+        ...message,
+        stepItems: normalized.stepItems,
+        reactEvents: normalized.reactEvents,
+        stepTranscript: normalized.stepTranscript
+      };
+    });
+  }
+  function normalizeMessageProcess(message) {
+    const reactEvents = Array.isArray(message?.reactEvents) ? message.reactEvents : void 0;
+    const explicitStepItems = Array.isArray(message?.stepItems) ? message.stepItems : void 0;
+    const hasExplicitStepItems = Array.isArray(explicitStepItems) && explicitStepItems.length > 0;
+    const convertedStepItems = hasExplicitStepItems ? void 0 : convertReactEventsToStepItems(reactEvents);
+    const hasConvertedStepItems = Array.isArray(convertedStepItems) && convertedStepItems.length > 0;
+    const stepItems = hasExplicitStepItems ? explicitStepItems : hasConvertedStepItems ? convertedStepItems : void 0;
+    const stepTranscript = Array.isArray(message?.stepTranscript) && message.stepTranscript.length > 0 ? message.stepTranscript : buildStepTranscriptFromStepItems(stepItems) ?? buildStepTranscriptFromReactEvents(reactEvents);
+    const keepLegacyReactEvents = Array.isArray(reactEvents) && reactEvents.length > 0 && !hasExplicitStepItems && !hasConvertedStepItems;
+    return {
+      stepItems,
+      // Prefer stepItems in iframe rendering; keep reactEvents only when there is no usable timeline yet.
+      reactEvents: keepLegacyReactEvents ? reactEvents : void 0,
+      stepTranscript
+    };
+  }
+  function buildStepTranscriptFromStepItems(stepItems) {
+    if (!Array.isArray(stepItems) || stepItems.length === 0) {
+      return void 0;
+    }
+    const lines = stepItems.map((item) => formatStepItemLine(item)).filter(Boolean);
+    return lines.length > 0 ? lines : void 0;
+  }
+  function formatStepItemLine(item) {
+    if (!item || typeof item !== "object") {
+      return "";
+    }
+    const kind = item.type;
+    const text = String(item.text || "").trim();
+    const title = String(item.title || "").trim();
+    if (kind === "task") {
+      return `\u4EFB\u52A1: ${text || title}`;
+    }
+    if (kind === "thought") {
+      return `\u601D\u8003: ${text || title}`;
+    }
+    if (kind === "tool_call") {
+      const toolTitle = title || item.toolName || "\u5DE5\u5177\u8C03\u7528";
+      const inputSummary = String(item.inputSummary || "").trim();
+      return `Tool: ${toolTitle}${inputSummary ? ` ${inputSummary}` : ""}`;
+    }
+    if (kind === "observation") {
+      return `\u89C2\u5BDF: ${String(item.outputSummary || text || title).trim()}`;
+    }
+    if (kind === "status") {
+      return `\u5B8C\u6210: ${text || title}`;
+    }
+    return "";
+  }
+  function convertReactEventsToStepItems(reactEvents) {
+    if (!Array.isArray(reactEvents) || reactEvents.length === 0) {
+      return void 0;
+    }
+    const items = reactEvents.map((event, index) => {
+      if (!event || typeof event !== "object" || !event.kind) {
+        return void 0;
+      }
+      const eventKind = event.kind;
+      // Legacy final is part of formal report, not timeline step.
+      if (eventKind === "final") {
+        return void 0;
+      }
+      if (eventKind !== "task" && eventKind !== "thought" && eventKind !== "tool_call" && eventKind !== "observation") {
+        return void 0;
+      }
+      const phase = event.stepKind === "context" || event.stepKind === "mcp" || event.stepKind === "rules" || event.stepKind === "library" || event.stepKind === "llm" || event.stepKind === "draft" ? event.stepKind : "system";
+      const text = eventKind === "observation" ? stripFinalControlLikeText(String(event.outputSummary || event.text || "")) : stripFinalControlLikeText(String(event.text || ""));
+      return {
+        id: `legacy-react-${index + 1}`,
+        phase,
+        type: eventKind,
+        status: event.status || "pending",
+        title: String(event.label || ""),
+        text,
+        toolName: event.toolName,
+        inputSummary: event.inputSummary,
+        outputSummary: event.outputSummary
+      };
+    }).filter(Boolean);
+    return items.length > 0 ? items : [];
+  }
+  function stripFinalControlLikeText(text) {
+    const raw = String(text || "");
+    if (!raw) return "";
+    const patterns = [
+      /([\s\S]*?)(?:\n|\r|^)\s*```(?:json)?\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*```json\s*(?:\n|\r)/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*```\s*$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*``$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*`$/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{$/u
+    ];
+    for (const pattern of patterns) {
+      const match = raw.match(pattern);
+      if (match) {
+        return (match[1] ?? "").trimEnd();
+      }
+    }
+    return raw;
+  }
+  function buildStepTranscriptFromReactEvents(reactEvents) {
+    if (!Array.isArray(reactEvents) || reactEvents.length === 0) {
+      return void 0;
+    }
+    const lines = reactEvents.map((event) => formatReactEventLine(event)).filter(Boolean);
+    return lines.length > 0 ? lines : void 0;
+  }
+  function formatReactEventLine(event) {
+    if (!event || !event.kind) return "";
+    if (event.kind === "task") return `\u4EFB\u52A1: ${event.text || event.label || ""}`;
+    if (event.kind === "thought") return `\u601D\u8003: ${stripFinalControlLikeText(event.text || event.label || "")}`;
+    if (event.kind === "tool_call") return `Tool: ${(event.label || event.toolName || "tool")}${event.inputSummary ? ` ${event.inputSummary}` : ""}`;
+    if (event.kind === "observation") return `\u89C2\u5BDF: ${event.outputSummary || event.text || ""}`;
+    if (event.kind === "final") return "";
+    return "";
+  }
   function sanitizeChatMessages(messages) {
     return (messages ?? []).filter((message) => !message.__typing);
   }
@@ -7586,7 +7725,17 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
     return {
       role: "assistant",
       title: route === "chat" ? "\u52A9\u624B" : route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : "\u5206\u6790\u4E2D",
-      content: route === "chat" ? "\u6B63\u5728\u601D\u8003\u5E76\u8BF7\u6C42\u6A21\u578B\u56DE\u590D..." : route === "draft" ? "\u6B63\u5728\u89C4\u5212\u8349\u6848\u4E0E\u6821\u9A8C\u7EA6\u675F..." : "\u6B63\u5728\u8BFB\u53D6\u539F\u7406\u56FE\u5E76\u6267\u884C\u5206\u6790...",
+      content: "",
+      stepItems: [
+        {
+          id: `pending-thought-${route}`,
+          phase: "llm",
+          type: "thought",
+          status: "running",
+          title: "\u601D\u8003",
+          text: route === "chat" ? "\u6B63\u5728\u5206\u6790\u7528\u6237\u610F\u56FE\u5E76\u89C4\u5212\u4E0B\u4E00\u6B65..." : route === "draft" ? "\u6B63\u5728\u89C4\u5212\u8349\u6848\u4E0E\u6821\u9A8C\u7EA6\u675F..." : "\u6B63\u5728\u8BFB\u53D6\u539F\u7406\u56FE\u5E76\u51C6\u5907\u5206\u6790..."
+        }
+      ],
       streaming: true
     };
   }

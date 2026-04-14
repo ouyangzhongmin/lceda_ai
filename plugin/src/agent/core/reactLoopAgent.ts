@@ -1,4 +1,4 @@
-import type { AgentStepState, AgentToolTrace, AgentWorkingMemory } from "../shared/agentTypes";
+import type { AgentStepItem, AgentStepState, AgentToolTrace, AgentWorkingMemory } from "../shared/agentTypes";
 import type { AgentReactEvent, ReactAgentDeps, ReactAgentState } from "./reactTypes";
 import type { LlmMessage, LlmToolCall } from "../../services/llm/llmProxyClient";
 import { throwIfCancelled, isCancelledError } from "./cancelledError";
@@ -168,6 +168,22 @@ export async function runReActLoop(input: {
     const raw = typeof value === "string" ? value : JSON.stringify(value);
     return raw.length > maxLen ? raw.slice(0, maxLen) + "…" : raw;
   };
+  const nowIso = (): string => new Date().toISOString();
+  const createStepItem = (item: AgentStepItem): AgentStepItem => {
+    state.stepItems.push(item);
+    return item;
+  };
+  const updateStepItem = (
+    item: AgentStepItem,
+    patch: Partial<Pick<AgentStepItem, "status" | "text" | "inputSummary" | "outputSummary" | "streaming">>
+  ): void => {
+    if (patch.status) item.status = patch.status;
+    if (patch.text !== undefined) item.text = patch.text;
+    if (patch.inputSummary !== undefined) item.inputSummary = patch.inputSummary;
+    if (patch.outputSummary !== undefined) item.outputSummary = patch.outputSummary;
+    if (patch.streaming !== undefined) item.streaming = patch.streaming;
+    item.updatedAt = nowIso();
+  };
 
   const safeJsonParse = (text: string): unknown => {
     const raw = String(text || "").trim();
@@ -244,6 +260,16 @@ export async function runReActLoop(input: {
       stepKind: "llm",
     };
     state.reactEvents.push(iterationEvent);
+    const iterationStepItem = createStepItem({
+      id: `react-task-${i + 1}`,
+      phase: "llm",
+      type: "task",
+      status: "running",
+      title: iterationLabel,
+      text: `ReAct 第 ${i + 1}/${maxIterations} 轮：LLM 决策 -> tool -> observation`,
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+    });
     const thoughtEvent: AgentReactEvent = {
       kind: "thought",
       label: `${iterationLabel}-thought`,
@@ -252,6 +278,17 @@ export async function runReActLoop(input: {
       stepKind: "llm",
     };
     state.reactEvents.push(thoughtEvent);
+    const thoughtStepItem = createStepItem({
+      id: `react-thought-${i + 1}`,
+      phase: "llm",
+      type: "thought",
+      status: "running",
+      title: `${iterationLabel}-thought`,
+      text: "",
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+      streaming: true,
+    });
     {
       const existing = state.stepStates.find((s) => s.kind === "llm");
       if (existing) {
@@ -270,6 +307,7 @@ export async function runReActLoop(input: {
     deps.onProgress?.({
       detail: `LLM 决策中（${i + 1}/${maxIterations}）`,
       reactEvents: state.reactEvents,
+      stepItems: state.stepItems,
       stepStates: state.stepStates,
       workingMemory: state.workingMemory,
     });
@@ -302,6 +340,7 @@ export async function runReActLoop(input: {
             streamReasoning = sanitizeStreamPayload(rawStreamReasoning);
             thoughtEvent.text = streamReasoning.trim();
             thoughtEvent.status = "running";
+            updateStepItem(thoughtStepItem, { status: "running", text: thoughtEvent.text, streaming: true });
             if (!streamReasoning.trim()) {
               return;
             }
@@ -309,6 +348,7 @@ export async function runReActLoop(input: {
               detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
               reasoningDelta: event.reasoning_delta,
               reactEvents: state.reactEvents,
+              stepItems: state.stepItems,
               stepStates: state.stepStates,
               workingMemory: state.workingMemory,
             });
@@ -326,6 +366,7 @@ export async function runReActLoop(input: {
               textDelta: emittedDelta,
               text: streamText,
               reactEvents: state.reactEvents,
+              stepItems: state.stepItems,
               stepStates: state.stepStates,
               workingMemory: state.workingMemory,
             });
@@ -385,6 +426,12 @@ export async function runReActLoop(input: {
 
     if (decision.type === "retry") {
       thoughtEvent.status = thoughtEvent.text ? "failed" : "skipped";
+      updateStepItem(thoughtStepItem, {
+        status: thoughtEvent.status,
+        text: thoughtEvent.text,
+        streaming: false,
+      });
+      updateStepItem(iterationStepItem, { status: "failed" });
       const existing = state.stepStates.find((s) => s.kind === "llm");
       if (existing) {
         existing.status = "failed";
@@ -393,6 +440,7 @@ export async function runReActLoop(input: {
       deps.onProgress?.({
         detail: `LLM 输出无效，准备重试（${i + 1}/${maxIterations}）`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory,
       });
@@ -408,6 +456,12 @@ export async function runReActLoop(input: {
     if (decision.type === "final") {
       iterationEvent.status = "done";
       thoughtEvent.status = thoughtEvent.text ? "done" : "skipped";
+      updateStepItem(thoughtStepItem, {
+        status: thoughtEvent.status,
+        text: thoughtEvent.text,
+        streaming: false,
+      });
+      updateStepItem(iterationStepItem, { status: "done" });
       const existing = state.stepStates.find((s) => s.kind === "llm");
       if (existing) {
         existing.status = "done";
@@ -416,6 +470,7 @@ export async function runReActLoop(input: {
       deps.onProgress?.({
         detail: `LLM 已生成结论（${i + 1}/${maxIterations}）`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory,
       });
@@ -425,8 +480,14 @@ export async function runReActLoop(input: {
           role: "user",
           content: `约束提醒：你还没有调用必需工具：${missing.join("、")}。请先通过工具补齐证据，再输出 final。`,
         });
-        iterationEvent.status = "running";
+        iterationEvent.status = "failed";
         thoughtEvent.status = thoughtEvent.text ? "done" : "skipped";
+        updateStepItem(thoughtStepItem, {
+          status: thoughtEvent.status,
+          text: thoughtEvent.text,
+          streaming: false,
+        });
+        updateStepItem(iterationStepItem, { status: "failed" });
         continue;
       }
       return {
@@ -443,6 +504,12 @@ export async function runReActLoop(input: {
     const isSpecial = Boolean(specialTools && Object.prototype.hasOwnProperty.call(specialTools, toolName));
     if (!toolName || (!isSpecial && !deps.allowedTools.includes(toolName))) {
       thoughtEvent.status = thoughtEvent.text ? "failed" : "skipped";
+      updateStepItem(thoughtStepItem, {
+        status: thoughtEvent.status,
+        text: thoughtEvent.text,
+        streaming: false,
+      });
+      updateStepItem(iterationStepItem, { status: "failed" });
       messages.push({
         role: "user",
         content: `Observation: 工具不可用：${toolName || "(empty)"}。请从可用工具中选择，或输出 final。`,
@@ -452,6 +519,11 @@ export async function runReActLoop(input: {
     }
     usedTools.add(toolName);
     thoughtEvent.status = thoughtEvent.text ? "done" : "skipped";
+    updateStepItem(thoughtStepItem, {
+      status: thoughtEvent.status,
+      text: thoughtEvent.text,
+      streaming: false,
+    });
     {
       const existing = state.stepStates.find((s) => s.kind === "llm");
       if (existing) {
@@ -462,6 +534,7 @@ export async function runReActLoop(input: {
     deps.onProgress?.({
       detail: `LLM 已决定调用工具：${toolName}`,
       reactEvents: state.reactEvents,
+      stepItems: state.stepItems,
       stepStates: state.stepStates,
       workingMemory: state.workingMemory,
     });
@@ -486,6 +559,7 @@ export async function runReActLoop(input: {
     deps.onProgress?.({
       detail: `执行工具：${toolName}`,
       reactEvents: state.reactEvents,
+      stepItems: state.stepItems,
       stepStates: state.stepStates,
       workingMemory: state.workingMemory,
     });
@@ -544,9 +618,33 @@ export async function runReActLoop(input: {
       stepKind: stepKind,
     };
     state.reactEvents.push(toolCallEvent);
+    const toolCallStepItem = createStepItem({
+      id: `react-tool-call-${i + 1}-${toolCallId}`,
+      phase: stepKind ?? "system",
+      type: "tool_call",
+      status: "running",
+      title: "Action",
+      text: toolCallEvent.text,
+      toolName,
+      inputSummary: summarize(toolInput, 160),
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+    });
+    const observationStepItem = createStepItem({
+      id: `react-observation-${i + 1}-${toolCallId}`,
+      phase: stepKind ?? "system",
+      type: "observation",
+      status: "running",
+      title: "Observation",
+      text: "等待工具结果",
+      toolName,
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+    });
     deps.onProgress?.({
       detail: `执行工具：${toolName}`,
       reactEvents: state.reactEvents,
+      stepItems: state.stepItems,
       stepStates: state.stepStates,
       workingMemory: state.workingMemory,
     });
@@ -563,6 +661,11 @@ export async function runReActLoop(input: {
       const modelObs = toolResult?.observationForModel ?? formatted?.messageForModel ?? outputSummary;
       state.toolTraces.push({ toolName, status: "success", note: outputSummary.slice(0, 180) });
       toolCallEvent.status = "done";
+      updateStepItem(toolCallStepItem, {
+        status: "done",
+        text: toolCallEvent.text,
+        inputSummary: summarize(toolInput, 160),
+      });
       state.reactEvents.push({
         kind: "observation",
         label: "Observation",
@@ -573,6 +676,11 @@ export async function runReActLoop(input: {
         stepKind: stepKind,
       });
       observations.push({ tool: toolName, summary: outputSummary });
+      updateStepItem(observationStepItem, {
+        status: "done",
+        text: outputSummary,
+        outputSummary: outputSummary.slice(0, 240),
+      });
       messages.push({
         role: "tool",
         tool_call_id: toolCallId,
@@ -588,10 +696,12 @@ export async function runReActLoop(input: {
       deps.onProgress?.({
         detail: `完成工具：${toolName}`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory,
       });
       iterationEvent.status = "done";
+      updateStepItem(iterationStepItem, { status: "done" });
     } catch (err) {
       if (isCancelledError(err)) {
         throw err;
@@ -599,6 +709,11 @@ export async function runReActLoop(input: {
       const msg = err instanceof Error ? err.message : String(err);
       state.toolTraces.push({ toolName, status: "blocked", note: msg });
       toolCallEvent.status = "failed";
+      updateStepItem(toolCallStepItem, {
+        status: "failed",
+        text: toolCallEvent.text,
+        inputSummary: summarize(toolInput, 160),
+      });
       state.reactEvents.push({
         kind: "observation",
         label: "Observation",
@@ -607,6 +722,11 @@ export async function runReActLoop(input: {
         toolName,
         outputSummary: msg,
         stepKind: stepKind,
+      });
+      updateStepItem(observationStepItem, {
+        status: "failed",
+        text: msg,
+        outputSummary: msg,
       });
       messages.push({
         role: "tool",
@@ -623,10 +743,12 @@ export async function runReActLoop(input: {
       deps.onProgress?.({
         detail: `工具失败：${toolName}`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory,
       });
       iterationEvent.status = "failed";
+      updateStepItem(iterationStepItem, { status: "failed" });
     }
   }
 

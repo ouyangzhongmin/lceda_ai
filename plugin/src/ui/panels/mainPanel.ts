@@ -1,4 +1,5 @@
 import type { DraftPlan } from "../../editor/apply-plan/draftPlan";
+import type { AgentStepItem } from "../../agent/shared/agentTypes";
 
 export interface MainPanelState {
   __stateVersion?: number;
@@ -150,6 +151,7 @@ export interface MainPanelState {
       inputSummary?: string;
       outputSummary?: string;
     }>;
+    stepItems?: AgentStepItem[];
     stepTranscript?: string[];
     stepStates?: Array<{
       kind: "context" | "mcp" | "rules" | "library" | "llm" | "draft";
