@@ -1,0 +1,111 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: New Session
+      - button "关闭会话" [ref=e6] [cursor=pointer]:
+        - img [ref=e7]
+    - generic [ref=e9]:
+      - button "新建会话" [ref=e10] [cursor=pointer]:
+        - img [ref=e11]
+      - button "历史会话" [ref=e13] [cursor=pointer]:
+        - img [ref=e14]
+      - button "设置" [ref=e18] [cursor=pointer]:
+        - img [ref=e19]
+  - main [ref=e22]:
+    - generic [ref=e25]:
+      - generic [ref=e26]: AI 助手
+      - generic [ref=e27]: 我是一个AI助手
+      - generic [ref=e28]: 我是一个AI助手，已经准备好读取当前原理图，你可以直接提问。
+      - generic [ref=e29]:
+        - button "检查这个原理图" [ref=e30] [cursor=pointer]:
+          - generic [ref=e31]: 检查这个原理图
+        - button "这个电路有什么问题" [ref=e32] [cursor=pointer]:
+          - generic [ref=e33]: 这个电路有什么问题
+        - button "帮我设计一个点亮LED的电路" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]: 帮我设计一个点亮LED的电路
+  - status
+  - complementary [ref=e36]:
+    - generic [ref=e37]:
+      - generic [ref=e38]: 设置
+      - button [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+    - generic [ref=e42]:
+      - generic [ref=e43]:
+        - generic [ref=e44]:
+          - generic [ref=e45]: 登录状态
+          - strong [ref=e46]: 未登录
+        - generic [ref=e47]:
+          - generic [ref=e48]: 用户
+          - strong [ref=e49]: 游客
+        - generic [ref=e50]:
+          - generic [ref=e51]: 邮箱
+          - strong [ref=e52]: "-"
+        - button [ref=e53] [cursor=pointer]: 登录 / 刷新状态
+      - generic [ref=e55]:
+        - generic [ref=e56]: 余额
+        - strong [ref=e57]: "0"
+      - generic [ref=e58]:
+        - generic [ref=e59]:
+          - generic [ref=e60]: LLM 模式
+          - combobox [ref=e61]
+        - generic [ref=e62]:
+          - generic [ref=e63]: 说明
+          - strong [ref=e64]: 使用自定义 OpenAI-compatible 接口，不需要登录
+        - generic [ref=e65]:
+          - generic [ref=e66]: 自定义 LLM Provider
+          - textbox [ref=e67]:
+            - /placeholder: openai-compatible
+        - generic [ref=e68]:
+          - generic [ref=e69]: Base URL
+          - textbox [ref=e70]:
+            - /placeholder: https://api.example.com/v1
+        - generic [ref=e71]:
+          - generic [ref=e72]: Model
+          - textbox [ref=e73]:
+            - /placeholder: gpt-4.1-mini
+        - generic [ref=e74]:
+          - generic [ref=e75]: 输出语言
+          - combobox [ref=e76]
+        - generic [ref=e77]:
+          - generic [ref=e78]: API Key
+          - textbox [ref=e79]:
+            - /placeholder: sk-***
+        - generic [ref=e80]:
+          - generic [ref=e81]: 当前 Key
+          - strong [ref=e82]: "-"
+        - button [ref=e83] [cursor=pointer]: 保存 LLM 配置
+      - generic [ref=e84]:
+        - generic [ref=e85]:
+          - generic [ref=e86]: 通道
+          - strong [ref=e87]: "-"
+        - generic [ref=e88]:
+          - generic [ref=e89]: 问题数
+          - strong [ref=e90]: "0"
+        - generic [ref=e91]:
+          - generic [ref=e92]: 选中对象
+          - strong [ref=e93]: "0"
+        - generic [ref=e94]:
+          - generic [ref=e95]: 器件数量
+          - strong [ref=e96]: "0"
+        - generic [ref=e97]:
+          - generic [ref=e98]: 网络数量
+          - strong [ref=e99]: "0"
+        - generic [ref=e100]:
+          - generic [ref=e101]: 调试显示路由
+          - checkbox [ref=e102]
+        - generic [ref=e103]:
+          - generic [ref=e104]: 最近 LLM 路由
+          - strong [ref=e105]: 已关闭
+  - complementary [ref=e106]:
+    - generic [ref=e107]:
+      - generic [ref=e108]: 历史会话
+      - button [ref=e109] [cursor=pointer]:
+        - img [ref=e110]
+  - contentinfo [ref=e113]:
+    - generic [ref=e114]:
+      - textbox "输入消息" [ref=e115]:
+        - /placeholder: 描述你的原理图问题或设计需求...
+      - generic [ref=e116]:
+        - button "附加文件" [ref=e118] [cursor=pointer]:
+          - img [ref=e119]
+        - button "发送" [ref=e121] [cursor=pointer]

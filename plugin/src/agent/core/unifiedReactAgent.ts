@@ -1,5 +1,7 @@
 import type { MainPanelState } from "../../ui/panels/mainPanel";
 import type { EditorAdapter } from "../../editor/adapters/editorAdapter";
+import type { LibraryDeviceDetail, LibrarySearchResultItem } from "../../editor/host/runtime";
+import type { DraftPlan, DraftPreview } from "../../editor/apply-plan/draftPlan";
 import type { SchematicContext } from "../../types/schematic";
 import type { DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
 import type { AgentResult, AgentStepItem, AgentStepState, AgentTask, AgentTaskType, AgentWorkingMemory } from "../shared/agentTypes";
@@ -347,6 +349,7 @@ export async function runUnifiedReactAgent(input: {
     detail?: string;
     reactEvents?: AgentResult["reactEvents"];
     stepItems?: AgentStepItem[];
+    iterationSteps?: AgentResult["iterationSteps"];
     stepStates?: AgentResult["stepStates"];
     workingMemory?: AgentResult["workingMemory"];
   }) => void;
@@ -508,6 +511,7 @@ export async function runUnifiedReactAgent(input: {
         reasoningDelta: payload.reasoningDelta,
         reactEvents: payload.reactEvents,
         stepItems: payload.stepItems,
+        iterationSteps: payload.iterationSteps,
         stepStates: payload.stepStates,
         workingMemory: payload.workingMemory,
       });
@@ -593,6 +597,230 @@ export async function runUnifiedReactAgent(input: {
     return llmInput;
   };
 
+  const formatObservation = (toolName: string, output: unknown): { summary: string; messageForModel: string } => {
+    const asRecord = (value: unknown): Record<string, unknown> =>
+      value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+    const cleanText = (value: unknown): string => String(value || "").trim();
+    const joinParts = (parts: unknown[], separator = "，"): string =>
+      parts.map((item) => cleanText(item)).filter(Boolean).join(separator);
+    if (toolName === "todo_list") {
+      const payload = output && typeof output === "object" ? (output as { action?: string; tasks?: Array<{ text?: string; status?: string }> }) : {};
+      const action = payload.action === "create" ? "已创建待办步骤" : "已更新待办步骤";
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      const preview = tasks.slice(0, 3).map((item) => String(item?.text || "").trim()).filter(Boolean);
+      return {
+        summary: preview.length > 0 ? `${action}，包括：${preview.join("；")}` : action,
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "editor_get_current_context") {
+      const ctx = output as SchematicContext | undefined;
+      const componentCount = Array.isArray(ctx?.components) ? ctx.components.length : 0;
+      const netCount = Array.isArray(ctx?.nets) ? ctx.nets.length : 0;
+      const selectionCount = Array.isArray(ctx?.selection?.objectIds) ? ctx.selection.objectIds.length : 0;
+      const pageName = String(ctx?.project?.pageName || "").trim();
+      return {
+        summary: `已读取当前原理图${pageName ? `“${pageName}”` : ""}，包含 ${componentCount} 个器件、${netCount} 条网络${selectionCount ? `，当前选中 ${selectionCount} 个对象` : ""}`,
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "rules_run_schematic_checks") {
+      const result = output as AgentResult["checkResult"];
+      const issues = Array.isArray(result?.issues) ? result.issues : [];
+      const high = issues.filter((item) => item.severity === "high").length;
+      const medium = issues.filter((item) => item.severity === "medium").length;
+      const low = issues.filter((item) => item.severity === "low").length;
+      return {
+        summary: issues.length > 0 ? `规则检查完成，发现 ${issues.length} 个问题（高风险 ${high}、中风险 ${medium}、低风险 ${low}）` : "规则检查完成，未发现明显问题",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "schematic_review") {
+      const result = output as { stats?: { componentCount?: number; uniqueNetNameCount?: number }; notes?: string[] } | undefined;
+      const componentCount = Number(result?.stats?.componentCount || 0);
+      const netCount = Number(result?.stats?.uniqueNetNameCount || 0);
+      const note = Array.isArray(result?.notes) ? String(result?.notes?.[0] || "").trim() : "";
+      return {
+        summary: `已读取网表证据，覆盖 ${componentCount} 个器件、${netCount} 条网络${note ? `；${note}` : ""}`,
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "schematic_build_analysis_evidence") {
+      const result = output as { stats?: { componentCount?: number; netCount?: number }; keyComponents?: Array<{ ref?: string }> } | undefined;
+      const componentCount = Number(result?.stats?.componentCount || 0);
+      const netCount = Number(result?.stats?.netCount || 0);
+      const keyRefs = Array.isArray(result?.keyComponents)
+        ? result.keyComponents.map((item) => String(item?.ref || "").trim()).filter(Boolean).slice(0, 3)
+        : [];
+      return {
+        summary: `已整理分析证据，覆盖 ${componentCount} 个器件、${netCount} 条网络${keyRefs.length > 0 ? `；关键器件：${keyRefs.join("、")}` : ""}`,
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "editor_get_selection") {
+      const payload = asRecord(output);
+      const objectIds = Array.isArray(payload.objectIds) ? payload.objectIds : [];
+      return {
+        summary: objectIds.length > 0 ? `已读取当前选区，共 ${objectIds.length} 个对象` : "已读取当前选区，当前没有选中对象",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "editor_describe_selection") {
+      const payload = asRecord(output);
+      const count = Number(payload.count || 0);
+      const summary = cleanText(payload.summary);
+      return {
+        summary: count > 0
+          ? `已解释当前选区，共 ${count} 个对象${summary ? `；${summary}` : ""}`
+          : (summary || "当前没有可解释的选中对象"),
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "editor_describe_object") {
+      const payload = asRecord(output);
+      const found = payload.found !== false;
+      const objectType = cleanText(payload.objectType);
+      const summary = cleanText(payload.summary);
+      const label = joinParts([payload.ref, payload.name, payload.value, cleanText(payload.packageName) ? `封装 ${payload.packageName}` : ""], "，");
+      return {
+        summary: found
+          ? `已读取${objectType === "pin" ? "引脚" : objectType === "net" ? "网络" : "对象"}信息${summary ? `：${summary}` : label ? `：${label}` : ""}`
+          : (summary || "未找到对应对象"),
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "editor_find_object") {
+      const payload = asRecord(output);
+      const found = payload.found === true;
+      const matches = Array.isArray(payload.matches) ? payload.matches : [];
+      const summary = cleanText(payload.summary);
+      const first = matches[0] && typeof matches[0] === "object" ? (matches[0] as Record<string, unknown>) : {};
+      const firstLabel = joinParts([first.ref, first.name, first.summary], "，");
+      return {
+        summary: found
+          ? (summary || `已找到 ${matches.length || 1} 个匹配对象${firstLabel ? `；例如：${firstLabel}` : ""}`)
+          : (summary || "未找到匹配对象"),
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "issues_locate_first") {
+      const payload = asRecord(output);
+      const located = payload.located === true;
+      const objectLabel = cleanText(payload.objectLabel);
+      return {
+        summary: located ? `已定位到需要关注的对象${objectLabel ? `：${objectLabel}` : ""}` : "没有找到可直接定位的问题对象",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "library_search_devices") {
+      const items = Array.isArray(output) ? (output as LibrarySearchResultItem[]) : [];
+      const preview = items
+        .slice(0, 3)
+        .map((item) =>
+          joinParts(
+            [
+              item.name,
+              item.footprintName ? `封装 ${item.footprintName}` : "",
+              item.supplierId ? `LCSC ${item.supplierId}` : "",
+            ],
+            "，"
+          )
+        )
+        .filter(Boolean);
+      return {
+        summary:
+          items.length > 0
+            ? `已搜索到 ${items.length} 个器件候选${preview.length > 0 ? `；前几项：${preview.join("；")}` : ""}`
+            : "未搜索到匹配的器件候选",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "library_get_device") {
+      const item = asRecord(output) as LibraryDeviceDetail;
+      const summary = joinParts(
+        [
+          item.name,
+          item.footprint?.name ? `封装 ${item.footprint.name}` : "",
+          item.lcscId ? `LCSC ${item.lcscId}` : item.supplierId ? `LCSC ${item.supplierId}` : "",
+          item.manufacturer,
+        ],
+        "，"
+      );
+      return {
+        summary: summary ? `已读取器件详情：${summary}` : "已读取器件详情",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "library_get_devices_by_lcsc_ids") {
+      const items = Array.isArray(output) ? (output as LibraryDeviceDetail[]) : [];
+      const preview = items
+        .slice(0, 3)
+        .map((item) =>
+          joinParts(
+            [
+              item.name,
+              item.footprint?.name ? `封装 ${item.footprint.name}` : "",
+              item.lcscId ? `LCSC ${item.lcscId}` : item.supplierId ? `LCSC ${item.supplierId}` : "",
+            ],
+            "，"
+          )
+        )
+        .filter(Boolean);
+      return {
+        summary:
+          items.length > 0
+            ? `已按 LCSC 编号匹配到 ${items.length} 个器件${preview.length > 0 ? `；前几项：${preview.join("；")}` : ""}`
+            : "未按给定 LCSC 编号匹配到器件",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "draft_generate_plan") {
+      const plan = asRecord(output) as DraftPlan;
+      const components = Array.isArray(plan.components) ? plan.components : [];
+      const nets = Array.isArray(plan.nets) ? plan.nets : [];
+      const refs = components
+        .slice(0, 4)
+        .map((item) => cleanText(item?.ref) || cleanText(item?.id))
+        .filter(Boolean);
+      return {
+        summary:
+          components.length > 0 || nets.length > 0
+            ? `已生成草案计划，包含 ${components.length} 个器件、${nets.length} 条网络${refs.length > 0 ? `；器件示例：${refs.join("、")}` : ""}`
+            : "已生成草案计划",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "draft_preview_plan" || toolName === "editor_preview_apply_plan") {
+      const preview = asRecord(output) as DraftPreview & { warnings?: string[] };
+      const unresolved = Array.isArray(preview.unresolvedDeviceDetails) ? preview.unresolvedDeviceDetails.length : 0;
+      return {
+        summary:
+          cleanText(preview.title) || typeof preview.componentCount === "number" || typeof preview.netCount === "number"
+            ? `已生成草案预览${cleanText(preview.title) ? `：${cleanText(preview.title)}` : ""}，包含 ${Number(preview.componentCount || 0)} 个器件、${Number(preview.netCount || 0)} 条网络${unresolved > 0 ? `；仍有 ${unresolved} 个待确认器件` : ""}`
+            : "已生成草案预览",
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    if (toolName === "rules_validate_draft") {
+      const payload = asRecord(output);
+      const issues = Array.isArray(payload.issues) ? payload.issues : [];
+      const summary = cleanText(payload.summary);
+      const riskLevel = cleanText((payload as { riskLevel?: string }).riskLevel);
+      return {
+        summary:
+          summary ||
+          (issues.length > 0
+            ? `草案校验完成，发现 ${issues.length} 个问题${riskLevel ? `；风险等级：${riskLevel}` : ""}`
+            : `草案校验完成，未发现明显问题${riskLevel ? `；风险等级：${riskLevel}` : ""}`),
+        messageForModel: JSON.stringify(output),
+      };
+    }
+    return {
+      summary: typeof output === "string" ? output : JSON.stringify(output),
+      messageForModel: typeof output === "string" ? output : JSON.stringify(output),
+    };
+  };
+
   // Do not inject host-side thought text; Reasoner-style thinking should come from reasoning_delta.
 
   const loopResult = await runReActLoop({
@@ -610,6 +838,7 @@ export async function runUnifiedReactAgent(input: {
     requiredTools,
     mapToolToStepKind,
     prepareToolInput,
+    formatObservation,
     // While-loop 决策阶段不做 llm token streaming，只做进度更新；route 动态推断。
     onProgress: (detail) => {
       const route = inferRouteFromResult({
@@ -629,6 +858,7 @@ export async function runUnifiedReactAgent(input: {
         detail,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
+        iterationSteps: state.iterationSteps,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory,
       });
@@ -651,6 +881,7 @@ export async function runUnifiedReactAgent(input: {
         detail: `思考：${t}`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
+        iterationSteps: state.iterationSteps,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory,
       });
@@ -736,6 +967,7 @@ export async function runUnifiedReactAgent(input: {
     })),
     stepStates: state.stepStates,
     stepItems: state.stepItems,
+    iterationSteps: state.iterationSteps,
     workingMemory: state.workingMemory,
     reactEvents: state.reactEvents,
     checkResult,

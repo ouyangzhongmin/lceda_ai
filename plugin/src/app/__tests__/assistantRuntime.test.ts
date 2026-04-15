@@ -11,6 +11,7 @@ import {
   buildDevicePickerSearchProgressText,
   buildDevicePickerReasonLabel,
   buildDevicePickerRoleLabel,
+  clampStreamingAssistantContent,
   deriveSessionHistoryEntries,
   finalizeDraftTurnMessages,
   formatDraftApplyErrorMessage,
@@ -21,8 +22,10 @@ import {
   stripFinalControlLikeText,
   shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
+  stripFinalControlLikeText,
   shouldIgnoreDuplicateSendWhileRunning,
   shouldUseDraftReplyLeadNarrative,
+  upsertLlmReasoningStepItem,
 } from "../assistantRuntime";
 import { getAssistantCardLayout } from "../assistantCardLayout";
 import type { MainPanelState } from "../../ui/panels/mainPanel";
@@ -292,6 +295,45 @@ test("mergeAssistantFinalMessage preserves pending process stepItems when final 
   assert.equal(merged.stepItems?.[0]?.text, "正在思考");
 });
 
+test("mergeAssistantFinalMessage preserves pending iterationSteps when final message omits them", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "streaming...",
+    streaming: true,
+    iterationSteps: [
+      {
+        id: "react-iteration-4",
+        iteration: 4,
+        status: "running" as const,
+        thoughtText: "Reviewing key components",
+        streaming: true,
+        toolEvents: [
+          {
+            toolName: "editor_get_current_context",
+            label: "editor_get_current_context",
+            status: "done" as const,
+          },
+        ],
+        observationTexts: [],
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "分析结果",
+    content: "最终答案",
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(Array.isArray(merged.iterationSteps), true);
+  assert.equal(merged.iterationSteps?.length, 1);
+  assert.equal(merged.iterationSteps?.[0]?.iteration, 4);
+  assert.equal(merged.iterationSteps?.[0]?.thoughtText, "Reviewing key components");
+  assert.equal(merged.iterationSteps?.[0]?.toolEvents?.[0]?.toolName, "editor_get_current_context");
+});
+
 test("mergeAssistantFinalMessage converts legacy reactEvents into stepItems without final entries", () => {
   const pending = {
     role: "assistant" as const,
@@ -386,6 +428,13 @@ test("mergeAssistantFinalMessage strips final-control-like text from converted s
   assert.equal(merged.stepItems?.[0]?.text, "先输出概览。");
 });
 
+test("stripFinalControlLikeText removes partial final control payload", () => {
+  assert.equal(
+    stripFinalControlLikeText("已整理完证据\n{\"type\":\"final"),
+    "已整理完证据"
+  );
+});
+
 test("mergeAssistantFinalMessage keeps explicit empty final reactEvents without fallback", () => {
   const pending = {
     role: "assistant" as const,
@@ -441,6 +490,54 @@ test("mergeAssistantFinalMessage keeps explicit empty final stepStates without f
 
   assert.equal(Array.isArray(merged.stepStates), true);
   assert.equal(merged.stepStates?.length, 0);
+});
+
+test("clampStreamingAssistantContent keeps short streamed text unchanged", () => {
+  const text = "正在为你分析点亮 LED 的基础电路。";
+  const next = clampStreamingAssistantContent("", text);
+  assert.equal(next, text);
+});
+
+test("clampStreamingAssistantContent truncates oversized streamed text and appends a notice", () => {
+  const chunk = "A".repeat(9000);
+  const next = clampStreamingAssistantContent("", chunk);
+  assert.equal(next.includes("原始流式内容过长，已截断显示"), true);
+  assert.equal(next.length < chunk.length, true);
+});
+
+test("upsertLlmReasoningStepItem fills the active llm thought step item with streamed reasoning text", () => {
+  const message = {
+    role: "assistant" as const,
+    title: "分析中",
+    content: "正在思考...",
+    stepItems: [
+      {
+        id: "react-task-1",
+        phase: "llm" as const,
+        type: "task" as const,
+        status: "running" as const,
+        title: "迭代 1",
+        text: "ReAct 第 1/10 轮",
+      },
+      {
+        id: "react-thought-1",
+        phase: "llm" as const,
+        type: "thought" as const,
+        status: "running" as const,
+        title: "迭代 1-thought",
+        text: "",
+        streaming: true,
+      },
+    ],
+  } as const;
+
+  (message as typeof message & { __llmReasoningText?: string }).__llmReasoningText = "先检查上下文，再决定是否调用工具。";
+
+  upsertLlmReasoningStepItem(message);
+
+  assert.equal(message.stepItems[1]?.type, "thought");
+  assert.equal(message.stepItems[1]?.text, "先检查上下文，再决定是否调用工具。");
+  assert.equal(message.stepItems[1]?.streaming, true);
 });
 
 test("stripFinalControlLikeText removes fenced final payload from UI text", () => {
@@ -520,7 +617,7 @@ test("getAssistantCardLayout hides steps and keeps only the final report when ex
   assert.equal(layout.reportFillsRemainingHeight, true);
 });
 
-test("getAssistantCardLayout keeps streaming thinking above the report while execution is in progress", () => {
+test("getAssistantCardLayout hides report while execution is still streaming", () => {
   const layout = getAssistantCardLayout({
     streaming: true,
     hasThinking: true,
@@ -529,8 +626,9 @@ test("getAssistantCardLayout keeps streaming thinking above the report while exe
     stepsOpen: true,
   });
 
-  assert.deepEqual(layout.sectionOrder, ["header", "thinking", "report"]);
+  assert.deepEqual(layout.sectionOrder, ["header", "thinking"]);
   assert.equal(layout.showThinking, true);
+  assert.equal(layout.showReport, false);
   assert.equal(layout.useSplitLayout, true);
   assert.equal(layout.reportFillsRemainingHeight, false);
 });

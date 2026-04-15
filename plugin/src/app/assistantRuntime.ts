@@ -21,6 +21,7 @@ import { UnifiedLlmClient } from "../services/llm/unifiedLlmClient";
 import { RagClient } from "../services/rag/ragClient";
 import { LocalStorageKeyValueStore } from "../storage/keyValueStore";
 import type { MainPanelState } from "../ui/panels/mainPanel";
+import type { AgentIterationStep } from "../agent/shared/agentTypes";
 import { previewDraftPlan } from "../editor/apply-plan/previewDraftPlan";
 import { isCancelledError } from "../agent/core/cancelledError";
 
@@ -33,8 +34,13 @@ const MAX_SESSION_HISTORY = 20;
 type IssueObjectType = "component" | "pin" | "net";
 const LOG_PREFIX = "[LCEDA-AI][runtime]";
 const ENABLE_VERBOSE_RUNTIME_LOGS = false;
+const ENABLE_STREAM_STEP_DEBUG =
+  (typeof globalThis !== "undefined" &&
+    Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_STREAM_DEBUG__));
 // Streaming can emit lots of deltas; committing/persisting on every delta makes the UI churn.
-const STREAM_COMMIT_MIN_INTERVAL_MS = 80;
+const STREAM_COMMIT_MIN_INTERVAL_MS = 220;
+const STREAMING_ASSISTANT_CONTENT_MAX_CHARS = 3200;
+const STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE = "\n\n[原始流式内容过长，已截断显示，请等待最终结果。]";
 const PERSIST_PANEL_STATE_THROTTLE_MS = 600;
 const CONTEXT_COMPACTION_TRIGGER_TURNS = 20;
 const CONTEXT_COMPACTION_KEEP_RECENT_TURNS = 3;
@@ -691,6 +697,9 @@ type MessageReactEvent = NonNullable<MainPanelState["chatMessages"]>[number]["re
   ? T
   : never;
 type MessageStepItem = NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"] extends Array<infer T> ? T : never;
+type MessageIterationStep = NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"] extends Array<infer T>
+  ? T
+  : never;
 
 function formatReactEventLine(event: MessageReactEvent): string {
   if (!event || !event.kind) return "";
@@ -744,24 +753,52 @@ function upsertLlmReasoningEvent(
   if (!reasoningDelta) return;
   const msgAny = message as unknown as { __llmReasoningText?: string };
   msgAny.__llmReasoningText = `${msgAny.__llmReasoningText || ""}${reasoningDelta}`;
+}
 
-  const events = (message.reactEvents ??= []);
-  const label = "Reasoning";
-  const stepKind = "llm" as const;
-  const existing = events.find((e) => e && e.kind === "thought" && e.label === label && e.stepKind === stepKind);
-  const text = msgAny.__llmReasoningText;
+export function upsertLlmReasoningStepItem(
+  message: NonNullable<MainPanelState["chatMessages"]>[number]
+): void {
+  const msgAny = message as unknown as { __llmReasoningText?: string };
+  const text = String(msgAny.__llmReasoningText || "").trim();
+  if (!text) return;
+  const stepItems = (message.stepItems ??= []);
+  const existing = [...stepItems]
+    .reverse()
+    .find(
+      (item) =>
+        item &&
+        item.type === "thought" &&
+        item.phase === "llm" &&
+        (item.status === "running" || item.streaming || !String(item.text || "").trim())
+    );
   if (existing) {
     existing.text = text;
-    existing.status = "done";
+    existing.streaming = true;
+    if (existing.status !== "done") {
+      existing.status = "running";
+    }
     return;
   }
-  events.push({
-    kind: "thought",
-    label,
-    status: "done",
+  stepItems.push({
+    id: "runtime-llm-thought",
+    phase: "llm",
+    type: "thought",
+    status: "running",
+    title: "Reasoning",
     text,
-    stepKind,
+    streaming: true,
   });
+}
+
+export function clampStreamingAssistantContent(previous: string, deltaOrNext: string): string {
+  const merged = `${String(previous || "")}${String(deltaOrNext || "")}`;
+  if (merged.length <= STREAMING_ASSISTANT_CONTENT_MAX_CHARS) {
+    return merged;
+  }
+  const maxBodyLength =
+    STREAMING_ASSISTANT_CONTENT_MAX_CHARS - STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE.length;
+  const clipped = merged.slice(0, Math.max(0, maxBodyLength)).trimEnd();
+  return `${clipped}${STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE}`;
 }
 
 export interface AssistantRuntime {
@@ -1034,19 +1071,25 @@ function createAssistantRuntime(): AssistantRuntime {
           lastMessage.title = "分析中";
           if (event.stage === "llm") {
             if (event.textDelta) {
-              lastMessage.content = `${lastMessage.content || ""}${event.textDelta}`;
+              lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", event.textDelta);
             } else if (event.text !== undefined) {
-              lastMessage.content = event.text || lastMessage.content || "";
+              lastMessage.content = clampStreamingAssistantContent("", event.text || lastMessage.content || "");
             }
           } else {
             // progress 阶段只更新步骤，不写入 content；content 留给最终流式报告。
-            if (event.stepItems !== undefined || event.reactEvents !== undefined) {
+            if (
+              event.stepItems !== undefined ||
+              event.iterationSteps !== undefined ||
+              event.reactEvents !== undefined
+            ) {
               const normalizedProcess = normalizeProcessFields({
                 ...lastMessage,
                 stepItems: event.stepItems ?? lastMessage.stepItems,
+                iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
                 reactEvents: event.reactEvents ?? lastMessage.reactEvents,
               });
               lastMessage.stepItems = normalizedProcess.stepItems;
+              lastMessage.iterationSteps = normalizedProcess.iterationSteps;
               lastMessage.reactEvents = normalizedProcess.reactEvents;
               lastMessage.stepTranscript = normalizedProcess.stepTranscript;
             }
@@ -1790,60 +1833,132 @@ function createAssistantRuntime(): AssistantRuntime {
             if (!lastMessage || lastMessage.role !== "assistant") {
               return;
             }
-            const normalizedStreamProcess = normalizeProcessFields({
-              ...lastMessage,
-              stepItems: event.stepItems ?? lastMessage.stepItems,
-              reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents,
-            });
-          if (event.detail) {
-            current.agentRunDetail = event.detail;
-          }
-          if (event.stage === "llm") {
-            lastMessage.streaming = true;
-            lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "analysis" ? "分析中" : "处理中";
-            // 对 reasoning 模型，思考区走 reasoningDelta；对非 reasoning 模型，
-            // 普通文本 delta 需要进入正文区，否则用户只会看到工具进度而看不到任何生成过程。
-            if (sanitizedTextDelta) {
-              lastMessage.content = `${lastMessage.content === "正在思考..." ? "" : lastMessage.content || ""}${sanitizedTextDelta}`;
-            } else if (event.text !== undefined && String(sanitizedText || "").trim()) {
-              lastMessage.content = sanitizedText || lastMessage.content || "";
+            if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
+              console.log("[LCEDA-AI][stream-debug] onStreamEvent.before", {
+                stage: event.stage,
+                detail: event.detail,
+                reasoningDelta: sanitizedReasoningDelta,
+                textDelta: sanitizedTextDelta,
+                eventStepItems: event.stepItems,
+                eventIterationSteps: event.iterationSteps,
+                eventReactEvents: sanitizedReactEvents,
+                lastAssistantStepItems: lastMessage.stepItems,
+                lastAssistantIterationSteps: lastMessage.iterationSteps,
+                lastAssistantReactEvents: lastMessage.reactEvents,
+              });
             }
-            if (sanitizedReasoningDelta) {
-              upsertLlmReasoningEvent(lastMessage, sanitizedReasoningDelta);
+            if (event.detail) {
+              current.agentRunDetail = event.detail;
             }
-            if (event.stepItems !== undefined || sanitizedReactEvents !== undefined || sanitizedReasoningDelta) {
-              const normalizedAfterReasoning = normalizeProcessFields(lastMessage);
-              lastMessage.stepItems = normalizedAfterReasoning.stepItems;
-              lastMessage.reactEvents = normalizedAfterReasoning.reactEvents;
-              lastMessage.stepTranscript = normalizedAfterReasoning.stepTranscript;
+            if (event.stage === "llm") {
+              lastMessage.streaming = true;
+              lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "analysis" ? "分析中" : "处理中";
+              // ReAct 过程中，LLM 流式文本应进入当前 step，而不是底部正式报告区。
+              // 最终报告只在 turn 完成后由 final message 渲染。
+              if (lastMessage.content === "正在思考...") {
+                lastMessage.content = "";
+              }
+              if (sanitizedTextDelta) {
+                lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", sanitizedTextDelta);
+              } else if (sanitizedText !== undefined && String(sanitizedText).trim()) {
+                lastMessage.content = clampStreamingAssistantContent("", sanitizedText);
+              }
+              const mergedProcessSource: NonNullable<MainPanelState["chatMessages"]>[number] = {
+                ...lastMessage,
+                stepItems: event.stepItems ?? lastMessage.stepItems,
+                iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
+                reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents,
+              };
+              if (sanitizedReasoningDelta) {
+                const existingSteps = Array.isArray(mergedProcessSource.iterationSteps)
+                  ? mergedProcessSource.iterationSteps.slice()
+                  : [];
+                const nextSteps =
+                  existingSteps.length > 0
+                    ? existingSteps.map((step, index) =>
+                        index === existingSteps.length - 1
+                          ? {
+                              ...step,
+                              thoughtText: `${String(step.thoughtText || "")}${sanitizedReasoningDelta}`.trim(),
+                              status: step.status === "done" ? "done" : "running",
+                              streaming: true,
+                            }
+                          : step
+                      )
+                    : existingSteps;
+                mergedProcessSource.iterationSteps = nextSteps;
+              }
+              if (!sanitizedReasoningDelta && event.iterationSteps !== undefined && String(sanitizedText || "").trim()) {
+                mergedProcessSource.iterationSteps = event.iterationSteps.map((step, index, arr) =>
+                  index === arr.length - 1
+                    ? {
+                        ...step,
+                        thoughtText: String(sanitizedText || "").trim(),
+                        status: step.status === "done" ? "done" : "running",
+                        streaming: true,
+                      }
+                    : step
+                );
+              }
+              if (
+                event.stepItems !== undefined ||
+                event.iterationSteps !== undefined ||
+                sanitizedReactEvents !== undefined ||
+                sanitizedReasoningDelta
+              ) {
+                const normalizedStreamProcess = normalizeProcessFields(mergedProcessSource);
+                lastMessage.stepItems = normalizedStreamProcess.stepItems;
+                lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
+                lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
+                lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
+              }
+              if (event.stepStates) {
+                lastMessage.stepStates = event.stepStates;
+              }
+              if (event.workingMemory) {
+                lastMessage.workingMemory = event.workingMemory;
+              }
+            } else if (event.stage === "progress") {
+              lastMessage.streaming = true;
+              lastMessage.title = event.route === "draft" ? "草案生成中" : "分析中";
+              // progress 阶段只更新 header/steps，不写入 message.content，避免污染最终流式报告。
+              if (
+                event.stepItems !== undefined ||
+                event.iterationSteps !== undefined ||
+                sanitizedReactEvents !== undefined
+              ) {
+                const normalizedStreamProcess = normalizeProcessFields({
+                  ...lastMessage,
+                  stepItems: event.stepItems ?? lastMessage.stepItems,
+                  iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
+                  reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents,
+                });
+                lastMessage.stepItems = normalizedStreamProcess.stepItems;
+                lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
+                lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
+                lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
+              }
+              if (event.stepStates) {
+                lastMessage.stepStates = event.stepStates;
+              }
+              if (event.workingMemory) {
+                lastMessage.workingMemory = event.workingMemory;
+              }
             }
-            if (event.stepItems !== undefined || sanitizedReactEvents !== undefined) {
-              lastMessage.stepItems = normalizedStreamProcess.stepItems;
-              lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
-              lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
+            if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
+              console.log("[LCEDA-AI][stream-debug] onStreamEvent.after", {
+                stage: event.stage,
+                detail: event.detail,
+                lastAssistantMessage: {
+                  title: lastMessage.title,
+                  content: lastMessage.content,
+                  streaming: lastMessage.streaming,
+                  stepItems: lastMessage.stepItems,
+                  iterationSteps: lastMessage.iterationSteps,
+                  reactEvents: lastMessage.reactEvents,
+                },
+              });
             }
-            if (event.stepStates) {
-              lastMessage.stepStates = event.stepStates;
-            }
-            if (event.workingMemory) {
-              lastMessage.workingMemory = event.workingMemory;
-            }
-          } else if (event.stage === "progress") {
-            lastMessage.streaming = true;
-            lastMessage.title = event.route === "draft" ? "草案生成中" : "分析中";
-            // progress 阶段只更新 header/steps，不写入 message.content，避免污染最终流式报告。
-            if (event.stepItems !== undefined || sanitizedReactEvents !== undefined) {
-              lastMessage.stepItems = normalizedStreamProcess.stepItems;
-              lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
-              lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
-            }
-            if (event.stepStates) {
-              lastMessage.stepStates = event.stepStates;
-            }
-            if (event.workingMemory) {
-              lastMessage.workingMemory = event.workingMemory;
-            }
-          }
             scheduleTurnCommit(false);
           },
         });
@@ -2233,6 +2348,8 @@ function createAssistantRuntime(): AssistantRuntime {
            toolTraces: result.toolTraces,
            executionTraces: result.executionTraces,
            reactEvents: result.reactEvents,
+           stepItems: result.stepItems,
+           iterationSteps: result.iterationSteps,
            stepStates: result.stepStates,
            workingMemory: result.workingMemory,
            draftRisk: result.draftRisk,
@@ -2276,6 +2393,8 @@ async function generateDraftStateFromResult(
         executionTraces: result.executionTraces,
         uiEvents: result.uiEvents,
         reactEvents: result.reactEvents,
+        stepItems: result.stepItems,
+        iterationSteps: result.iterationSteps,
         stepStates: result.stepStates,
         workingMemory: result.workingMemory,
         draftRisk: result.draftRisk,
@@ -2346,6 +2465,8 @@ async function generateDraftStateFromResult(
         executionTraces: input.result.executionTraces,
         uiEvents: input.result.uiEvents,
         reactEvents: input.result.reactEvents,
+        stepItems: input.result.stepItems,
+        iterationSteps: input.result.iterationSteps,
         stepStates: input.result.stepStates,
         workingMemory: input.result.workingMemory,
         nextSuggestions: input.result.nextSuggestions,
@@ -2449,6 +2570,8 @@ async function generateDraftStateFromResult(
       executionTraces: result.executionTraces,
       uiEvents: result.uiEvents,
       reactEvents: result.reactEvents,
+      stepItems: result.stepItems,
+      iterationSteps: result.iterationSteps,
       stepStates: result.stepStates,
       workingMemory: result.workingMemory,
       nextSuggestions: result.nextSuggestions,
@@ -2495,6 +2618,8 @@ async function generateDraftStateFromResult(
       executionTraces: result.executionTraces,
       uiEvents: result.uiEvents,
       reactEvents: result.reactEvents,
+      stepItems: result.stepItems,
+      iterationSteps: result.iterationSteps,
       stepStates: result.stepStates,
       workingMemory: result.workingMemory,
       nextSuggestions: result.nextSuggestions,
@@ -2613,6 +2738,7 @@ export function stripFinalControlLikeText(text: string | undefined): string {
     /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
     /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"f(?:i(?:n(?:a(?:l?)?)?)?)?$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"$/u,
@@ -2677,10 +2803,77 @@ function convertReactEventsToStepItems(
   return stepItems.length > 0 ? stepItems : [];
 }
 
+function buildIterationStepsFromStepItems(
+  stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"]
+): NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"] | undefined {
+  if (!Array.isArray(stepItems) || stepItems.length === 0) {
+    return undefined;
+  }
+  const grouped = new Map<
+    number,
+    {
+      iteration: number;
+      thought?: MessageStepItem;
+      toolCalls: MessageStepItem[];
+      observations: MessageStepItem[];
+    }
+  >();
+
+  stepItems.forEach((item) => {
+    if (!item) return;
+    const id = String(item.id || "");
+    const match = id.match(/^react-(?:task|thought|tool-call|observation)-(\d+)/u);
+    const iteration = match ? Number.parseInt(match[1] || "", 10) : Number.NaN;
+    if (!Number.isFinite(iteration)) return;
+    const bucket = grouped.get(iteration) ?? {
+      iteration,
+      thought: undefined,
+      toolCalls: [],
+      observations: [],
+    };
+    if (item.type === "thought") {
+      bucket.thought = item;
+    } else if (item.type === "tool_call") {
+      bucket.toolCalls.push(item);
+    } else if (item.type === "observation") {
+      bucket.observations.push(item);
+    }
+    grouped.set(iteration, bucket);
+  });
+
+  const iterationSteps: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"] = Array.from(grouped.values())
+    .sort((a, b) => a.iteration - b.iteration)
+    .map((bucket) => ({
+      id: bucket.thought?.id || `react-iteration-${bucket.iteration}`,
+      iteration: bucket.iteration,
+      status: bucket.thought?.status || bucket.toolCalls[bucket.toolCalls.length - 1]?.status || "pending",
+      thoughtText: stripFinalControlLikeText(bucket.thought?.text || "").trim(),
+      streaming: Boolean(bucket.thought?.streaming),
+      toolEvents: bucket.toolCalls.map((item) => ({
+        toolName: String(item.toolName || item.title || "").trim(),
+        label: String(item.toolName || item.title || "").trim(),
+        status: item.status,
+      })),
+      observationTexts: bucket.observations
+        .map((item) => stripFinalControlLikeText(item.outputSummary || item.text || "").trim())
+        .filter(Boolean),
+    }))
+    .filter((item) => item.thoughtText || item.toolEvents.length > 0 || item.observationTexts.length > 0);
+
+  return iterationSteps.length > 0 ? iterationSteps : undefined;
+}
+
 function normalizeProcessFields(message: NonNullable<MainPanelState["chatMessages"]>[number]): NonNullable<MainPanelState["chatMessages"]>[number] {
   const reactEvents = Array.isArray(message.reactEvents) ? sanitizeReactEventsForUi(message.reactEvents) : undefined;
   const explicitStepItems = Array.isArray(message.stepItems) ? message.stepItems : undefined;
-  const stepItems = explicitStepItems ?? convertReactEventsToStepItems(reactEvents);
+  const stepItems =
+    Array.isArray(message.iterationSteps) && message.iterationSteps.length > 0
+      ? explicitStepItems
+      : explicitStepItems ?? convertReactEventsToStepItems(reactEvents);
+  const iterationSteps =
+    Array.isArray(message.iterationSteps) && message.iterationSteps.length > 0
+      ? message.iterationSteps
+      : buildIterationStepsFromStepItems(stepItems);
   const stepTranscript =
     Array.isArray(message.stepTranscript) && message.stepTranscript.length > 0
       ? message.stepTranscript
@@ -2689,6 +2882,7 @@ function normalizeProcessFields(message: NonNullable<MainPanelState["chatMessage
     ...message,
     reactEvents,
     stepItems,
+    iterationSteps,
     stepTranscript,
   };
 }
@@ -2699,20 +2893,7 @@ function createPendingAssistantMessage(route: "chat" | "analysis" | "draft"): No
     title: route === "chat" ? "助手" : route === "draft" ? "草案生成中" : "分析中",
     // content 只用于最终流式报告/回复，进度与步骤展示由 reactEvents/stepStates 承载，避免污染最终输出。
     content: "",
-    reactEvents: [
-      {
-        kind: "thought",
-        label: "思考",
-        status: "running",
-        text:
-          route === "draft"
-            ? "正在规划草案与校验约束..."
-            : route === "analysis"
-              ? "正在读取原理图并准备分析..."
-              : "正在分析用户意图并规划下一步...",
-        stepKind: "llm",
-      },
-    ],
+    iterationSteps: [],
     streaming: true,
   };
 }
@@ -2742,6 +2923,7 @@ function replaceTrailingPendingAssistant(
   if (last?.role === "assistant" && last.streaming) {
     // 保留streaming消息中的过程信息和状态信息
     const preservedStepItems = last.stepItems;
+    const preservedIterationSteps = last.iterationSteps;
     const preservedReactEvents = last.reactEvents;
     const preservedStepStates = last.stepStates;
     const preservedWorkingMemory = last.workingMemory;
@@ -2758,18 +2940,21 @@ function replaceTrailingPendingAssistant(
     list.pop();
     
     // 将保留的数据合并到新消息中
-    const mergedReplacements = normalized.map((msg, idx) => {
+      const mergedReplacements = normalized.map((msg, idx) => {
         if (idx === 0 && msg.role === "assistant") {
         const mergedStepItems = msg.stepItems === undefined ? preservedStepItems : msg.stepItems;
+        const mergedIterationSteps = msg.iterationSteps === undefined ? preservedIterationSteps : msg.iterationSteps;
         const mergedReactEvents = preferDefinedArray(msg.reactEvents, preservedReactEvents);
         const normalizedProcess = normalizeProcessFields({
           ...msg,
           stepItems: mergedStepItems,
+          iterationSteps: mergedIterationSteps,
           reactEvents: mergedReactEvents,
         });
         return {
           ...msg,
           stepItems: normalizedProcess.stepItems,
+          iterationSteps: normalizedProcess.iterationSteps,
           reactEvents: normalizedProcess.reactEvents,
           stepTranscript: normalizedProcess.stepTranscript,
           stepStates: preferDefinedArray(msg.stepStates, preservedStepStates),
@@ -2799,15 +2984,19 @@ export function mergeAssistantFinalMessage(
   const normalizedPending = normalizeProcessFields(pendingMessage);
   const normalizedFinal = normalizeProcessFields(finalMessage);
   const preservedStepItems = normalizedPending.stepItems;
+  const preservedIterationSteps = normalizedPending.iterationSteps;
   const preservedReactEvents = normalizedPending.reactEvents;
   const preservedStepStates = pendingMessage.stepStates;
   const preservedWorkingMemory = pendingMessage.workingMemory;
 
   const mergedStepItems = normalizedFinal.stepItems === undefined ? preservedStepItems : normalizedFinal.stepItems;
+  const mergedIterationSteps =
+    normalizedFinal.iterationSteps === undefined ? preservedIterationSteps : normalizedFinal.iterationSteps;
   const mergedReactEvents = preferDefinedArray(normalizedFinal.reactEvents, preservedReactEvents);
   const mergedProcess = normalizeProcessFields({
     ...normalizedFinal,
     stepItems: mergedStepItems,
+    iterationSteps: mergedIterationSteps,
     reactEvents: mergedReactEvents,
   });
   return {
@@ -2815,6 +3004,7 @@ export function mergeAssistantFinalMessage(
     role: "assistant",
     streaming: false,
     stepItems: mergedProcess.stepItems,
+    iterationSteps: mergedProcess.iterationSteps,
     reactEvents: mergedProcess.reactEvents,
     stepTranscript: mergedProcess.stepTranscript ?? normalizedFinal.stepTranscript ?? normalizedPending.stepTranscript,
     stepStates: preferDefinedArray(normalizedFinal.stepStates, preservedStepStates),

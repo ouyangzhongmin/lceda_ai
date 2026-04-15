@@ -1,4 +1,5 @@
 import type {
+  AgentIterationStep,
   AgentResult,
   AgentStepItem,
   AgentStepState,
@@ -40,6 +41,7 @@ export interface ReactAgentDeps {
     reasoningDelta?: string;
     reactEvents: AgentReactEvent[];
     stepItems: AgentStepItem[];
+    iterationSteps?: AgentIterationStep[];
     stepStates: AgentStepState[];
     workingMemory: AgentWorkingMemory;
   }) => void;
@@ -49,6 +51,7 @@ export interface ReactAgentState {
   toolTraces: AgentToolTrace[];
   stepStates: AgentStepState[];
   stepItems: AgentStepItem[];
+  iterationSteps?: AgentIterationStep[];
   workingMemory: AgentWorkingMemory;
   reactEvents: AgentReactEvent[];
 }

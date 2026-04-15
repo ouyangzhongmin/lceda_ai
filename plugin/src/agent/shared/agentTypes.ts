@@ -75,6 +75,22 @@ export interface AgentStepItem {
   streaming?: boolean;
 }
 
+export interface AgentIterationToolEvent {
+  toolName: string;
+  label: string;
+  status: AgentStepStatus;
+}
+
+export interface AgentIterationStep {
+  id: string;
+  iteration: number;
+  status: AgentStepStatus;
+  thoughtText: string;
+  streaming?: boolean;
+  toolEvents: AgentIterationToolEvent[];
+  observationTexts: string[];
+}
+
 export type AgentRoute = "chat" | "analysis" | "draft";
 
 export type AgentPlanStepKind = "context" | "mcp" | "rules" | "library" | "llm" | "draft";
@@ -214,6 +230,7 @@ export interface AgentResult {
   uiEvents?: AgentUiEvent[];
   reactEvents?: AgentReactEvent[];
   stepItems?: AgentStepItem[];
+  iterationSteps?: AgentIterationStep[];
   stepStates?: AgentStepState[];
   workingMemory?: AgentWorkingMemory;
 }

@@ -508,7 +508,7 @@ test("runReActLoop emits running tool_call progress before tool finishes", async
     }
 
     assert.ok(runningSnapshot);
-    assert.equal(runningSnapshot?.detail, "执行工具：editor_get_current_context");
+    assert.equal(runningSnapshot?.detail, "执行工具：读取当前原理图");
     assert.equal(
       runningSnapshot?.stepStates.some((step) => step.kind === "context" && step.status === "running"),
       true
@@ -517,6 +517,177 @@ test("runReActLoop emits running tool_call progress before tool finishes", async
     releaseTool?.();
     await runPromise;
   }
+});
+
+test("runReActLoop appends human-readable tool timeline into iteration step", async () => {
+  let llmCalls = 0;
+  const state = createState();
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "解释当前对象" },
+    allowedTools: ["editor_describe_object"],
+    listToolNames: () => ["editor_describe_object", "llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName === "llm_generate") {
+        llmCalls += 1;
+        if (llmCalls === 1) {
+          const payload = input as { onEvent?: (event: { type: string; reasoning_delta?: string }) => void };
+          payload.onEvent?.({ type: "reasoning_delta", reasoning_delta: "先读取对象信息。" });
+          return {
+            output_text: "",
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: {
+                  name: "editor_describe_object",
+                  arguments: "{\"objectId\":\"c1\",\"objectType\":\"component\"}",
+                },
+              },
+            ],
+          } as never;
+        }
+        return { output_text: '{"type":"final","route":"chat","rationale":"done"}' } as never;
+      }
+      if (toolName === "editor_describe_object") {
+        assert.deepEqual(input, { objectId: "c1", objectType: "component" });
+        return {
+          found: true,
+          objectType: "component",
+          summary: "U1，ESP32，封装 QFN32",
+        } as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    toolDefinitions: [{
+      name: "editor_describe_object",
+      description: "解释对象信息",
+      parameters: {
+        type: "object",
+        properties: {
+          objectId: { type: "string" },
+          objectType: { type: "string" },
+        },
+        required: ["objectId", "objectType"],
+        additionalProperties: false,
+      },
+    }],
+    formatObservation: (toolName, output) => ({
+      summary: toolName === "editor_describe_object" ? "已读取对象信息：U1，ESP32，封装 QFN32" : JSON.stringify(output),
+      messageForModel: JSON.stringify(output),
+    }),
+  });
+
+  assert.equal(state.iterationSteps?.length, 2);
+  assert.equal(
+    state.iterationSteps?.[0]?.thoughtText,
+    "先读取对象信息。\n调用工具：解释指定对象\n已完成解释指定对象"
+  );
+});
+
+test("runUnifiedReactAgent forwards iterationSteps on progress events", async () => {
+  const progressEvents: Array<{ detail?: string; iterationStepsLength?: number }> = [];
+  let llmCalls = 0;
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "todo_list",
+    description: "更新待办列表",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string" },
+        tasks: { type: "array", items: { type: "object" } },
+      },
+      additionalProperties: true,
+    },
+    riskLevel: "low",
+    execute: async () => ({
+      action: "create",
+      tasks: [
+        { text: "读取当前原理图", status: "pending" },
+        { text: "执行规则检查", status: "pending" },
+      ],
+    }),
+  } as AgentTool);
+  tools.register({
+    name: "editor_get_current_context",
+    description: "读取当前编辑器中的原理图上下文",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    riskLevel: "low",
+    execute: async () => createMinimalContext(),
+  } as AgentTool);
+  tools.register({
+    name: "rules_run_schematic_checks",
+    description: "执行原理图规则检查",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    riskLevel: "low",
+    execute: async () => ({ issues: [] }),
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown, options?: { signal?: AbortSignal }) => {
+    if (name === "llm_generate") {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "todo_list",
+                arguments: JSON.stringify({
+                  action: "create",
+                  tasks: [
+                    { text: "读取当前原理图", status: "pending" },
+                    { text: "执行规则检查", status: "pending" },
+                  ],
+                }),
+              },
+            },
+          ],
+        } as never;
+      }
+      return {
+        output_text: '{"type":"final","route":"analysis","rationale":"done","output":"## 报告"}',
+      } as never;
+    }
+    return originalInvoke(name, input, options as never);
+  }) as typeof tools.invoke;
+
+  const { result } = await runUnifiedReactAgent({
+    taskType: "schematic_analysis",
+    userQuery: "检查这个原理图",
+    panelState: { loggedIn: true, chatMessages: [] } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["todo_list", "editor_get_current_context", "rules_run_schematic_checks", "llm_generate"],
+    onStreamEvent: (event) => {
+      progressEvents.push({
+        detail: event.detail,
+        iterationStepsLength: event.iterationSteps?.length,
+      });
+    },
+  });
+
+  assert.ok(progressEvents.some((event) => event.detail?.includes("执行工具：整理待办步骤")));
+  assert.ok(progressEvents.some((event) => (event.iterationStepsLength ?? 0) > 0));
+  assert.ok((result.iterationSteps?.length ?? 0) > 0);
+  assert.match(result.iterationSteps?.[0]?.thoughtText || "", /调用工具：整理待办步骤|已完成整理待办步骤/);
 });
 
 test("runReActLoop forwards plain text deltas as textDelta progress for non-reasoning models", async () => {
@@ -615,6 +786,47 @@ test("runReActLoop keeps a single thought step item while reasoning deltas strea
   assert.equal(thoughtItems.length, 1);
   assert.equal(thoughtItems[0]?.text, "先读取上下文。再确认关键网络。");
   assert.equal(thoughtItems[0]?.status, "done");
+});
+
+test("runReActLoop fills thought step item from rationale when model does not emit reasoning deltas", async () => {
+  const state = createState();
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: ["editor_get_current_context"],
+    listToolNames: () => ["editor_get_current_context", "llm_generate"],
+    invokeTool: async (toolName) => {
+      if (toolName === "llm_generate") {
+        return {
+          output_text:
+            '{"type":"action","tool":"editor_get_current_context","input":{},"rationale":"先获取当前原理图上下文，再继续分析问题。"}',
+        } as never;
+      }
+      if (toolName === "editor_get_current_context") {
+        return createMinimalContext() as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    toolDefinitions: [
+      {
+        name: "editor_get_current_context",
+        description: "读取当前编辑器中的原理图上下文",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      },
+    ],
+    maxIterations: 1,
+  });
+
+  const thoughtItems = state.stepItems.filter((item) => item.type === "thought");
+  assert.equal(thoughtItems.length, 1);
+  assert.equal(thoughtItems[0]?.text, "先获取当前原理图上下文，再继续分析问题。");
 });
 
 test("runReActLoop does not append final as visible step item", async () => {
@@ -840,6 +1052,120 @@ test("runReActLoop does not forward fenced final json chunks as textDelta progre
   assert.equal(progressEvents.some((event) => String(event.textDelta || "").includes('"type": "final"')), false);
   assert.equal(progressEvents.some((event) => String(event.text || "").includes('"route": "analysis"')), false);
   assert.equal(progressEvents.some((event) => event.textDelta === "先输出概览。\n\n"), true);
+});
+
+test("runReActLoop extracts rationale preview from streamed action control json into thought step item", async () => {
+  const state = createState();
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: ["schematic_build_analysis_evidence"],
+    listToolNames: () => ["schematic_build_analysis_evidence", "llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName === "schematic_build_analysis_evidence") {
+        return { summary: "ok" } as never;
+      }
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      const payload = input as {
+        onEvent?: (event: {
+          type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+          delta?: string;
+        }) => void;
+      };
+      payload.onEvent?.({ type: "start" });
+      payload.onEvent?.({
+        type: "delta",
+        delta: '{"type":"action","tool":"schematic_build_analysis_evidence","input":{},"rationale":"调用 `',
+      });
+      payload.onEvent?.({ type: "delta", delta: "schematic_build_analysis_evidence" });
+      payload.onEvent?.({ type: "delta", delta: "`：获取到" });
+      payload.onEvent?.({ type: "delta", delta: '统计摘要"}' });
+      payload.onEvent?.({ type: "done" });
+      return {
+        output_text:
+          '{"type":"action","tool":"schematic_build_analysis_evidence","input":{},"rationale":"调用 `schematic_build_analysis_evidence`：获取到统计摘要"}',
+      } as never;
+      },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    toolDefinitions: [
+      {
+        name: "schematic_build_analysis_evidence",
+        description: "构建分析证据",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      },
+    ],
+    maxIterations: 1,
+  });
+
+  const thoughtItems = state.stepItems.filter((item) => item.type === "thought");
+  assert.equal(thoughtItems.length, 1);
+  assert.equal(thoughtItems[0]?.text, "调用 `schematic_build_analysis_evidence`：获取到统计摘要");
+});
+
+test("runReActLoop keeps reasoning_delta thought text when later control-json deltas also contain rationale", async () => {
+  const state = createState();
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: ["schematic_build_analysis_evidence"],
+    listToolNames: () => ["schematic_build_analysis_evidence", "llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName === "schematic_build_analysis_evidence") {
+        return { summary: "ok" } as never;
+      }
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      const payload = input as {
+        onEvent?: (event: {
+          type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+          delta?: string;
+          reasoning_delta?: string;
+        }) => void;
+      };
+      payload.onEvent?.({ type: "start" });
+      payload.onEvent?.({
+        type: "reasoning_delta",
+        reasoning_delta: "先整理 route components，再生成更易读的映射。",
+      });
+      payload.onEvent?.({
+        type: "delta",
+        delta: '{"type":"action","tool":"schematic_build_analysis_evidence","input":{},"rationale":"调用 `schematic_build_analysis_evidence`：获取到统计摘要"}',
+      });
+      payload.onEvent?.({ type: "done" });
+      return {
+        output_text:
+          '{"type":"action","tool":"schematic_build_analysis_evidence","input":{},"rationale":"调用 `schematic_build_analysis_evidence`：获取到统计摘要"}',
+      } as never;
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    toolDefinitions: [
+      {
+        name: "schematic_build_analysis_evidence",
+        description: "构建分析证据",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      },
+    ],
+    maxIterations: 1,
+  });
+
+  const thoughtItems = state.stepItems.filter((item) => item.type === "thought");
+  assert.equal(thoughtItems.length, 1);
+  assert.equal(thoughtItems[0]?.text, "先整理 route components，再生成更易读的映射。");
 });
 
 test("runReActLoop aborts before starting llm generation when signal is already aborted", async () => {
@@ -1745,6 +2071,282 @@ test("runUnifiedReactAgent includes prior session chat history in the first llm 
         "用户输入：第三轮问题\n\n可用工具：\n\n这是分析类任务：先调用 editor_get_current_context，再调用 rules_run_schematic_checks；如需网表级证据，再调用 schematic_review。完成这些步骤前不要直接回答。",
     },
   ]);
+});
+
+test("runUnifiedReactAgent summarizes library search observations instead of dumping raw JSON", async () => {
+  const registry = new ToolRegistry();
+  let llmCalls = 0;
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: {
+      type: "object",
+      properties: {
+        messages: { type: "array", items: { type: "object" } },
+        tools: { type: "array", items: { type: "object" } },
+        tool_choice: {},
+      },
+      required: ["messages"],
+      additionalProperties: true,
+    },
+    execute: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_lib_1",
+              type: "function",
+              function: {
+                name: "library_search_devices",
+                arguments: JSON.stringify({ query: "LED" }),
+              },
+            },
+          ],
+        };
+      }
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"done","output":"已完成"}',
+      };
+    },
+  });
+
+  registry.register({
+    name: "library_search_devices",
+    description: "在嘉立创专业版集成元件库中搜索器件",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+      },
+      required: ["query"],
+      additionalProperties: true,
+    },
+    execute: async () => [
+      {
+        uuid: "dev-1",
+        name: "BLUE",
+        libraryUuid: "lib-1",
+        footprintName: "LED-TH_BD3.0-P2.54-FD",
+        supplierId: "C9900102778",
+      },
+      {
+        uuid: "dev-2",
+        name: "3mmFIR",
+        libraryUuid: "lib-1",
+        footprintName: "LED-TH_BD3.0-P2.54-FD",
+        supplierId: "C9900095018",
+      },
+    ],
+  });
+
+  let streamEvents: Array<{ reactEvents?: any[]; stepItems?: any[] }> = [];
+  await runUnifiedReactAgent({
+    userQuery: "帮我设计一个点亮LED的电路",
+    panelState: { loggedIn: true, chatMessages: [] } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["library_search_devices", "llm_generate"],
+    onStreamEvent: (event) => {
+      streamEvents.push({
+        reactEvents: event.reactEvents,
+        stepItems: event.stepItems,
+      });
+    },
+  });
+
+  const observationTexts = streamEvents
+    .flatMap((event) => [
+      ...(event.reactEvents ?? []).map((item) => String(item?.text || "")),
+      ...(event.stepItems ?? []).map((item) => String(item?.text || item?.outputSummary || "")),
+    ])
+    .filter(Boolean);
+
+  assert.equal(observationTexts.some((text) => text.includes('"uuid":"dev-1"')), false);
+  assert.equal(observationTexts.some((text) => text.includes("已完成查找器件库候选，正在继续整理候选结果")), true);
+});
+
+test("runUnifiedReactAgent summarizes draft plan observations instead of dumping raw plan JSON", async () => {
+  const registry = new ToolRegistry();
+  let llmCalls = 0;
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: {
+      type: "object",
+      properties: {
+        messages: { type: "array", items: { type: "object" } },
+        tools: { type: "array", items: { type: "object" } },
+        tool_choice: {},
+      },
+      required: ["messages"],
+      additionalProperties: true,
+    },
+    execute: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_draft_1",
+              type: "function",
+              function: {
+                name: "draft_generate_plan",
+                arguments: JSON.stringify({ userQuery: "一个点亮 LED 的电路" }),
+              },
+            },
+          ],
+        };
+      }
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"done","output":"已完成"}',
+      };
+    },
+  });
+
+  registry.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: {
+      type: "object",
+      properties: {
+        userQuery: { type: "string" },
+      },
+      required: ["userQuery"],
+      additionalProperties: true,
+    },
+    execute: async () => ({
+      title: "LED Demo",
+      rationale: "最小 LED 点亮电路",
+      components: [
+        { id: "cmp-j1", ref: "J1" },
+        { id: "cmp-r1", ref: "R1" },
+        { id: "cmp-d1", ref: "D1" },
+      ],
+      pins: [],
+      nets: [
+        { id: "net-vcc", name: "VCC", nodeIds: [] },
+        { id: "net-gnd", name: "GND", nodeIds: [] },
+      ],
+    }),
+  });
+
+  const streamEvents: Array<{ reactEvents?: any[]; stepItems?: any[] }> = [];
+  await runUnifiedReactAgent({
+    userQuery: "帮我设计一个点亮LED的电路",
+    panelState: { loggedIn: true, chatMessages: [] } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["draft_generate_plan", "llm_generate"],
+    onStreamEvent: (event) => {
+      streamEvents.push({
+        reactEvents: event.reactEvents,
+        stepItems: event.stepItems,
+      });
+    },
+  });
+
+  const observationTexts = streamEvents
+    .flatMap((event) => [
+      ...(event.reactEvents ?? []).map((item) => String(item?.text || "")),
+      ...(event.stepItems ?? []).map((item) => String(item?.text || item?.outputSummary || "")),
+    ])
+    .filter(Boolean);
+
+  assert.equal(observationTexts.some((text) => text.includes('"components":[{')), false);
+  assert.equal(observationTexts.some((text) => text.includes("已完成草案结构生成")), true);
+});
+
+test("runUnifiedReactAgent keeps step observations user-friendly instead of exposing draft tool result details", async () => {
+  const registry = new ToolRegistry();
+  let llmCalls = 0;
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: {
+      type: "object",
+      properties: {
+        messages: { type: "array", items: { type: "object" } },
+        tools: { type: "array", items: { type: "object" } },
+        tool_choice: {},
+      },
+      required: ["messages"],
+      additionalProperties: true,
+    },
+    execute: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_draft_ui_1",
+              type: "function",
+              function: {
+                name: "draft_generate_plan",
+                arguments: JSON.stringify({ userQuery: "一个点亮 LED 的电路" }),
+              },
+            },
+          ],
+        };
+      }
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"done","output":"已完成"}',
+      };
+    },
+  });
+
+  registry.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: {
+      type: "object",
+      properties: {
+        userQuery: { type: "string" },
+      },
+      required: ["userQuery"],
+      additionalProperties: true,
+    },
+    execute: async () => ({
+      title: "LED Demo",
+      rationale: "最小 LED 点亮电路",
+      components: [
+        { id: "cmp-j1", ref: "J1" },
+        { id: "cmp-r1", ref: "R1" },
+        { id: "cmp-d1", ref: "D1" },
+      ],
+      pins: [],
+      nets: [
+        { id: "net-vcc", name: "VCC", nodeIds: [] },
+        { id: "net-gnd", name: "GND", nodeIds: [] },
+      ],
+    }),
+  });
+
+  const { result } = await runUnifiedReactAgent({
+    userQuery: "帮我设计一个点亮LED的电路",
+    panelState: { loggedIn: true, chatMessages: [] } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["draft_generate_plan", "llm_generate"],
+  });
+
+  const observationTexts = [
+    ...(result.reactEvents ?? [])
+      .filter((item) => item.kind === "observation")
+      .map((item) => String(item.text || "")),
+    ...(result.stepItems ?? [])
+      .filter((item) => item.type === "observation")
+      .map((item) => String(item.text || "")),
+  ];
+
+  assert.equal(observationTexts.some((text) => text.includes("3 个器件、2 条网络")), false);
+  assert.equal(observationTexts.some((text) => text.includes("已完成草案结构生成")), true);
 });
 
 test("runUnifiedReactAgent keeps up to 20 prior meaningful messages", async () => {

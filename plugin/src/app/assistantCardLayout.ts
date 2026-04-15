@@ -33,7 +33,7 @@ export function getAssistantCardLayout(input: AssistantCardLayoutInput): Assista
   if (input.streaming) {
     const showThinking = input.hasThinking;
     const showSteps = input.hasSteps;
-    const showReport = input.hasReport;
+    const showReport = false;
     return {
       showThinking,
       showSteps,

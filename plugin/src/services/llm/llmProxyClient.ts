@@ -1,6 +1,10 @@
 import type { HttpClient } from "../api-client/httpClient";
 import type { ApiResponse } from "../api-client/apiResponse";
 
+const ENABLE_PROXY_STREAM_DEBUG =
+  (typeof globalThis !== "undefined" &&
+    Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_PROXY_STREAM_DEBUG__));
+
 export interface LlmToolCall {
   id?: string;
   type?: string;
@@ -178,6 +182,12 @@ export class LlmProxyClient {
       }),
       signal: input.signal,
       onEvent: (event) => {
+        if (ENABLE_PROXY_STREAM_DEBUG && typeof console !== "undefined") {
+          console.log("[LCEDA-AI][llm-proxy-stream] raw-event", {
+            event: event.event,
+            data: event.data,
+          });
+        }
         onEvent(event.data as LlmStreamEvent);
       },
     });

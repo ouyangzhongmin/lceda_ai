@@ -830,17 +830,15 @@
       flex: 0 0 auto;
       flex-direction: column;
       border: 0;
-      border-radius: 16px;
-      background: #ffffff;
-      padding: 8px;
+      border-radius: 0;
+      background: transparent;
+      padding: 4px 0 0;
       margin-top: 0;
       margin-bottom: 0;
-      min-height: 120px;
+      min-height: 0;
       max-height: var(--chat-pane-half);
       overflow: hidden;
-      box-shadow:
-        inset 0 0 0 1px rgba(148, 163, 184, 0.18),
-        0 6px 16px rgba(15, 23, 42, 0.05);
+      box-shadow: none;
     }
 
     .message.assistant.assistant-split-layout .assistant-steps-simple {
@@ -857,8 +855,8 @@
     .assistant-steps-content {
       flex: 1 1 auto;
       margin: 0;
-      min-height: 102px;
-      max-height: calc(var(--chat-pane-half) - 18px);
+      min-height: 0;
+      max-height: calc(var(--chat-pane-half) - 8px);
       overflow-y: auto;
       overflow-x: hidden;
       padding-right: 2px;
@@ -868,44 +866,44 @@
       position: relative;
       display: flex;
       flex-direction: column;
-      gap: 5px;
-      padding: 2px 0 2px 4px;
+      gap: 10px;
+      padding: 2px 0 2px 2px;
     }
 
     .assistant-steps-timeline::before {
       content: "";
       position: absolute;
       left: 11px;
-      top: 2px;
-      bottom: 2px;
+      top: 4px;
+      bottom: 4px;
       width: 2px;
-      background: linear-gradient(180deg, #c7d7ea 0%, #d8e4f2 100%);
+      background: linear-gradient(180deg, #dbe7f5 0%, #edf3f9 100%);
       border-radius: 999px;
     }
 
     .assistant-step-node {
       position: relative;
       display: grid;
-      grid-template-columns: 22px minmax(0, 1fr);
-      gap: 6px;
-      align-items: center;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
     }
 
     .assistant-step-marker {
       position: relative;
       z-index: 1;
-      width: 11px;
-      height: 11px;
+      width: 8px;
+      height: 8px;
       margin-top: 7px;
       border-radius: 999px;
       background: #ffffff;
-      border: 2px solid #93c5fd;
-      box-shadow: 0 0 0 3px #f6f7f9;
+      border: 2px solid #94a3b8;
+      box-shadow: 0 0 0 3px #ffffff;
     }
 
     .assistant-step-marker.pending {
       border-color: #cbd5e1;
-      background: #f8fafc;
+      background: #ffffff;
     }
 
     .assistant-step-marker.running {
@@ -913,7 +911,7 @@
       background: #ffffff;
     }
 
-    .assistant-step-marker.running::after {
+    .assistant-step-marker.running.active-running::after {
       content: "";
       position: absolute;
       inset: -5px;
@@ -949,37 +947,33 @@
 
     .assistant-step-marker.task { border-color: #60a5fa; }
     .assistant-step-marker.thought { border-color: #f59e0b; }
-    .assistant-step-marker.tool_call { border-color: #6366f1; }
+    .assistant-step-marker.tool_call { border-color: #7c3aed; }
     .assistant-step-marker.observation { border-color: #10b981; }
     .assistant-step-marker.final { border-color: #22c55e; }
 
     .assistant-step-card {
       min-width: 0;
-      padding: 4px 8px;
-      border: 1px solid #d8e4f2;
-      border-radius: 12px;
-      background: #ffffff;
-      transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      transition: opacity 160ms ease;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      align-items: center;
-      gap: 2px;
+      align-items: start;
+      gap: 3px;
     }
 
     .assistant-step-card.pending {
-      border-color: #e2e8f0;
-      background: #f8fafc;
+      opacity: 0.78;
     }
 
     .assistant-step-card.running {
-      border-color: #bfdbfe;
-      background: #eff6ff;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+      opacity: 1;
     }
 
     .assistant-step-card.done {
-      border-color: #ccebd9;
-      background: #f8fdfb;
+      opacity: 0.86;
     }
 
     .assistant-step-card.recently-done {
@@ -987,153 +981,130 @@
     }
 
     .assistant-step-card.failed {
-      border-color: #fecaca;
-      background: #fef2f2;
+      opacity: 1;
     }
 
     .assistant-step-card.skipped {
-      border-color: #fde68a;
-      background: #fffbeb;
-    }
-
-    .assistant-step-card.tool_call {
-      background: #f8fbff;
-      border-color: #cfe0ff;
-    }
-
-    .assistant-step-card.observation {
-      background: #f8fdfb;
-      border-color: #d3eee3;
-    }
-
-    .assistant-step-card.thought {
-      background: #fffaf2;
-      border-color: #f5dfb4;
-    }
-
-    .assistant-step-card.final {
-      background: #f7fcf8;
-      border-color: #d4ecd9;
-    }
-
-    .assistant-step-headline {
-      display: flex;
-      align-items: flex-start;
-      gap: 5px;
-      flex-wrap: wrap;
-      min-width: 0;
-      margin-bottom: 0;
-    }
-
-    .assistant-step-kind {
-      display: inline-flex;
-      align-items: center;
-      padding: 1px 6px;
-      border-radius: 999px;
-      border: 1px solid #d7e3f0;
-      background: #f8fbfe;
-      color: #475569;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      flex: 0 0 auto;
-    }
-
-    .assistant-step-title {
-      font-size: 10px;
-      font-weight: 700;
-      color: #1f2937;
-      flex: 0 1 auto;
-      min-width: 0;
-      white-space: normal;
-      word-break: break-word;
-    }
-
-    .assistant-step-state {
-      display: inline-flex;
-      align-items: center;
-      padding: 1px 6px;
-      border-radius: 999px;
-      border: 1px solid #d7e3f0;
-      background: #ffffff;
-      color: #475569;
-      font-size: 9px;
-      font-weight: 800;
-      letter-spacing: 0.02em;
-      margin-left: auto;
-      flex: 0 0 auto;
-    }
-
-    .assistant-step-state.pending {
-      border-color: #dbe4ee;
-      background: #f8fafc;
-      color: #64748b;
-    }
-
-    .assistant-step-state.running {
-      border-color: #bfdbfe;
-      background: #dbeafe;
-      color: #1d4ed8;
-    }
-
-    .assistant-step-state.done {
-      border-color: #bbf7d0;
-      background: #dcfce7;
-      color: #15803d;
-    }
-
-    .assistant-step-state.recently-done {
-      animation: stepDoneBadgeFlash 1s ease-out 1;
-    }
-
-    .assistant-step-state.failed {
-      border-color: #fecaca;
-      background: #fee2e2;
-      color: #b91c1c;
-    }
-
-    .assistant-step-state.skipped {
-      border-color: #fde68a;
-      background: #fef3c7;
-      color: #b45309;
-    }
-
-    .assistant-step-meta {
-      color: #64748b;
-      font-size: 9px;
-      font-weight: 600;
-      flex: 0 0 auto;
-    }
-
-    .assistant-step-runtime {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      margin-left: 4px;
-      color: #2563eb;
-      font-size: 9px;
-      font-weight: 700;
-      white-space: nowrap;
-      flex: 0 0 auto;
+      opacity: 0.72;
     }
 
     .assistant-step-text {
-      font-size: 10px;
-      line-height: 1.35;
+      font-size: 13px;
+      line-height: 1.6;
       color: #334155;
-      white-space: normal;
+      white-space: pre-wrap;
       overflow: visible;
       min-width: 0;
-      padding-left: 45px;
+      padding-left: 0;
       word-break: break-word;
     }
 
-    .assistant-step-text.summary {
-      white-space: normal;
+    .assistant-step-text.compact {
+      font-size: 13px;
+      line-height: 1.6;
     }
 
-    .assistant-step-text.compact {
-      white-space: normal;
+    .assistant-step-card.task .assistant-step-text,
+    .assistant-step-card.tool_call .assistant-step-text,
+    .assistant-step-card.observation .assistant-step-text,
+    .assistant-step-card.status .assistant-step-text {
+      color: #475569;
+    }
+
+    .assistant-step-card.thought {
+      padding-top: 1px;
+      padding-left: 0;
+    }
+
+    .assistant-step-card.thought .assistant-step-text {
+      font-size: 13px;
+      line-height: 1.62;
+      color: #334155;
+      padding-top: 0;
+      padding-bottom: 2px;
+    }
+
+    .assistant-step-label {
+      margin-bottom: 2px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .assistant-step-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .assistant-step-tool-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid #d8e4f2;
+      background: #f8fbff;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .assistant-step-tool-chip::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #94a3b8;
+      flex: 0 0 auto;
+    }
+
+    .assistant-step-tool-chip.running {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .assistant-step-tool-chip.running::before {
+      background: #2563eb;
+    }
+
+    .assistant-step-tool-chip.done {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #15803d;
+    }
+
+    .assistant-step-tool-chip.done::before {
+      background: #22c55e;
+    }
+
+    .assistant-step-tool-chip.failed {
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+
+    .assistant-step-tool-chip.failed::before {
+      background: #ef4444;
+    }
+
+    .assistant-step-observations {
+      display: grid;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .assistant-step-observation {
+      font-size: 12px;
+      line-height: 1.5;
+      color: #64748b;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .assistant-step-badge {
@@ -3363,13 +3334,25 @@
         renderedMessageCount = finalMessages.length;
       }
 
-      // Patch in place to avoid flicker.
-      finalMessages.forEach((message, index) => {
-        const dom = messageDom.get(index);
-        if (!dom) return;
-        if (!shouldPatchMessageDom(dom, message)) return;
-        patchMessageDom(dom, message);
-      });
+      const canTailPatchOnly = hasStreaming && renderedMessageCount === finalMessages.length;
+      if (canTailPatchOnly) {
+        const tailIndex = findLastAssistantMessageIndex(finalMessages);
+        if (tailIndex >= 0) {
+          const message = finalMessages[tailIndex];
+          const dom = messageDom.get(tailIndex);
+          if (dom && shouldPatchMessageDom(dom, message)) {
+            patchMessageDom(dom, message);
+          }
+        }
+      } else {
+        // Patch in place to avoid flicker.
+        finalMessages.forEach((message, index) => {
+          const dom = messageDom.get(index);
+          if (!dom) return;
+          if (!shouldPatchMessageDom(dom, message)) return;
+          patchMessageDom(dom, message);
+        });
+      }
 
       // Only auto-scroll when user hasn't intentionally scrolled away.
       // (stickToBottom is toggled by the scroll handler below.)
@@ -3388,6 +3371,16 @@
           });
         });
       }
+    }
+
+    function findLastAssistantMessageIndex(messages) {
+      if (!Array.isArray(messages)) return -1;
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (resolveMessageRole(messages[index]) === "assistant") {
+          return index;
+        }
+      }
+      return -1;
     }
 
     function bindAutoScroll() {
@@ -3529,8 +3522,11 @@
     function buildMessageSignature(message) {
       if (!message || typeof message !== "object") return "";
       const stepItemsCount = Array.isArray(message.stepItems) ? message.stepItems.length : 0;
+      const lastStepItem = stepItemsCount > 0 ? message.stepItems[stepItemsCount - 1] : null;
       const reactEventsCount = Array.isArray(message.reactEvents) ? message.reactEvents.length : 0;
+      const lastReactEvent = reactEventsCount > 0 ? message.reactEvents[reactEventsCount - 1] : null;
       const stepStatesCount = Array.isArray(message.stepStates) ? message.stepStates.length : 0;
+      const lastStepState = stepStatesCount > 0 ? message.stepStates[stepStatesCount - 1] : null;
       const actionsCount = Array.isArray(message.actions) ? message.actions.length : 0;
       const suggestionsCount = Array.isArray(message.suggestions) ? message.suggestions.length : 0;
       return [
@@ -3541,8 +3537,17 @@
         message.streaming ? "1" : "0",
         message.tone || "",
         stepItemsCount,
+        lastStepItem && lastStepItem.id ? lastStepItem.id : "",
+        lastStepItem && lastStepItem.status ? lastStepItem.status : "",
+        lastStepItem && lastStepItem.title ? lastStepItem.title : "",
+        lastStepItem && lastStepItem.text ? String(lastStepItem.text).length : 0,
         reactEventsCount,
+        lastReactEvent && lastReactEvent.kind ? lastReactEvent.kind : "",
+        lastReactEvent && lastReactEvent.status ? lastReactEvent.status : "",
+        lastReactEvent && lastReactEvent.text ? String(lastReactEvent.text).length : 0,
         stepStatesCount,
+        lastStepState && lastStepState.kind ? lastStepState.kind : "",
+        lastStepState && lastStepState.status ? lastStepState.status : "",
         actionsCount,
         suggestionsCount,
       ].join("|");
@@ -3717,31 +3722,21 @@
 
       if (role === "assistant") {
         renderMessageActions(dom, message);
-          const stepEntries = collectStepEntries(message);
-          const stepLines = stepEntries.map(formatStepEntryLine).filter(Boolean);
-          const hadRenderedSteps = Boolean(dom.stepsUI && dom.stepsUI.lines.length);
-          if (stepLines.length > 0 || hadRenderedSteps) {
-            const activeUI = simpleEnsureStepsUI(dom, nextStreaming);
-            activeUI.streaming = nextStreaming;
-            const shouldReplaceWithCurrent = stepLines.length > 0;
-           if (shouldReplaceWithCurrent && activeUI.reactLen > stepLines.length) {
-             activeUI.lines = [];
-             activeUI.events = [];
-             activeUI.reactLen = 0;
-           }
-           if (shouldReplaceWithCurrent) {
-             activeUI.lines = stepLines.slice();
-             activeUI.events = stepEntries.slice();
-             activeUI.reactLen = stepLines.length;
-           }
-           if (!nextStreaming && !activeUI.userToggled) {
-             activeUI.open = false;
-           } else if (nextStreaming && !activeUI.userToggled) {
-             activeUI.open = true;
-           }
-           renderStepsUI(activeUI);
-         }
-       }
+        const stepEntries = collectStepEntries(message);
+        const hadRenderedSteps = Boolean(dom.stepsUI && Array.isArray(dom.stepsUI.events) && dom.stepsUI.events.length > 0);
+        if (stepEntries.length > 0 || hadRenderedSteps) {
+          const activeUI = simpleEnsureStepsUI(dom, nextStreaming);
+          activeUI.streaming = nextStreaming;
+          activeUI.lines = stepEntries.map(formatStepEntryLine).filter(Boolean);
+          activeUI.events = stepEntries.slice();
+          if (!nextStreaming && !activeUI.userToggled) {
+            activeUI.open = false;
+          } else if (nextStreaming && !activeUI.userToggled) {
+            activeUI.open = true;
+          }
+          renderStepsUI(activeUI);
+        }
+      }
 
       if (role === "assistant" && dom.cardEl) {
         const stepLineCount = dom.stepsUI && Array.isArray(dom.stepsUI.lines) ? dom.stepsUI.lines.length : 0;
@@ -3775,56 +3770,36 @@
     }
 
     function collectStepEntries(message) {
-      const stepItems = Array.isArray(message.stepItems) ? message.stepItems : [];
-      if (stepItems.length > 0) {
-        const allowedTimelineTypes = new Set(["task", "thought", "tool_call", "observation", "status"]);
-        return stepItems
-          .filter((item) => item && allowedTimelineTypes.has(String(item.type || "").trim()))
-          .map((item) => ({
-            kind: item.type,
-            status: item.status || (item.type === "status" ? "done" : "pending"),
-            stepKind: item.phase,
-            title: item.type === "tool_call" ? (item.title || item.toolName || "工具调用") : String(item.title || ""),
-            meta: item.type === "tool_call" ? String(item.inputSummary || "") : "",
-            text:
-              item.type === "tool_call"
-                ? summarizeExecutionText("tool_call", item.text || item.inputSummary || "", item.title || item.toolName || "")
-                : item.type === "observation"
-                  ? summarizeExecutionText("observation", item.outputSummary || item.text || "", item.title || "")
-                  : String(item.text || item.title || ""),
-            details: [],
-          }));
+      const iterationSteps = Array.isArray(message.iterationSteps) ? message.iterationSteps : [];
+      if (iterationSteps.length > 0) {
+        return iterationSteps
+          .map((step) => ({
+            id: String(step.id || `react-iteration-${step.iteration}`),
+            iteration: Number(step.iteration || 0),
+            kind: "thought",
+            status: step.status || "pending",
+            stepKind: "llm",
+            title: "",
+            meta: "",
+            text: cleanTimelineText(step.thoughtText || ""),
+            tools: Array.isArray(step.toolEvents)
+              ? step.toolEvents
+                  .map((tool) => ({
+                    name: formatToolLabel(tool.label || tool.toolName || ""),
+                    rawName: String(tool.toolName || tool.label || ""),
+                    status: tool.status || "pending",
+                  }))
+                  .filter((tool) => !shouldHideToolChip(tool.rawName, tool.name))
+              : [],
+            observations: Array.isArray(step.observationTexts)
+              ? step.observationTexts
+                  .map((item) => formatObservationText(item))
+                  .filter((item) => !shouldHideObservationText(item))
+              : [],
+          }))
+          .filter((item) => item.text || item.tools.length > 0 || item.observations.length > 0);
       }
-      const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : [];
-      if (reactEvents.length > 0) {
-        return reactEvents
-          .filter((event) => event && event.kind)
-          .filter((event) => {
-            if (event.kind === "task" && /^迭代\s+\d+$/u.test(String(event.label || "").trim())) {
-              return false;
-            }
-            if (event.kind === "final") {
-              return false;
-            }
-            return true;
-          })
-          .map((event) => ({
-            kind: event.kind,
-            status: event.status || "pending",
-            stepKind: event.stepKind,
-            title: event.kind === "tool_call" ? (event.label || event.toolName || "工具调用") : "",
-            meta: event.kind === "tool_call" ? (event.inputSummary || "") : "",
-            text:
-              event.kind === "tool_call"
-                ? summarizeExecutionText("tool_call", event.text || event.inputSummary || "", event.label || event.toolName || "")
-                : event.kind === "observation"
-                  ? summarizeExecutionText("observation", event.outputSummary || event.text || "", event.label || "")
-                  : (event.text || event.label || ""),
-            details: [],
-          }));
-      }
-      const transcript = Array.isArray(message.stepTranscript) ? message.stepTranscript : [];
-      return transcript.filter(Boolean).map(parseTimelineEntry);
+      return [];
     }
 
     function formatStepKindLabel(kind) {
@@ -3935,59 +3910,113 @@
       return [];
     }
 
-    function formatDetailKind(kind) {
-      switch (kind) {
-        case "task": return "任务";
-        case "thought": return "思考";
-        case "tool_call": return "工具";
-        case "observation": return "观察";
-        case "status": return "完成";
-        default: return "记录";
+    function stripTimelineControlPayload(text) {
+      const raw = String(text || "");
+      if (!raw) return "";
+      const patterns = [
+        /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"f(?:i(?:n(?:a(?:l?)?)?)?)?$/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*```(?:json)?\s*\n\s*\{\s*"type"\s*:\s*"final"/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*```(?:json)?\s*$/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*```\s*$/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*``$/u,
+        /([\s\S]*?)(?:\n|\r|^)\s*`$/u,
+      ];
+      for (const pattern of patterns) {
+        const match = raw.match(pattern);
+        if (match) {
+          return match[1] || "";
+        }
       }
+      return raw;
     }
 
-    function formatDetailText(event) {
-      if (!event || !event.kind) return "";
-      if (event.kind === "tool_call") {
-        const tool = event.label || event.toolName || "工具调用";
-        const meta = event.inputSummary ? ` (${event.inputSummary})` : "";
-        return `${tool}${meta}${event.text ? `: ${event.text}` : ""}`.trim();
-      }
-      if (event.kind === "observation") {
-        return (event.outputSummary || event.text || "").trim();
-      }
-      return (event.text || event.label || "").trim();
+    function cleanTimelineText(text) {
+      let value = stripTimelineControlPayload(text)
+        .replace(/```(?:json)?/gu, "")
+        .replace(/```/gu, "")
+        .replace(/\*\*/gu, "")
+        .replace(/`([^`]+)`/gu, "$1")
+        .trim();
+      value = value.replace(/\s{2,}/gu, " ");
+      return value.trim();
     }
 
-    function summarizeExecutionText(kind, text, title) {
+    function formatToolLabel(value) {
+      const raw = cleanTimelineText(value);
+      if (!raw) return "调用工具";
+      if (/editor_get_current_context/i.test(raw)) return "读取上下文";
+      if (/editor_get_selection/i.test(raw)) return "读取当前选区";
+      if (/editor_describe_selection/i.test(raw)) return "解释当前选区";
+      if (/editor_describe_object/i.test(raw)) return "解释对象信息";
+      if (/editor_find_object/i.test(raw)) return "查找原理图对象";
+      if (/issues_locate_first/i.test(raw)) return "定位问题对象";
+      if (/rules_run_schematic_checks/i.test(raw)) return "执行规则检查";
+      if (/schematic_review/i.test(raw)) return "读取网表证据";
+      if (/schematic_build_analysis_evidence/i.test(raw)) return "整理分析证据";
+      if (/todo_list/i.test(raw)) return "更新步骤";
+      return raw.replace(/\s*\(tool_call\)\s*$/iu, "").trim();
+    }
+
+    function shouldHideToolChip(rawName, label) {
+      const raw = String(rawName || "");
+      const normalized = String(label || "").trim();
+      if (!normalized) return true;
+      if (/todo_list/i.test(raw) || normalized === "更新步骤") return true;
+      return false;
+    }
+
+    function shouldHideObservationText(text) {
+      const raw = String(text || "").trim();
+      return !raw;
+    }
+
+    function formatObservationText(text) {
       const raw = String(text || "").trim();
       if (!raw) return "";
-      if (kind === "thought") {
-        return raw.length > 90 ? `${raw.slice(0, 90)}…` : raw;
+      const cleaned = cleanTimelineText(raw);
+      if (!cleaned) return "";
+      if (!(cleaned.startsWith("{") || cleaned.startsWith("["))) {
+        return cleaned.length > 160 ? `${cleaned.slice(0, 160)}...` : cleaned;
       }
-      const looksLikeJson = raw.startsWith("{") || raw.startsWith("[");
-      const label = String(title || "").trim().toLowerCase();
-      if (kind === "tool_call") {
-        if (label.includes("editor_get_current_context")) return "正在读取当前原理图上下文";
-        if (label.includes("rules_run_schematic_checks")) return "正在执行规则检查";
-        if (label.includes("schematic_review")) return "正在拉取网表级证据";
-        if (label.includes("schematic_build_analysis_evidence")) return "正在整理分析证据";
-        if (label.includes("todo_list")) return "正在更新执行步骤";
-        if (looksLikeJson) return "正在调用工具处理当前步骤";
-        return raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
-      }
-      if (kind === "observation") {
-        if (looksLikeJson) {
-          if (/\"issues?\"/i.test(raw)) return "规则检查已完成，正在整理问题";
-          if (/\"found\"/i.test(raw) || /\"objectId\"/i.test(raw)) return "已找到关联对象";
-          if (/\"action\"/i.test(raw) && /\"tasks\"/i.test(raw)) return "执行步骤已同步";
-          if (/\"stats\"/i.test(raw) || /\"summary\"/i.test(raw)) return "已拿到统计摘要";
-          if (/\"components\"/i.test(raw) || /\"nets\"/i.test(raw)) return "原理图上下文已就绪";
-          return "工具结果已返回";
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (Array.isArray(parsed)) {
+          const sample = parsed.length > 0 ? parsed[0] : "";
+          const sampleText =
+            typeof sample === "string"
+              ? sample
+              : sample && typeof sample === "object"
+                ? Object.keys(sample).slice(0, 3).join("、")
+                : "";
+          return `返回 ${parsed.length} 项${sampleText ? `，示例：${sampleText}` : ""}`;
         }
-        return raw.length > 110 ? `${raw.slice(0, 110)}…` : raw;
-      }
-      return raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
+        if (parsed && typeof parsed === "object") {
+          if (parsed.located === true) {
+            return parsed.objectLabel ? `已定位到对象：${parsed.objectLabel}` : "已定位到对象";
+          }
+          if (parsed.located === false) {
+            return "没有找到可直接定位的问题对象";
+          }
+          if (Array.isArray(parsed.objectIds)) {
+            return parsed.objectIds.length > 0 ? `已读取当前选区，共 ${parsed.objectIds.length} 个对象` : "已读取当前选区，当前没有选中对象";
+          }
+          if (typeof parsed.summary === "string" && parsed.summary.trim()) {
+            return parsed.summary.trim().slice(0, 160);
+          }
+          const preferred = [
+            parsed.message,
+            parsed.result,
+            parsed.observation,
+          ].find((value) => typeof value === "string" && value.trim());
+          if (typeof preferred === "string" && preferred.trim()) {
+            return preferred.trim().slice(0, 160);
+          }
+          return "";
+        }
+      } catch {}
+      return cleaned.length > 160 ? `${cleaned.slice(0, 160)}...` : cleaned;
     }
 
     function simpleEnsureStepsUI(dom, defaultOpen) {
@@ -4005,13 +4034,12 @@
           btn: dom.stepsToggleHostEl,
           open: Boolean(defaultOpen),
           streaming: Boolean(defaultOpen),
-        userToggled: false,
-          reactLen: 0,
+          userToggled: false,
           lines: [],
           events: [],
-          expanded: Object.create(null), // stepKind -> boolean
           statusMemory: Object.create(null), // stepKey -> status
           runtimeMemory: Object.create(null), // stepKey -> startedAt
+          lastEntriesSignature: "",
         };
 
        ui.btn.addEventListener("click", () => {
@@ -4026,34 +4054,58 @@
     }
 
     function getTimelineEntryKey(entry, index) {
-      if (entry && entry.isSummary) return "summary:thought";
-      if (entry && entry.stepKind) return `step:${entry.stepKind}`;
-      if (entry && entry.kind === "tool_call") return `tool:${entry.title || entry.text || index}`;
-      if (entry && entry.kind === "observation") return `observation:${entry.title || entry.text || index}`;
-      if (entry && entry.kind === "status") return `status:${entry.title || entry.text || index}`;
-      if (entry && entry.kind === "task") return `task:${entry.title || entry.text || index}`;
+      if (entry && entry.id) return String(entry.id);
+      if (entry && entry.title) return `thought:${entry.title}:${index}`;
       return `entry:${index}`;
+    }
+
+    function buildStepEntriesSignature(entries) {
+      const list = Array.isArray(entries) ? entries : [];
+      if (list.length === 0) return "0";
+      return list
+        .map((entry, index) => [
+          getTimelineEntryKey(entry, index),
+          normalizeTimelineStatus(entry && entry.status),
+          cleanTimelineText(entry && entry.text ? entry.text : "").length,
+          cleanTimelineText(entry && entry.title ? entry.title : "").length,
+          Array.isArray(entry && entry.tools) ? entry.tools.length : 0,
+          Array.isArray(entry && entry.observations) ? entry.observations.length : 0,
+        ].join("~"))
+        .join("|");
     }
 
     function renderStepsUI(ui) {
       const hasLines = ui.lines.length > 0;
       const rawEntries = Array.isArray(ui.events) && ui.events.length > 0
         ? ui.events
-        : ui.lines.map(parseTimelineEntry);
-      // Keep exact append order from the runtime: older entries on top, newest entries at bottom.
-      const entries = Array.isArray(rawEntries) ? rawEntries.slice() : [];
-      ui.body.innerHTML = "";
-      entries.forEach((entry) => {
-        ui.body.appendChild(buildTimelineNode(entry, ui));
-      });
-      if (ui.streaming) {
-        requestAnimationFrame(() => {
-          ui.body.scrollTop = ui.body.scrollHeight;
-          const lastNode = ui.body.lastElementChild;
-          if (lastNode && typeof lastNode.scrollIntoView === "function") {
-            lastNode.scrollIntoView({ block: "end" });
+        : [];
+      const entries = Array.isArray(rawEntries) ? rawEntries : [];
+      const nextEntriesSignature = buildStepEntriesSignature(entries);
+      const latestRunningIndex = (() => {
+        for (let index = entries.length - 1; index >= 0; index -= 1) {
+          if (normalizeTimelineStatus(entries[index] && entries[index].status) === "running") {
+            return index;
           }
+        }
+        return -1;
+      })();
+      if (ui.lastEntriesSignature !== nextEntriesSignature) {
+        ui.body.innerHTML = "";
+        entries.forEach((entry, index) => {
+          ui.body.appendChild(buildTimelineNode(entry, ui, {
+            isLatestRunning: index === latestRunningIndex,
+          }));
         });
+        ui.lastEntriesSignature = nextEntriesSignature;
+        if (ui.streaming) {
+          requestAnimationFrame(() => {
+            ui.body.scrollTop = ui.body.scrollHeight;
+            const lastNode = ui.body.lastElementChild;
+            if (lastNode && typeof lastNode.scrollIntoView === "function") {
+              lastNode.scrollIntoView({ block: "end" });
+            }
+          });
+        }
       }
       if (ui.streaming) {
         ui.open = true;
@@ -4077,39 +4129,7 @@
       return `${mins}m ${secs}s`;
     }
 
-    function parseTimelineEntry(line) {
-      const text = String(line || "").trim();
-      const match = text.match(/^(Tool|任务|思考|观察|完成):\s*(.*)$/);
-      if (!match) {
-        return { kind: "observation", status: "pending", title: "记录", text };
-      }
-      const rawKind = match[1];
-      const content = match[2] || "";
-      if (rawKind === "Tool") {
-        const toolMatch = content.match(/^([^\s]+)(?:\s+(.*))?$/);
-        return {
-          kind: "tool_call",
-          status: "pending",
-          title: toolMatch?.[1] || "工具调用",
-          meta: toolMatch?.[2] || "",
-          text: "",
-        };
-      }
-      const kindMap = {
-        "任务": "task",
-        "思考": "thought",
-        "观察": "observation",
-        "完成": "status",
-      };
-      return {
-        kind: kindMap[rawKind] || "observation",
-        status: rawKind === "完成" ? "done" : "pending",
-        title: "",
-        text: content,
-      };
-    }
-
-    function buildTimelineNode(entry, ui) {
+    function buildTimelineNode(entry, ui, options) {
       const node = document.createElement("div");
       node.className = "assistant-step-node";
 
@@ -4127,122 +4147,26 @@
           delete ui.runtimeMemory[stepKey];
         }
       }
-      marker.className = `assistant-step-marker ${entry.kind || "observation"} ${statusClass}${isRecentlyDone ? " recently-done" : ""}`;
+      marker.className = `assistant-step-marker ${entry.kind || "observation"} ${statusClass}${options && options.isLatestRunning ? " active-running" : ""}${isRecentlyDone ? " recently-done" : ""}`;
       node.appendChild(marker);
 
       const card = document.createElement("div");
       card.className = `assistant-step-card ${entry.kind || "observation"} ${statusClass}${isRecentlyDone ? " recently-done" : ""}`;
 
-      const headline = document.createElement("div");
-      headline.className = "assistant-step-headline";
-
-      const kind = document.createElement("span");
-      kind.className = "assistant-step-kind";
-      kind.textContent = formatTimelineKind(entry.kind);
-      headline.appendChild(kind);
-
-      const title = document.createElement("span");
-      title.className = "assistant-step-title";
-      title.textContent = entry.title || formatTimelineKind(entry.kind);
-      headline.appendChild(title);
-
-      const state = document.createElement("span");
-      state.className = `assistant-step-state ${statusClass}${isRecentlyDone ? " recently-done" : ""}`;
-      state.textContent = formatTimelineStatus(entry && entry.status);
-      headline.appendChild(state);
-
-      if (entry && entry.isSummary) {
-        const badge = document.createElement("span");
-        badge.className = "assistant-step-badge";
-        badge.textContent = "摘要";
-        headline.appendChild(badge);
+      if (Number.isFinite(entry.iteration)) {
+        const label = document.createElement("div");
+        label.className = "assistant-step-label";
+        label.textContent = `步骤 ${entry.iteration}`;
+        card.appendChild(label);
       }
 
-      if (entry.meta) {
-        const meta = document.createElement("span");
-        meta.className = "assistant-step-meta";
-        meta.textContent = entry.meta;
-        headline.appendChild(meta);
-      }
-
-      if (statusClass === "running") {
-        const runtime = document.createElement("span");
-        runtime.className = "assistant-step-runtime";
-        const runtimeLabel = entry && entry.details && entry.details.length > 0
-          ? (() => {
-              const toolEvent = entry.details.find((event) => event && event.kind === "tool_call");
-              return toolEvent ? String(toolEvent.label || toolEvent.toolName || toolEvent.text || "").trim() : "";
-            })()
-          : "";
-        const elapsed = stepKey && ui && ui.runtimeMemory ? formatRunningElapsed(ui.runtimeMemory[stepKey]) : "0s";
-        runtime.textContent = runtimeLabel ? `${runtimeLabel} · ${elapsed}` : elapsed;
-        headline.appendChild(runtime);
-      }
-
-      card.appendChild(headline);
-
-      if (entry.text) {
+      const bodyText = formatTimelineBody(entry);
+      if (bodyText) {
         const text = document.createElement("div");
-        const statusForText = normalizeTimelineStatus(entry && entry.status);
         const compactClass = " compact";
         text.className = `assistant-step-text${entry && entry.isSummary ? " summary" : ""}${compactClass}`;
-        text.textContent = summarizeExecutionText(entry.kind, entry.text, entry.title || "");
+        text.textContent = bodyText;
         card.appendChild(text);
-      }
-
-      const detailEvents = entry && Array.isArray(entry.details)
-        ? entry.details.filter((event) => event && event.kind !== "thought")
-        : [];
-      const shouldRenderDetails =
-        Boolean(entry && entry.stepKind) &&
-        !Boolean(entry && entry.isSummary) &&
-        detailEvents.length > 0 &&
-        normalizeTimelineStatus(entry && entry.status) === "failed";
-      if (shouldRenderDetails) {
-        const status = normalizeTimelineStatus(entry.status);
-        const defaultOpen = status === "running" || status === "failed";
-        const open = Boolean(ui && ui.expanded && Object.prototype.hasOwnProperty.call(ui.expanded, stepKey) ? ui.expanded[stepKey] : defaultOpen);
-        if (ui && ui.expanded && (status === "running" || status === "failed") && !Object.prototype.hasOwnProperty.call(ui.expanded, stepKey)) {
-          ui.expanded[stepKey] = true;
-        }
-        if (ui && ui.expanded && status === "done" && !Object.prototype.hasOwnProperty.call(ui.expanded, stepKey)) {
-          ui.expanded[stepKey] = false;
-        }
-
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "assistant-step-detail-toggle";
-        btn.textContent = `详情 ${detailEvents.length}`;
-        btn.setAttribute("data-open", open ? "true" : "false");
-
-        const details = document.createElement("div");
-        details.className = "assistant-step-details";
-        details.hidden = !open;
-        detailEvents.forEach((event) => {
-          const item = document.createElement("div");
-          item.className = "assistant-step-detail-item";
-          const pill = document.createElement("div");
-          pill.className = "assistant-step-detail-pill";
-          pill.textContent = formatDetailKind(event.kind);
-          const body = document.createElement("div");
-          body.className = "assistant-step-detail-text";
-          body.textContent = formatDetailText(event);
-          item.appendChild(pill);
-          item.appendChild(body);
-          details.appendChild(item);
-        });
-
-        btn.addEventListener("click", () => {
-          const willOpen = details.hidden;
-          details.hidden = !willOpen;
-          if (ui && ui.expanded) {
-            ui.expanded[stepKey] = willOpen;
-          }
-          btn.setAttribute("data-open", willOpen ? "true" : "false");
-        });
-
-        card.appendChild(btn);
-        card.appendChild(details);
       }
 
       if (stepKey && ui && ui.statusMemory) {
@@ -4253,15 +4177,45 @@
       return node;
     }
 
-    function formatTimelineKind(kind) {
-      switch (kind) {
-        case "task": return "任务";
-        case "thought": return "思考";
-        case "tool_call": return "工具";
-        case "observation": return "观察";
-        case "status": return "完成";
-        default: return "记录";
+    function formatTimelineBody(entry) {
+      if (!entry) return "";
+      const rawText = cleanTimelineText(entry.text || "");
+      const rawTitle = cleanTimelineText(entry.title || "");
+      if (entry.kind === "thought") {
+        if (rawText) {
+          return rawText;
+        }
+        const lines = [];
+        if (Array.isArray(entry.tools)) {
+          entry.tools.forEach((tool) => {
+            if (!tool || !tool.name) return;
+            lines.push(`调用工具：${tool.name}`);
+          });
+        }
+        if (Array.isArray(entry.observations)) {
+          entry.observations.forEach((item) => {
+            if (!item) return;
+            lines.push(item);
+          });
+        }
+        if (lines.length > 0) {
+          return lines.join("\n");
+        }
+        if (normalizeTimelineStatus(entry.status) === "running") {
+          return "正在决策下一步...";
+        }
+        return "";
       }
+      if (entry.kind === "task") {
+        return rawText || rawTitle;
+      }
+      if (entry.kind === "tool_call") {
+        return rawText || rawTitle || entry.meta || "";
+      }
+      if (entry.kind === "observation" || entry.kind === "status") {
+        return rawText || rawTitle;
+      }
+      return rawText || rawTitle;
     }
 
     function normalizeTimelineStatus(status) {
@@ -4273,16 +4227,6 @@
           return status;
         default:
           return "pending";
-      }
-    }
-
-    function formatTimelineStatus(status) {
-      switch (normalizeTimelineStatus(status)) {
-        case "running": return "进行中";
-        case "done": return "已完成";
-        case "failed": return "失败";
-        case "skipped": return "已跳过";
-        default: return "待执行";
       }
     }
 
@@ -4824,6 +4768,50 @@
       });
     }
 
+    const UI_SYNC_MIN_INTERVAL_MS = 200;
+    let scheduledUiSyncTimer = null;
+    let lastUiSyncAt = 0;
+    let scheduledUiSyncForce = false;
+
+    function isRunningState(state) {
+      return Boolean(
+        state &&
+        (state.agentRunState === "planning" ||
+          state.agentRunState === "running_tools" ||
+          state.agentRunState === "waiting_llm")
+      );
+    }
+
+    function flushScheduledSyncUI() {
+      if (scheduledUiSyncTimer) {
+        clearTimeout(scheduledUiSyncTimer);
+        scheduledUiSyncTimer = null;
+      }
+      const force = scheduledUiSyncForce;
+      scheduledUiSyncForce = false;
+      lastUiSyncAt = Date.now();
+      syncUI(force);
+    }
+
+    function scheduleSyncUI(forceUpdate = false) {
+      const state = readState();
+      const running = isRunningState(state);
+      if (!running) {
+        flushScheduledSyncUI();
+        return;
+      }
+      scheduledUiSyncForce = scheduledUiSyncForce || forceUpdate;
+      const elapsed = Date.now() - lastUiSyncAt;
+      if (elapsed >= UI_SYNC_MIN_INTERVAL_MS && !scheduledUiSyncTimer) {
+        flushScheduledSyncUI();
+        return;
+      }
+      if (scheduledUiSyncTimer) return;
+      scheduledUiSyncTimer = setTimeout(() => {
+        flushScheduledSyncUI();
+      }, Math.max(0, UI_SYNC_MIN_INTERVAL_MS - elapsed));
+    }
+
     function syncUI(forceUpdate = false) {
       const state = readState();
       if (!state) return;
@@ -4867,19 +4855,7 @@
       syncSettingsPanel(state);
       maybeToast(state);
 
-      // Fallback: while running, poll state in case the host drops a final event.
-      if (isRunning) {
-        if (!syncTimer) {
-          syncTimer = setInterval(() => {
-            try { syncUI(false); } catch {}
-          }, 250);
-        }
-        if (!runningTicker) {
-          runningTicker = setInterval(() => {
-            try { syncUI(true); } catch {}
-          }, 1000);
-        }
-      } else if (syncTimer) {
+      if (!isRunning && syncTimer) {
         clearInterval(syncTimer);
         syncTimer = null;
         if (runningTicker) {
@@ -5151,7 +5127,7 @@
         debugToggle.addEventListener("change", (e) => {
           const checked = Boolean(e.target && e.target.checked);
           localStorage.setItem("lceda_ai.llm.debug_route", checked ? "1" : "0");
-          syncUI();
+          scheduleSyncUI(true);
         });
       }
       if (debugToggle) {
@@ -5236,7 +5212,6 @@
     document.getElementById("send-btn").addEventListener("click", () => {
       const input = document.getElementById("chat-input");
       const text = input.value.trim();
-      console.log(`${LOG_PREFIX} send button clicked`, { text, isBusy });
       if (!text || isBusy) return;
       sendPrompt(text);
     });
@@ -5308,14 +5283,13 @@
     document.getElementById("file-input").addEventListener("change", (e) => {
       const files = Array.from(e.target.files || []);
       if (files.length > 0) {
-        console.log(`${LOG_PREFIX} files attached:`, files.length);
         // File attachment not implemented yet
       }
     });
 
     // Listen for state updates
     window.addEventListener("lceda-ai-assistant:state", () => {
-      syncUI();
+      scheduleSyncUI(false);
     });
 
     // Wait for runtime to be injected
@@ -5324,13 +5298,8 @@
       const state = readState();
       
       if (runtime && state) {
-        console.log(`${LOG_PREFIX} runtime ready`, {
-          hasRuntime: true,
-          messageCount: state.chatMessages?.length ?? 0,
-        });
-        
         // Initial sync
-        syncUI();
+        scheduleSyncUI(true);
         
         return;
       }
@@ -5340,7 +5309,6 @@
     }
     
     // Start waiting
-    console.log(`${LOG_PREFIX} UI initialized, waiting for runtime...`);
     bindAutoScroll();
     const devicePickerOverlay = document.getElementById("device-picker-overlay");
     const devicePickerSearchAllBtn = document.getElementById("device-picker-search-all-btn");
@@ -11151,6 +11119,7 @@ var edaEsbuildExportName = (() => {
   }
 
   // src/agent/core/reactLoopAgent.ts
+  var REACT_DEBUG_FLAG = "__LCEDA_AI_REACT_DEBUG__";
   async function runReActLoop(input) {
     const {
       deps,
@@ -11172,12 +11141,63 @@ var edaEsbuildExportName = (() => {
     const observations = [];
     const usedTools = /* @__PURE__ */ new Set();
     const ensureNotCancelled = () => throwIfCancelled(deps.signal, deps.isCancelled);
+    const debugEnabled = Boolean(globalThis[REACT_DEBUG_FLAG]);
+    const debugLog3 = (label, payload) => {
+      if (!debugEnabled || typeof console === "undefined") return;
+      console.log(`[LCEDA-AI][react-debug] ${label}`, payload);
+    };
     const messages = [
       { role: "system", content: system },
       ...historyMessages,
       { role: "user", content: user }
     ];
     const normalizeToolName = (name) => String(name || "").trim();
+    const formatToolDisplayName = (name) => {
+      const raw = normalizeToolName(name);
+      if (!raw) return "\u5DE5\u5177";
+      if (/^todo_list$/i.test(raw)) return "\u6574\u7406\u5F85\u529E\u6B65\u9AA4";
+      if (/^editor_get_current_context$/i.test(raw)) return "\u8BFB\u53D6\u5F53\u524D\u539F\u7406\u56FE";
+      if (/^editor_get_selection$/i.test(raw)) return "\u8BFB\u53D6\u5F53\u524D\u9009\u533A";
+      if (/^editor_describe_selection$/i.test(raw)) return "\u89E3\u91CA\u5F53\u524D\u9009\u533A";
+      if (/^editor_describe_object$/i.test(raw)) return "\u89E3\u91CA\u6307\u5B9A\u5BF9\u8C61";
+      if (/^editor_find_object$/i.test(raw)) return "\u67E5\u627E\u539F\u7406\u56FE\u5BF9\u8C61";
+      if (/^editor_locate$/i.test(raw)) return "\u5728\u753B\u5E03\u4E2D\u5B9A\u4F4D\u5BF9\u8C61";
+      if (/^library_search_devices$/i.test(raw)) return "\u67E5\u627E\u5668\u4EF6\u5E93\u5019\u9009";
+      if (/^library_get_device$/i.test(raw)) return "\u8BFB\u53D6\u5668\u4EF6\u8BE6\u60C5";
+      if (/^library_get_devices_by_lcsc_ids$/i.test(raw)) return "\u6309 LCSC \u7F16\u53F7\u5339\u914D\u5668\u4EF6";
+      if (/^rules_run_schematic_checks$/i.test(raw)) return "\u6267\u884C\u89C4\u5219\u68C0\u67E5";
+      if (/^rules_validate_draft$/i.test(raw)) return "\u6821\u9A8C\u8349\u6848";
+      if (/^schematic_review$/i.test(raw)) return "\u8BFB\u53D6\u7F51\u8868\u8BC1\u636E";
+      if (/^schematic_build_analysis_evidence$/i.test(raw)) return "\u6574\u7406\u5206\u6790\u8BC1\u636E";
+      if (/^draft_generate_plan$/i.test(raw)) return "\u751F\u6210\u8349\u6848\u7ED3\u6784";
+      if (/^draft_preview_plan$/i.test(raw)) return "\u751F\u6210\u8349\u6848\u9884\u89C8";
+      if (/^editor_preview_apply_plan$/i.test(raw)) return "\u9884\u89C8\u8349\u6848\u5E94\u7528\u6548\u679C";
+      return raw;
+    };
+    const buildUserFacingObservationText = (toolName, displayName) => {
+      if (/^library_/i.test(toolName)) {
+        return `\u5DF2\u5B8C\u6210${displayName}\uFF0C\u6B63\u5728\u7EE7\u7EED\u6574\u7406\u5019\u9009\u7ED3\u679C`;
+      }
+      if (/^draft_generate_plan$/i.test(toolName)) {
+        return "\u5DF2\u5B8C\u6210\u8349\u6848\u7ED3\u6784\u751F\u6210";
+      }
+      if (/^draft_preview_plan$/i.test(toolName) || /^editor_preview_apply_plan$/i.test(toolName)) {
+        return "\u5DF2\u5B8C\u6210\u8349\u6848\u9884\u89C8\u6574\u7406";
+      }
+      if (/^rules_validate_draft$/i.test(toolName)) {
+        return "\u5DF2\u5B8C\u6210\u8349\u6848\u6821\u9A8C";
+      }
+      if (/^editor_get_current_context$/i.test(toolName)) {
+        return "\u5DF2\u8BFB\u53D6\u5F53\u524D\u539F\u7406\u56FE\u4E0A\u4E0B\u6587";
+      }
+      if (/^rules_run_schematic_checks$/i.test(toolName)) {
+        return "\u5DF2\u5B8C\u6210\u539F\u7406\u56FE\u89C4\u5219\u68C0\u67E5";
+      }
+      if (/^schematic_review$/i.test(toolName) || /^schematic_build_analysis_evidence$/i.test(toolName)) {
+        return "\u5DF2\u5B8C\u6210\u539F\u7406\u56FE\u8BC1\u636E\u6574\u7406";
+      }
+      return `\u5DF2\u5B8C\u6210${displayName}`;
+    };
     const stripFinalControlPayload = (text) => {
       const raw = String(text || "");
       const controlPrefixes = [
@@ -11221,6 +11241,61 @@ var edaEsbuildExportName = (() => {
       return cutIndex >= 0 ? raw.slice(0, cutIndex) : raw;
     };
     const sanitizeStreamPayload = (text) => stripFinalControlPayloadEarly(stripFinalControlPayload(text));
+    const extractRationaleFromControlPayload = (text) => {
+      const raw = String(text || "");
+      if (!raw) return "";
+      const rationaleKeyMatch = raw.match(/"rationale"\s*:\s*"/u);
+      if (!rationaleKeyMatch || rationaleKeyMatch.index === void 0) {
+        return "";
+      }
+      let cursor = rationaleKeyMatch.index + rationaleKeyMatch[0].length;
+      let out = "";
+      let escaped = false;
+      while (cursor < raw.length) {
+        const ch = raw[cursor];
+        cursor += 1;
+        if (escaped) {
+          switch (ch) {
+            case "n":
+              out += "\n";
+              break;
+            case "r":
+              out += "\r";
+              break;
+            case "t":
+              out += "	";
+              break;
+            case '"':
+            case "\\":
+            case "/":
+              out += ch;
+              break;
+            case "u": {
+              const hex = raw.slice(cursor, cursor + 4);
+              if (/^[0-9a-fA-F]{4}$/u.test(hex)) {
+                out += String.fromCharCode(Number.parseInt(hex, 16));
+                cursor += 4;
+              }
+              break;
+            }
+            default:
+              out += ch;
+              break;
+          }
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          break;
+        }
+        out += ch;
+      }
+      return out.trim();
+    };
     const normalizeTodoStatus = (value) => {
       const raw = String(value || "").trim().toLowerCase();
       if (raw === "not-started" || raw === "pending") return "pending";
@@ -11268,6 +11343,48 @@ var edaEsbuildExportName = (() => {
     const summarize = (value, maxLen = 600) => {
       const raw = typeof value === "string" ? value : JSON.stringify(value);
       return raw.length > maxLen ? raw.slice(0, maxLen) + "\u2026" : raw;
+    };
+    const appendIterationLine = (step, line) => {
+      const text = String(line || "").trim();
+      if (!text) return;
+      const current = String(step.thoughtText || "").trim();
+      if (!current) {
+        step.thoughtText = text;
+        return;
+      }
+      const lines = current.split(/\n+/u).map((item) => item.trim()).filter(Boolean);
+      if (lines[lines.length - 1] === text) {
+        return;
+      }
+      step.thoughtText = `${current}
+${text}`;
+    };
+    const sanitizeThoughtRationale = (value) => {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      if (text === "tool_call" || text === "model_output_parse_failed" || text === "done") {
+        return "";
+      }
+      return text;
+    };
+    const nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
+    const createStepItem = (item) => {
+      state.stepItems.push(item);
+      return item;
+    };
+    const ensureIterationSteps = () => {
+      if (!state.iterationSteps) {
+        state.iterationSteps = [];
+      }
+      return state.iterationSteps;
+    };
+    const updateStepItem = (item, patch) => {
+      if (patch.status) item.status = patch.status;
+      if (patch.text !== void 0) item.text = patch.text;
+      if (patch.inputSummary !== void 0) item.inputSummary = patch.inputSummary;
+      if (patch.outputSummary !== void 0) item.outputSummary = patch.outputSummary;
+      if (patch.streaming !== void 0) item.streaming = patch.streaming;
+      item.updatedAt = nowIso();
     };
     const safeJsonParse3 = (text) => {
       const raw = String(text || "").trim();
@@ -11336,6 +11453,16 @@ var edaEsbuildExportName = (() => {
         stepKind: "llm"
       };
       state.reactEvents.push(iterationEvent);
+      const iterationStepItem = createStepItem({
+        id: `react-task-${i + 1}`,
+        phase: "llm",
+        type: "task",
+        status: "running",
+        title: iterationLabel,
+        text: `ReAct \u7B2C ${i + 1}/${maxIterations} \u8F6E\uFF1ALLM \u51B3\u7B56 -> tool -> observation`,
+        startedAt: nowIso(),
+        updatedAt: nowIso()
+      });
       const thoughtEvent = {
         kind: "thought",
         label: `${iterationLabel}-thought`,
@@ -11344,6 +11471,28 @@ var edaEsbuildExportName = (() => {
         stepKind: "llm"
       };
       state.reactEvents.push(thoughtEvent);
+      const thoughtStepItem = createStepItem({
+        id: `react-thought-${i + 1}`,
+        phase: "llm",
+        type: "thought",
+        status: "running",
+        title: `${iterationLabel}-thought`,
+        text: "",
+        startedAt: nowIso(),
+        updatedAt: nowIso(),
+        streaming: true
+      });
+      const iterationSteps = ensureIterationSteps();
+      const iterationStep = {
+        id: `react-iteration-${i + 1}`,
+        iteration: i + 1,
+        status: "running",
+        thoughtText: "",
+        streaming: true,
+        toolEvents: [],
+        observationTexts: []
+      };
+      iterationSteps.push(iterationStep);
       {
         const existing = state.stepStates.find((s) => s.kind === "llm");
         if (existing) {
@@ -11362,6 +11511,8 @@ var edaEsbuildExportName = (() => {
       deps.onProgress?.({
         detail: `LLM \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
+        iterationSteps: state.iterationSteps,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory
       });
@@ -11384,6 +11535,15 @@ var edaEsbuildExportName = (() => {
             streamReasoning = sanitizeStreamPayload(rawStreamReasoning);
             thoughtEvent.text = streamReasoning.trim();
             thoughtEvent.status = "running";
+            updateStepItem(thoughtStepItem, { status: "running", text: thoughtEvent.text, streaming: true });
+            iterationStep.thoughtText = thoughtEvent.text;
+            iterationStep.status = "running";
+            iterationStep.streaming = true;
+            debugLog3("llm.reasoning_delta", {
+              iteration: i + 1,
+              reasoningDelta: event.reasoning_delta,
+              accumulatedThoughtText: thoughtEvent.text
+            });
             if (!streamReasoning.trim()) {
               return;
             }
@@ -11391,14 +11551,48 @@ var edaEsbuildExportName = (() => {
               detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
               reasoningDelta: event.reasoning_delta,
               reactEvents: state.reactEvents,
+              stepItems: state.stepItems,
+              iterationSteps: state.iterationSteps,
               stepStates: state.stepStates,
               workingMemory: state.workingMemory
             });
           } else if (event.type === "delta" && event.delta) {
             rawStreamText += event.delta;
             const sanitizedStreamText = sanitizeStreamPayload(rawStreamText);
+            const rationalePreview = sanitizedStreamText.trim() ? "" : extractRationaleFromControlPayload(rawStreamText);
+            if (!streamReasoning.trim() && rationalePreview && rationalePreview !== thoughtEvent.text) {
+              thoughtEvent.text = rationalePreview;
+              thoughtEvent.status = "running";
+              updateStepItem(thoughtStepItem, {
+                status: "running",
+                text: rationalePreview,
+                streaming: true
+              });
+              iterationStep.thoughtText = rationalePreview;
+              iterationStep.status = "running";
+              iterationStep.streaming = true;
+            }
+            const looksLikeControlPayload = /^\s*\{/u.test(sanitizedStreamText) && /"type"\s*:\s*"(?:action|final)"/u.test(sanitizedStreamText);
+            if (!streamReasoning.trim() && !looksLikeControlPayload && sanitizedStreamText.trim() && sanitizedStreamText !== thoughtEvent.text) {
+              thoughtEvent.text = sanitizedStreamText.trim();
+              thoughtEvent.status = "running";
+              updateStepItem(thoughtStepItem, {
+                status: "running",
+                text: thoughtEvent.text,
+                streaming: true
+              });
+              iterationStep.thoughtText = thoughtEvent.text;
+              iterationStep.status = "running";
+              iterationStep.streaming = true;
+            }
             const emittedDelta = sanitizedStreamText.slice(streamText.length);
             streamText = sanitizedStreamText;
+            debugLog3("llm.delta", {
+              iteration: i + 1,
+              delta: event.delta,
+              accumulatedText: streamText,
+              rationalePreview
+            });
             if (!emittedDelta) {
               return;
             }
@@ -11407,6 +11601,8 @@ var edaEsbuildExportName = (() => {
               textDelta: emittedDelta,
               text: streamText,
               reactEvents: state.reactEvents,
+              stepItems: state.stepItems,
+              iterationSteps: state.iterationSteps,
               stepStates: state.stepStates,
               workingMemory: state.workingMemory
             });
@@ -11449,8 +11645,48 @@ var edaEsbuildExportName = (() => {
         return { type: "retry", rationale: "model_output_parse_failed" };
       });
       ensureNotCancelled();
+      if (!thoughtEvent.text) {
+        const rationaleText = sanitizeThoughtRationale(decision.rationale);
+        if (rationaleText) {
+          thoughtEvent.text = rationaleText;
+          updateStepItem(thoughtStepItem, {
+            status: "running",
+            text: rationaleText,
+            streaming: true
+          });
+          iterationStep.thoughtText = rationaleText;
+          iterationStep.status = "running";
+          iterationStep.streaming = true;
+          debugLog3("thought.backfill_from_rationale", {
+            iteration: i + 1,
+            decisionType: decision.type,
+            rationale: decision.rationale,
+            thoughtText: thoughtEvent.text
+          });
+        }
+      }
+      debugLog3("llm.decision", {
+        iteration: i + 1,
+        decisionType: decision.type,
+        rationale: decision.rationale,
+        thoughtText: thoughtEvent.text,
+        thoughtStatus: thoughtEvent.status,
+        thoughtStepItem: {
+          id: thoughtStepItem.id,
+          status: thoughtStepItem.status,
+          title: thoughtStepItem.title,
+          text: thoughtStepItem.text,
+          streaming: thoughtStepItem.streaming
+        }
+      });
       if (decision.type === "retry") {
         thoughtEvent.status = thoughtEvent.text ? "failed" : "skipped";
+        updateStepItem(thoughtStepItem, {
+          status: thoughtEvent.status,
+          text: thoughtEvent.text,
+          streaming: false
+        });
+        updateStepItem(iterationStepItem, { status: "failed" });
         const existing = state.stepStates.find((s) => s.kind === "llm");
         if (existing) {
           existing.status = "failed";
@@ -11459,6 +11695,8 @@ var edaEsbuildExportName = (() => {
         deps.onProgress?.({
           detail: `LLM \u8F93\u51FA\u65E0\u6548\uFF0C\u51C6\u5907\u91CD\u8BD5\uFF08${i + 1}/${maxIterations}\uFF09`,
           reactEvents: state.reactEvents,
+          stepItems: state.stepItems,
+          iterationSteps: state.iterationSteps,
           stepStates: state.stepStates,
           workingMemory: state.workingMemory
         });
@@ -11467,11 +11705,19 @@ var edaEsbuildExportName = (() => {
           content: "\u7EA6\u675F\u63D0\u9192\uFF1A\u4E0A\u4E00\u8F6E\u6CA1\u6709\u4EA7\u751F\u5408\u6CD5\u7684 tool_calls\uFF0C\u4E5F\u6CA1\u6709\u8F93\u51FA\u5408\u6CD5\u7684 Action/Final JSON\u3002\u5F53\u524D\u4E0D\u8981\u76F4\u63A5\u56DE\u7B54\uFF0C\u8BF7\u5148\u8C03\u7528\u4E00\u4E2A\u6700\u76F8\u5173\u7684\u5DE5\u5177\u3002"
         });
         iterationEvent.status = "failed";
+        iterationStep.status = "failed";
+        iterationStep.streaming = false;
         continue;
       }
       if (decision.type === "final") {
         iterationEvent.status = "done";
         thoughtEvent.status = thoughtEvent.text ? "done" : "skipped";
+        updateStepItem(thoughtStepItem, {
+          status: thoughtEvent.status,
+          text: thoughtEvent.text,
+          streaming: false
+        });
+        updateStepItem(iterationStepItem, { status: "done" });
         const existing = state.stepStates.find((s) => s.kind === "llm");
         if (existing) {
           existing.status = "done";
@@ -11480,6 +11726,8 @@ var edaEsbuildExportName = (() => {
         deps.onProgress?.({
           detail: `LLM \u5DF2\u751F\u6210\u7ED3\u8BBA\uFF08${i + 1}/${maxIterations}\uFF09`,
           reactEvents: state.reactEvents,
+          stepItems: state.stepItems,
+          iterationSteps: state.iterationSteps,
           stepStates: state.stepStates,
           workingMemory: state.workingMemory
         });
@@ -11489,10 +11737,20 @@ var edaEsbuildExportName = (() => {
             role: "user",
             content: `\u7EA6\u675F\u63D0\u9192\uFF1A\u4F60\u8FD8\u6CA1\u6709\u8C03\u7528\u5FC5\u9700\u5DE5\u5177\uFF1A${missing.join("\u3001")}\u3002\u8BF7\u5148\u901A\u8FC7\u5DE5\u5177\u8865\u9F50\u8BC1\u636E\uFF0C\u518D\u8F93\u51FA final\u3002`
           });
-          iterationEvent.status = "running";
+          iterationEvent.status = "failed";
           thoughtEvent.status = thoughtEvent.text ? "done" : "skipped";
+          updateStepItem(thoughtStepItem, {
+            status: thoughtEvent.status,
+            text: thoughtEvent.text,
+            streaming: false
+          });
+          updateStepItem(iterationStepItem, { status: "failed" });
+          iterationStep.status = "failed";
+          iterationStep.streaming = false;
           continue;
         }
+        iterationStep.status = thoughtEvent.status === "done" ? "done" : "skipped";
+        iterationStep.streaming = false;
         return {
           toolTraces: state.toolTraces,
           observations,
@@ -11503,18 +11761,32 @@ var edaEsbuildExportName = (() => {
         };
       }
       const toolName = normalizeToolName(decision.tool);
+      const toolDisplayName = formatToolDisplayName(toolName);
       const isSpecial = Boolean(specialTools && Object.prototype.hasOwnProperty.call(specialTools, toolName));
       if (!toolName || !isSpecial && !deps.allowedTools.includes(toolName)) {
         thoughtEvent.status = thoughtEvent.text ? "failed" : "skipped";
+        updateStepItem(thoughtStepItem, {
+          status: thoughtEvent.status,
+          text: thoughtEvent.text,
+          streaming: false
+        });
+        updateStepItem(iterationStepItem, { status: "failed" });
         messages.push({
           role: "user",
           content: `Observation: \u5DE5\u5177\u4E0D\u53EF\u7528\uFF1A${toolName || "(empty)"}\u3002\u8BF7\u4ECE\u53EF\u7528\u5DE5\u5177\u4E2D\u9009\u62E9\uFF0C\u6216\u8F93\u51FA final\u3002`
         });
         iterationEvent.status = "failed";
+        iterationStep.status = "failed";
+        iterationStep.streaming = false;
         continue;
       }
       usedTools.add(toolName);
       thoughtEvent.status = thoughtEvent.text ? "done" : "skipped";
+      updateStepItem(thoughtStepItem, {
+        status: thoughtEvent.status,
+        text: thoughtEvent.text,
+        streaming: false
+      });
       {
         const existing = state.stepStates.find((s) => s.kind === "llm");
         if (existing) {
@@ -11523,8 +11795,10 @@ var edaEsbuildExportName = (() => {
         }
       }
       deps.onProgress?.({
-        detail: `LLM \u5DF2\u51B3\u5B9A\u8C03\u7528\u5DE5\u5177\uFF1A${toolName}`,
+        detail: `LLM \u5DF2\u51B3\u5B9A\u8C03\u7528\u5DE5\u5177\uFF1A${toolDisplayName}`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
+        iterationSteps: state.iterationSteps,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory
       });
@@ -11545,8 +11819,9 @@ var edaEsbuildExportName = (() => {
         }
       }
       deps.onProgress?.({
-        detail: `\u6267\u884C\u5DE5\u5177\uFF1A${toolName}`,
+        detail: `\u6267\u884C\u5DE5\u5177\uFF1A${toolDisplayName}`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory
       });
@@ -11592,9 +11867,42 @@ var edaEsbuildExportName = (() => {
         stepKind
       };
       state.reactEvents.push(toolCallEvent);
+      const toolCallStepItem = createStepItem({
+        id: `react-tool-call-${i + 1}-${toolCallId}`,
+        phase: stepKind ?? "system",
+        type: "tool_call",
+        status: "running",
+        title: "Action",
+        text: toolCallEvent.text,
+        toolName,
+        inputSummary: summarize(toolInput, 160),
+        startedAt: nowIso(),
+        updatedAt: nowIso()
+      });
+      iterationStep.toolEvents.push({
+        toolName,
+        label: toolDisplayName,
+        status: "running"
+      });
+      appendIterationLine(iterationStep, `\u8C03\u7528\u5DE5\u5177\uFF1A${toolDisplayName}`);
+      iterationStep.status = "running";
+      iterationStep.streaming = true;
+      const observationStepItem = createStepItem({
+        id: `react-observation-${i + 1}-${toolCallId}`,
+        phase: stepKind ?? "system",
+        type: "observation",
+        status: "running",
+        title: "Observation",
+        text: "\u7B49\u5F85\u5DE5\u5177\u7ED3\u679C",
+        toolName,
+        startedAt: nowIso(),
+        updatedAt: nowIso()
+      });
       deps.onProgress?.({
-        detail: `\u6267\u884C\u5DE5\u5177\uFF1A${toolName}`,
+        detail: `\u6267\u884C\u5DE5\u5177\uFF1A${toolDisplayName}`,
         reactEvents: state.reactEvents,
+        stepItems: state.stepItems,
+        iterationSteps: state.iterationSteps,
         stepStates: state.stepStates,
         workingMemory: state.workingMemory
       });
@@ -11606,18 +11914,35 @@ var edaEsbuildExportName = (() => {
         const formatted = formatObservation?.(toolName, output);
         const outputSummary = toolResult?.observationForUi ?? formatted?.summary ?? summarize(output, 900);
         const modelObs = toolResult?.observationForModel ?? formatted?.messageForModel ?? outputSummary;
+        const userFacingObservationText = buildUserFacingObservationText(toolName, toolDisplayName);
         state.toolTraces.push({ toolName, status: "success", note: outputSummary.slice(0, 180) });
         toolCallEvent.status = "done";
+        const toolEvent = iterationStep.toolEvents[iterationStep.toolEvents.length - 1];
+        if (toolEvent) {
+          toolEvent.status = "done";
+        }
+        updateStepItem(toolCallStepItem, {
+          status: "done",
+          text: toolCallEvent.text,
+          inputSummary: summarize(toolInput, 160)
+        });
         state.reactEvents.push({
           kind: "observation",
           label: "Observation",
           status: "done",
-          text: outputSummary,
+          text: userFacingObservationText,
           toolName,
-          outputSummary: outputSummary.slice(0, 240),
+          outputSummary: void 0,
           stepKind
         });
         observations.push({ tool: toolName, summary: outputSummary });
+        iterationStep.observationTexts.push(userFacingObservationText);
+        appendIterationLine(iterationStep, userFacingObservationText);
+        updateStepItem(observationStepItem, {
+          status: "done",
+          text: userFacingObservationText,
+          outputSummary: void 0
+        });
         messages.push({
           role: "tool",
           tool_call_id: toolCallId,
@@ -11631,12 +11956,15 @@ var edaEsbuildExportName = (() => {
           }
         }
         deps.onProgress?.({
-          detail: `\u5B8C\u6210\u5DE5\u5177\uFF1A${toolName}`,
+          detail: `\u5B8C\u6210\u5DE5\u5177\uFF1A${toolDisplayName}`,
           reactEvents: state.reactEvents,
+          stepItems: state.stepItems,
+          iterationSteps: state.iterationSteps,
           stepStates: state.stepStates,
           workingMemory: state.workingMemory
         });
         iterationEvent.status = "done";
+        updateStepItem(iterationStepItem, { status: "done" });
       } catch (err) {
         if (isCancelledError(err)) {
           throw err;
@@ -11644,6 +11972,15 @@ var edaEsbuildExportName = (() => {
         const msg = err instanceof Error ? err.message : String(err);
         state.toolTraces.push({ toolName, status: "blocked", note: msg });
         toolCallEvent.status = "failed";
+        const toolEvent = iterationStep.toolEvents[iterationStep.toolEvents.length - 1];
+        if (toolEvent) {
+          toolEvent.status = "failed";
+        }
+        updateStepItem(toolCallStepItem, {
+          status: "failed",
+          text: toolCallEvent.text,
+          inputSummary: summarize(toolInput, 160)
+        });
         state.reactEvents.push({
           kind: "observation",
           label: "Observation",
@@ -11653,6 +11990,13 @@ var edaEsbuildExportName = (() => {
           outputSummary: msg,
           stepKind
         });
+        updateStepItem(observationStepItem, {
+          status: "failed",
+          text: msg,
+          outputSummary: msg
+        });
+        iterationStep.observationTexts.push(msg);
+        appendIterationLine(iterationStep, `${toolDisplayName}\u6267\u884C\u5931\u8D25\uFF1A${msg}`);
         messages.push({
           role: "tool",
           tool_call_id: toolCallId,
@@ -11668,10 +12012,15 @@ var edaEsbuildExportName = (() => {
         deps.onProgress?.({
           detail: `\u5DE5\u5177\u5931\u8D25\uFF1A${toolName}`,
           reactEvents: state.reactEvents,
+          stepItems: state.stepItems,
+          iterationSteps: state.iterationSteps,
           stepStates: state.stepStates,
           workingMemory: state.workingMemory
         });
         iterationEvent.status = "failed";
+        updateStepItem(iterationStepItem, { status: "failed" });
+        iterationStep.status = "failed";
+        iterationStep.streaming = false;
       }
     }
     messages.push({ role: "user", content: "\u5DF2\u8FBE\u5230\u6700\u5927\u8FED\u4EE3\u6B21\u6570\uFF0C\u8BF7\u8F93\u51FA final\u3002" });
@@ -12163,6 +12512,7 @@ ${match[2] || ""}`);
     const state = {
       toolTraces: [],
       stepStates: [],
+      stepItems: [],
       workingMemory: createWorkingMemory(task),
       reactEvents: []
     };
@@ -12233,6 +12583,8 @@ ${match[2] || ""}`);
           text: payload.text,
           reasoningDelta: payload.reasoningDelta,
           reactEvents: payload.reactEvents,
+          stepItems: payload.stepItems,
+          iterationSteps: payload.iterationSteps,
           stepStates: payload.stepStates,
           workingMemory: payload.workingMemory
         });
@@ -12309,6 +12661,194 @@ ${match[2] || ""}`);
       }
       return llmInput;
     };
+    const formatObservation = (toolName, output) => {
+      const asRecord = (value) => value && typeof value === "object" ? value : {};
+      const cleanText2 = (value) => String(value || "").trim();
+      const joinParts = (parts, separator = "\uFF0C") => parts.map((item) => cleanText2(item)).filter(Boolean).join(separator);
+      if (toolName === "todo_list") {
+        const payload = output && typeof output === "object" ? output : {};
+        const action = payload.action === "create" ? "\u5DF2\u521B\u5EFA\u5F85\u529E\u6B65\u9AA4" : "\u5DF2\u66F4\u65B0\u5F85\u529E\u6B65\u9AA4";
+        const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+        const preview = tasks.slice(0, 3).map((item) => String(item?.text || "").trim()).filter(Boolean);
+        return {
+          summary: preview.length > 0 ? `${action}\uFF0C\u5305\u62EC\uFF1A${preview.join("\uFF1B")}` : action,
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "editor_get_current_context") {
+        const ctx = output;
+        const componentCount = Array.isArray(ctx?.components) ? ctx.components.length : 0;
+        const netCount = Array.isArray(ctx?.nets) ? ctx.nets.length : 0;
+        const selectionCount = Array.isArray(ctx?.selection?.objectIds) ? ctx.selection.objectIds.length : 0;
+        const pageName = String(ctx?.project?.pageName || "").trim();
+        return {
+          summary: `\u5DF2\u8BFB\u53D6\u5F53\u524D\u539F\u7406\u56FE${pageName ? `\u201C${pageName}\u201D` : ""}\uFF0C\u5305\u542B ${componentCount} \u4E2A\u5668\u4EF6\u3001${netCount} \u6761\u7F51\u7EDC${selectionCount ? `\uFF0C\u5F53\u524D\u9009\u4E2D ${selectionCount} \u4E2A\u5BF9\u8C61` : ""}`,
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "rules_run_schematic_checks") {
+        const result2 = output;
+        const issues = Array.isArray(result2?.issues) ? result2.issues : [];
+        const high = issues.filter((item) => item.severity === "high").length;
+        const medium = issues.filter((item) => item.severity === "medium").length;
+        const low = issues.filter((item) => item.severity === "low").length;
+        return {
+          summary: issues.length > 0 ? `\u89C4\u5219\u68C0\u67E5\u5B8C\u6210\uFF0C\u53D1\u73B0 ${issues.length} \u4E2A\u95EE\u9898\uFF08\u9AD8\u98CE\u9669 ${high}\u3001\u4E2D\u98CE\u9669 ${medium}\u3001\u4F4E\u98CE\u9669 ${low}\uFF09` : "\u89C4\u5219\u68C0\u67E5\u5B8C\u6210\uFF0C\u672A\u53D1\u73B0\u660E\u663E\u95EE\u9898",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "schematic_review") {
+        const result2 = output;
+        const componentCount = Number(result2?.stats?.componentCount || 0);
+        const netCount = Number(result2?.stats?.uniqueNetNameCount || 0);
+        const note = Array.isArray(result2?.notes) ? String(result2?.notes?.[0] || "").trim() : "";
+        return {
+          summary: `\u5DF2\u8BFB\u53D6\u7F51\u8868\u8BC1\u636E\uFF0C\u8986\u76D6 ${componentCount} \u4E2A\u5668\u4EF6\u3001${netCount} \u6761\u7F51\u7EDC${note ? `\uFF1B${note}` : ""}`,
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "schematic_build_analysis_evidence") {
+        const result2 = output;
+        const componentCount = Number(result2?.stats?.componentCount || 0);
+        const netCount = Number(result2?.stats?.netCount || 0);
+        const keyRefs = Array.isArray(result2?.keyComponents) ? result2.keyComponents.map((item) => String(item?.ref || "").trim()).filter(Boolean).slice(0, 3) : [];
+        return {
+          summary: `\u5DF2\u6574\u7406\u5206\u6790\u8BC1\u636E\uFF0C\u8986\u76D6 ${componentCount} \u4E2A\u5668\u4EF6\u3001${netCount} \u6761\u7F51\u7EDC${keyRefs.length > 0 ? `\uFF1B\u5173\u952E\u5668\u4EF6\uFF1A${keyRefs.join("\u3001")}` : ""}`,
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "editor_get_selection") {
+        const payload = asRecord(output);
+        const objectIds = Array.isArray(payload.objectIds) ? payload.objectIds : [];
+        return {
+          summary: objectIds.length > 0 ? `\u5DF2\u8BFB\u53D6\u5F53\u524D\u9009\u533A\uFF0C\u5171 ${objectIds.length} \u4E2A\u5BF9\u8C61` : "\u5DF2\u8BFB\u53D6\u5F53\u524D\u9009\u533A\uFF0C\u5F53\u524D\u6CA1\u6709\u9009\u4E2D\u5BF9\u8C61",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "editor_describe_selection") {
+        const payload = asRecord(output);
+        const count = Number(payload.count || 0);
+        const summary = cleanText2(payload.summary);
+        return {
+          summary: count > 0 ? `\u5DF2\u89E3\u91CA\u5F53\u524D\u9009\u533A\uFF0C\u5171 ${count} \u4E2A\u5BF9\u8C61${summary ? `\uFF1B${summary}` : ""}` : summary || "\u5F53\u524D\u6CA1\u6709\u53EF\u89E3\u91CA\u7684\u9009\u4E2D\u5BF9\u8C61",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "editor_describe_object") {
+        const payload = asRecord(output);
+        const found = payload.found !== false;
+        const objectType = cleanText2(payload.objectType);
+        const summary = cleanText2(payload.summary);
+        const label = joinParts([payload.ref, payload.name, payload.value, cleanText2(payload.packageName) ? `\u5C01\u88C5 ${payload.packageName}` : ""], "\uFF0C");
+        return {
+          summary: found ? `\u5DF2\u8BFB\u53D6${objectType === "pin" ? "\u5F15\u811A" : objectType === "net" ? "\u7F51\u7EDC" : "\u5BF9\u8C61"}\u4FE1\u606F${summary ? `\uFF1A${summary}` : label ? `\uFF1A${label}` : ""}` : summary || "\u672A\u627E\u5230\u5BF9\u5E94\u5BF9\u8C61",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "editor_find_object") {
+        const payload = asRecord(output);
+        const found = payload.found === true;
+        const matches = Array.isArray(payload.matches) ? payload.matches : [];
+        const summary = cleanText2(payload.summary);
+        const first = matches[0] && typeof matches[0] === "object" ? matches[0] : {};
+        const firstLabel = joinParts([first.ref, first.name, first.summary], "\uFF0C");
+        return {
+          summary: found ? summary || `\u5DF2\u627E\u5230 ${matches.length || 1} \u4E2A\u5339\u914D\u5BF9\u8C61${firstLabel ? `\uFF1B\u4F8B\u5982\uFF1A${firstLabel}` : ""}` : summary || "\u672A\u627E\u5230\u5339\u914D\u5BF9\u8C61",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "issues_locate_first") {
+        const payload = asRecord(output);
+        const located = payload.located === true;
+        const objectLabel = cleanText2(payload.objectLabel);
+        return {
+          summary: located ? `\u5DF2\u5B9A\u4F4D\u5230\u9700\u8981\u5173\u6CE8\u7684\u5BF9\u8C61${objectLabel ? `\uFF1A${objectLabel}` : ""}` : "\u6CA1\u6709\u627E\u5230\u53EF\u76F4\u63A5\u5B9A\u4F4D\u7684\u95EE\u9898\u5BF9\u8C61",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "library_search_devices") {
+        const items = Array.isArray(output) ? output : [];
+        const preview = items.slice(0, 3).map(
+          (item) => joinParts(
+            [
+              item.name,
+              item.footprintName ? `\u5C01\u88C5 ${item.footprintName}` : "",
+              item.supplierId ? `LCSC ${item.supplierId}` : ""
+            ],
+            "\uFF0C"
+          )
+        ).filter(Boolean);
+        return {
+          summary: items.length > 0 ? `\u5DF2\u641C\u7D22\u5230 ${items.length} \u4E2A\u5668\u4EF6\u5019\u9009${preview.length > 0 ? `\uFF1B\u524D\u51E0\u9879\uFF1A${preview.join("\uFF1B")}` : ""}` : "\u672A\u641C\u7D22\u5230\u5339\u914D\u7684\u5668\u4EF6\u5019\u9009",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "library_get_device") {
+        const item = asRecord(output);
+        const summary = joinParts(
+          [
+            item.name,
+            item.footprint?.name ? `\u5C01\u88C5 ${item.footprint.name}` : "",
+            item.lcscId ? `LCSC ${item.lcscId}` : item.supplierId ? `LCSC ${item.supplierId}` : "",
+            item.manufacturer
+          ],
+          "\uFF0C"
+        );
+        return {
+          summary: summary ? `\u5DF2\u8BFB\u53D6\u5668\u4EF6\u8BE6\u60C5\uFF1A${summary}` : "\u5DF2\u8BFB\u53D6\u5668\u4EF6\u8BE6\u60C5",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "library_get_devices_by_lcsc_ids") {
+        const items = Array.isArray(output) ? output : [];
+        const preview = items.slice(0, 3).map(
+          (item) => joinParts(
+            [
+              item.name,
+              item.footprint?.name ? `\u5C01\u88C5 ${item.footprint.name}` : "",
+              item.lcscId ? `LCSC ${item.lcscId}` : item.supplierId ? `LCSC ${item.supplierId}` : ""
+            ],
+            "\uFF0C"
+          )
+        ).filter(Boolean);
+        return {
+          summary: items.length > 0 ? `\u5DF2\u6309 LCSC \u7F16\u53F7\u5339\u914D\u5230 ${items.length} \u4E2A\u5668\u4EF6${preview.length > 0 ? `\uFF1B\u524D\u51E0\u9879\uFF1A${preview.join("\uFF1B")}` : ""}` : "\u672A\u6309\u7ED9\u5B9A LCSC \u7F16\u53F7\u5339\u914D\u5230\u5668\u4EF6",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "draft_generate_plan") {
+        const plan = asRecord(output);
+        const components = Array.isArray(plan.components) ? plan.components : [];
+        const nets = Array.isArray(plan.nets) ? plan.nets : [];
+        const refs = components.slice(0, 4).map((item) => cleanText2(item?.ref) || cleanText2(item?.id)).filter(Boolean);
+        return {
+          summary: components.length > 0 || nets.length > 0 ? `\u5DF2\u751F\u6210\u8349\u6848\u8BA1\u5212\uFF0C\u5305\u542B ${components.length} \u4E2A\u5668\u4EF6\u3001${nets.length} \u6761\u7F51\u7EDC${refs.length > 0 ? `\uFF1B\u5668\u4EF6\u793A\u4F8B\uFF1A${refs.join("\u3001")}` : ""}` : "\u5DF2\u751F\u6210\u8349\u6848\u8BA1\u5212",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "draft_preview_plan" || toolName === "editor_preview_apply_plan") {
+        const preview = asRecord(output);
+        const unresolved = Array.isArray(preview.unresolvedDeviceDetails) ? preview.unresolvedDeviceDetails.length : 0;
+        return {
+          summary: cleanText2(preview.title) || typeof preview.componentCount === "number" || typeof preview.netCount === "number" ? `\u5DF2\u751F\u6210\u8349\u6848\u9884\u89C8${cleanText2(preview.title) ? `\uFF1A${cleanText2(preview.title)}` : ""}\uFF0C\u5305\u542B ${Number(preview.componentCount || 0)} \u4E2A\u5668\u4EF6\u3001${Number(preview.netCount || 0)} \u6761\u7F51\u7EDC${unresolved > 0 ? `\uFF1B\u4ECD\u6709 ${unresolved} \u4E2A\u5F85\u786E\u8BA4\u5668\u4EF6` : ""}` : "\u5DF2\u751F\u6210\u8349\u6848\u9884\u89C8",
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      if (toolName === "rules_validate_draft") {
+        const payload = asRecord(output);
+        const issues = Array.isArray(payload.issues) ? payload.issues : [];
+        const summary = cleanText2(payload.summary);
+        const riskLevel = cleanText2(payload.riskLevel);
+        return {
+          summary: summary || (issues.length > 0 ? `\u8349\u6848\u6821\u9A8C\u5B8C\u6210\uFF0C\u53D1\u73B0 ${issues.length} \u4E2A\u95EE\u9898${riskLevel ? `\uFF1B\u98CE\u9669\u7B49\u7EA7\uFF1A${riskLevel}` : ""}` : `\u8349\u6848\u6821\u9A8C\u5B8C\u6210\uFF0C\u672A\u53D1\u73B0\u660E\u663E\u95EE\u9898${riskLevel ? `\uFF1B\u98CE\u9669\u7B49\u7EA7\uFF1A${riskLevel}` : ""}`),
+          messageForModel: JSON.stringify(output)
+        };
+      }
+      return {
+        summary: typeof output === "string" ? output : JSON.stringify(output),
+        messageForModel: typeof output === "string" ? output : JSON.stringify(output)
+      };
+    };
     const loopResult = await runReActLoop({
       deps,
       state,
@@ -12324,6 +12864,7 @@ ${match[2] || ""}`);
       requiredTools,
       mapToolToStepKind,
       prepareToolInput,
+      formatObservation,
       // While-loop 决策阶段不做 llm token streaming，只做进度更新；route 动态推断。
       onProgress: (detail) => {
         const route2 = inferRouteFromResult({
@@ -12337,7 +12878,16 @@ ${match[2] || ""}`);
           analysisMarkdown: void 0,
           naturalReply: void 0
         });
-        input.onStreamEvent?.({ route: route2, stage: "progress", detail, reactEvents: state.reactEvents, stepStates: state.stepStates, workingMemory: state.workingMemory });
+        input.onStreamEvent?.({
+          route: route2,
+          stage: "progress",
+          detail,
+          reactEvents: state.reactEvents,
+          stepItems: state.stepItems,
+          iterationSteps: state.iterationSteps,
+          stepStates: state.stepStates,
+          workingMemory: state.workingMemory
+        });
       },
       onThought: (t) => {
         const route2 = inferRouteFromResult({
@@ -12351,7 +12901,16 @@ ${match[2] || ""}`);
           analysisMarkdown: void 0,
           naturalReply: void 0
         });
-        input.onStreamEvent?.({ route: route2, stage: "progress", detail: `\u601D\u8003\uFF1A${t}`, reactEvents: state.reactEvents, stepStates: state.stepStates, workingMemory: state.workingMemory });
+        input.onStreamEvent?.({
+          route: route2,
+          stage: "progress",
+          detail: `\u601D\u8003\uFF1A${t}`,
+          reactEvents: state.reactEvents,
+          stepItems: state.stepItems,
+          iterationSteps: state.iterationSteps,
+          stepStates: state.stepStates,
+          workingMemory: state.workingMemory
+        });
       },
       onToolResult: (toolName, output) => {
         if (toolName === "editor_get_current_context") {
@@ -12423,6 +12982,8 @@ ${match[2] || ""}`);
         message: e.text
       })),
       stepStates: state.stepStates,
+      stepItems: state.stepItems,
+      iterationSteps: state.iterationSteps,
       workingMemory: state.workingMemory,
       reactEvents: state.reactEvents,
       checkResult,
@@ -12456,7 +13017,7 @@ ${match[2] || ""}`);
       analysisMarkdown: route === "analysis" ? finalText : void 0,
       naturalReply: route === "chat" ? finalText : void 0
     };
-    return { result, reactEvents: state.reactEvents };
+    return { result, reactEvents: state.reactEvents, stepItems: state.stepItems };
   }
 
   // src/agent/index.ts
@@ -12758,6 +13319,8 @@ ${match[2] || ""}`);
           executionTraces: result.executionTraces,
           uiEvents: void 0,
           reactEvents,
+          stepItems: result.stepItems,
+          iterationSteps: result.iterationSteps,
           stepTranscript: hasToolSteps ? buildStepTranscript(reactEvents) : void 0,
           stepStates: hasToolSteps ? result.stepStates : void 0,
           workingMemory: result.workingMemory,
@@ -12885,6 +13448,8 @@ ${issueLines || "\u6682\u65E0\u53EF\u5B9A\u4F4D\u95EE\u9898\u3002"}${riskHint}${
             executionTraces: input.executionTraces,
             uiEvents: input.uiEvents,
             reactEvents: displayReactEvents,
+            stepItems: input.stepItems,
+            iterationSteps: input.iterationSteps,
             stepTranscript: buildStepTranscript(displayReactEvents),
             stepStates: input.stepStates,
             workingMemory: input.workingMemory,
@@ -12977,6 +13542,8 @@ ${input.nextSuggestions.map((item, index) => `${index + 1}. ${item}`).join("\n")
             executionTraces: input.executionTraces,
             uiEvents: input.uiEvents,
             reactEvents: displayReactEvents,
+            stepItems: input.stepItems,
+            iterationSteps: input.iterationSteps,
             stepTranscript: buildStepTranscript(displayReactEvents),
             stepStates: input.stepStates,
             workingMemory: input.workingMemory,
@@ -14234,6 +14801,7 @@ ${summarizeDraftRationale(preview.rationale)}`
   };
 
   // src/services/llm/llmProxyClient.ts
+  var ENABLE_PROXY_STREAM_DEBUG = typeof globalThis !== "undefined" && Boolean(globalThis.__LCEDA_AI_PROXY_STREAM_DEBUG__);
   var LlmProxyClient = class {
     constructor(httpClient) {
       this.httpClient = httpClient;
@@ -14283,6 +14851,12 @@ ${summarizeDraftRationale(preview.rationale)}`
         }),
         signal: input.signal,
         onEvent: (event) => {
+          if (ENABLE_PROXY_STREAM_DEBUG && typeof console !== "undefined") {
+            console.log("[LCEDA-AI][llm-proxy-stream] raw-event", {
+              event: event.event,
+              data: event.data
+            });
+          }
           onEvent(event.data);
         }
       });
@@ -14406,7 +14980,10 @@ ${summarizeDraftRationale(preview.rationale)}`
   var MAX_SESSION_HISTORY = 20;
   var LOG_PREFIX = "[LCEDA-AI][runtime]";
   var ENABLE_VERBOSE_RUNTIME_LOGS = false;
-  var STREAM_COMMIT_MIN_INTERVAL_MS = 80;
+  var ENABLE_STREAM_STEP_DEBUG = typeof globalThis !== "undefined" && Boolean(globalThis.__LCEDA_AI_STREAM_DEBUG__);
+  var STREAM_COMMIT_MIN_INTERVAL_MS = 220;
+  var STREAMING_ASSISTANT_CONTENT_MAX_CHARS = 3200;
+  var STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE = "\n\n[\u539F\u59CB\u6D41\u5F0F\u5185\u5BB9\u8FC7\u957F\uFF0C\u5DF2\u622A\u65AD\u663E\u793A\uFF0C\u8BF7\u7B49\u5F85\u6700\u7EC8\u7ED3\u679C\u3002]";
   var PERSIST_PANEL_STATE_THROTTLE_MS = 600;
   var CONTEXT_COMPACTION_TRIGGER_TURNS = 20;
   var CONTEXT_COMPACTION_KEEP_RECENT_TURNS = 3;
@@ -14909,27 +15486,31 @@ ${content}`;
     const lines = reactEvents.map(formatReactEventLine).filter(Boolean);
     return lines.length > 0 ? lines : void 0;
   }
-  function upsertLlmReasoningEvent(message, reasoningDelta) {
-    if (!reasoningDelta) return;
-    const msgAny = message;
-    msgAny.__llmReasoningText = `${msgAny.__llmReasoningText || ""}${reasoningDelta}`;
-    const events = message.reactEvents ??= [];
-    const label = "Reasoning";
-    const stepKind = "llm";
-    const existing = events.find((e) => e && e.kind === "thought" && e.label === label && e.stepKind === stepKind);
-    const text = msgAny.__llmReasoningText;
-    if (existing) {
-      existing.text = text;
-      existing.status = "done";
-      return;
+  function formatStepItemLine(stepItem) {
+    if (!stepItem || !stepItem.type) return "";
+    if (stepItem.type === "task") return `\u4EFB\u52A1: ${stepItem.text || stepItem.title || ""}`;
+    if (stepItem.type === "thought") return `\u601D\u8003: ${stepItem.text || stepItem.title || ""}`;
+    if (stepItem.type === "tool_call")
+      return `Tool: ${stepItem.title || stepItem.toolName || "tool"}${stepItem.inputSummary ? ` ${stepItem.inputSummary}` : ""}`;
+    if (stepItem.type === "observation") return `\u89C2\u5BDF: ${stepItem.outputSummary || stepItem.text || ""}`;
+    if (stepItem.type === "status") return `\u72B6\u6001: ${stepItem.text || stepItem.title || ""}`;
+    return `${stepItem.type}: ${stepItem.text || stepItem.title || ""}`;
+  }
+  function buildStepTranscriptFromStepItems(stepItems) {
+    if (!Array.isArray(stepItems) || stepItems.length === 0) {
+      return void 0;
     }
-    events.push({
-      kind: "thought",
-      label,
-      status: "done",
-      text,
-      stepKind
-    });
+    const lines = stepItems.map(formatStepItemLine).filter(Boolean);
+    return lines.length > 0 ? lines : void 0;
+  }
+  function clampStreamingAssistantContent(previous, deltaOrNext) {
+    const merged = `${String(previous || "")}${String(deltaOrNext || "")}`;
+    if (merged.length <= STREAMING_ASSISTANT_CONTENT_MAX_CHARS) {
+      return merged;
+    }
+    const maxBodyLength = STREAMING_ASSISTANT_CONTENT_MAX_CHARS - STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE.length;
+    const clipped = merged.slice(0, Math.max(0, maxBodyLength)).trimEnd();
+    return `${clipped}${STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE}`;
   }
   function getAssistantRuntime() {
     const runtime = globalThis;
@@ -15133,14 +15714,22 @@ ${content}`;
             lastMessage.title = "\u5206\u6790\u4E2D";
             if (event.stage === "llm") {
               if (event.textDelta) {
-                lastMessage.content = `${lastMessage.content || ""}${event.textDelta}`;
+                lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", event.textDelta);
               } else if (event.text !== void 0) {
-                lastMessage.content = event.text || lastMessage.content || "";
+                lastMessage.content = clampStreamingAssistantContent("", event.text || lastMessage.content || "");
               }
             } else {
-              if (event.reactEvents) {
-                lastMessage.reactEvents = event.reactEvents;
-                lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(event.reactEvents);
+              if (event.stepItems !== void 0 || event.iterationSteps !== void 0 || event.reactEvents !== void 0) {
+                const normalizedProcess = normalizeProcessFields({
+                  ...lastMessage,
+                  stepItems: event.stepItems ?? lastMessage.stepItems,
+                  iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
+                  reactEvents: event.reactEvents ?? lastMessage.reactEvents
+                });
+                lastMessage.stepItems = normalizedProcess.stepItems;
+                lastMessage.iterationSteps = normalizedProcess.iterationSteps;
+                lastMessage.reactEvents = normalizedProcess.reactEvents;
+                lastMessage.stepTranscript = normalizedProcess.stepTranscript;
               }
               if (event.stepStates) {
                 lastMessage.stepStates = event.stepStates;
@@ -15806,23 +16395,68 @@ ${content}`;
               if (!lastMessage || lastMessage.role !== "assistant") {
                 return;
               }
+              if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
+                console.log("[LCEDA-AI][stream-debug] onStreamEvent.before", {
+                  stage: event.stage,
+                  detail: event.detail,
+                  reasoningDelta: sanitizedReasoningDelta,
+                  textDelta: sanitizedTextDelta,
+                  eventStepItems: event.stepItems,
+                  eventIterationSteps: event.iterationSteps,
+                  eventReactEvents: sanitizedReactEvents,
+                  lastAssistantStepItems: lastMessage.stepItems,
+                  lastAssistantIterationSteps: lastMessage.iterationSteps,
+                  lastAssistantReactEvents: lastMessage.reactEvents
+                });
+              }
               if (event.detail) {
                 current.agentRunDetail = event.detail;
               }
               if (event.stage === "llm") {
                 lastMessage.streaming = true;
                 lastMessage.title = event.route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : event.route === "analysis" ? "\u5206\u6790\u4E2D" : "\u5904\u7406\u4E2D";
+                if (lastMessage.content === "\u6B63\u5728\u601D\u8003...") {
+                  lastMessage.content = "";
+                }
                 if (sanitizedTextDelta) {
-                  lastMessage.content = `${lastMessage.content === "\u6B63\u5728\u601D\u8003..." ? "" : lastMessage.content || ""}${sanitizedTextDelta}`;
-                } else if (event.text !== void 0 && String(sanitizedText || "").trim()) {
-                  lastMessage.content = sanitizedText || lastMessage.content || "";
+                  lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", sanitizedTextDelta);
+                } else if (sanitizedText !== void 0 && String(sanitizedText).trim()) {
+                  lastMessage.content = clampStreamingAssistantContent("", sanitizedText);
                 }
+                const mergedProcessSource = {
+                  ...lastMessage,
+                  stepItems: event.stepItems ?? lastMessage.stepItems,
+                  iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
+                  reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents
+                };
                 if (sanitizedReasoningDelta) {
-                  upsertLlmReasoningEvent(lastMessage, sanitizedReasoningDelta);
+                  const existingSteps = Array.isArray(mergedProcessSource.iterationSteps) ? mergedProcessSource.iterationSteps.slice() : [];
+                  const nextSteps = existingSteps.length > 0 ? existingSteps.map(
+                    (step, index) => index === existingSteps.length - 1 ? {
+                      ...step,
+                      thoughtText: `${String(step.thoughtText || "")}${sanitizedReasoningDelta}`.trim(),
+                      status: step.status === "done" ? "done" : "running",
+                      streaming: true
+                    } : step
+                  ) : existingSteps;
+                  mergedProcessSource.iterationSteps = nextSteps;
                 }
-                if (sanitizedReactEvents) {
-                  lastMessage.reactEvents = sanitizedReactEvents;
-                  lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
+                if (!sanitizedReasoningDelta && event.iterationSteps !== void 0 && String(sanitizedText || "").trim()) {
+                  mergedProcessSource.iterationSteps = event.iterationSteps.map(
+                    (step, index, arr) => index === arr.length - 1 ? {
+                      ...step,
+                      thoughtText: String(sanitizedText || "").trim(),
+                      status: step.status === "done" ? "done" : "running",
+                      streaming: true
+                    } : step
+                  );
+                }
+                if (event.stepItems !== void 0 || event.iterationSteps !== void 0 || sanitizedReactEvents !== void 0 || sanitizedReasoningDelta) {
+                  const normalizedStreamProcess = normalizeProcessFields(mergedProcessSource);
+                  lastMessage.stepItems = normalizedStreamProcess.stepItems;
+                  lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
+                  lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
+                  lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
                 }
                 if (event.stepStates) {
                   lastMessage.stepStates = event.stepStates;
@@ -15833,9 +16467,17 @@ ${content}`;
               } else if (event.stage === "progress") {
                 lastMessage.streaming = true;
                 lastMessage.title = event.route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : "\u5206\u6790\u4E2D";
-                if (sanitizedReactEvents) {
-                  lastMessage.reactEvents = sanitizedReactEvents;
-                  lastMessage.stepTranscript = buildStepTranscriptFromReactEvents(sanitizedReactEvents);
+                if (event.stepItems !== void 0 || event.iterationSteps !== void 0 || sanitizedReactEvents !== void 0) {
+                  const normalizedStreamProcess = normalizeProcessFields({
+                    ...lastMessage,
+                    stepItems: event.stepItems ?? lastMessage.stepItems,
+                    iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
+                    reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents
+                  });
+                  lastMessage.stepItems = normalizedStreamProcess.stepItems;
+                  lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
+                  lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
+                  lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
                 }
                 if (event.stepStates) {
                   lastMessage.stepStates = event.stepStates;
@@ -15843,6 +16485,20 @@ ${content}`;
                 if (event.workingMemory) {
                   lastMessage.workingMemory = event.workingMemory;
                 }
+              }
+              if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
+                console.log("[LCEDA-AI][stream-debug] onStreamEvent.after", {
+                  stage: event.stage,
+                  detail: event.detail,
+                  lastAssistantMessage: {
+                    title: lastMessage.title,
+                    content: lastMessage.content,
+                    streaming: lastMessage.streaming,
+                    stepItems: lastMessage.stepItems,
+                    iterationSteps: lastMessage.iterationSteps,
+                    reactEvents: lastMessage.reactEvents
+                  }
+                });
               }
               scheduleTurnCommit(false);
             }
@@ -16218,6 +16874,8 @@ ${content}`;
             toolTraces: result.toolTraces,
             executionTraces: result.executionTraces,
             reactEvents: result.reactEvents,
+            stepItems: result.stepItems,
+            iterationSteps: result.iterationSteps,
             stepStates: result.stepStates,
             workingMemory: result.workingMemory,
             draftRisk: result.draftRisk,
@@ -16256,6 +16914,8 @@ ${content}`;
           executionTraces: result.executionTraces,
           uiEvents: result.uiEvents,
           reactEvents: result.reactEvents,
+          stepItems: result.stepItems,
+          iterationSteps: result.iterationSteps,
           stepStates: result.stepStates,
           workingMemory: result.workingMemory,
           draftRisk: result.draftRisk
@@ -16312,6 +16972,8 @@ ${content}`;
           executionTraces: input.result.executionTraces,
           uiEvents: input.result.uiEvents,
           reactEvents: input.result.reactEvents,
+          stepItems: input.result.stepItems,
+          iterationSteps: input.result.iterationSteps,
           stepStates: input.result.stepStates,
           workingMemory: input.result.workingMemory,
           nextSuggestions: input.result.nextSuggestions,
@@ -16398,6 +17060,8 @@ ${content}`;
         executionTraces: result.executionTraces,
         uiEvents: result.uiEvents,
         reactEvents: result.reactEvents,
+        stepItems: result.stepItems,
+        iterationSteps: result.iterationSteps,
         stepStates: result.stepStates,
         workingMemory: result.workingMemory,
         nextSuggestions: result.nextSuggestions,
@@ -16437,6 +17101,8 @@ ${content}`;
         executionTraces: result.executionTraces,
         uiEvents: result.uiEvents,
         reactEvents: result.reactEvents,
+        stepItems: result.stepItems,
+        iterationSteps: result.iterationSteps,
         stepStates: result.stepStates,
         workingMemory: result.workingMemory,
         nextSuggestions: result.nextSuggestions,
@@ -16499,16 +17165,10 @@ ${content}`;
     return state;
   }
   function normalizeChatMessagesForPersistence(messages) {
-    return sanitizeChatMessages(messages).map((message) => {
-      const reactEvents = Array.isArray(message.reactEvents) ? message.reactEvents : void 0;
-      const stepTranscript = Array.isArray(message.stepTranscript) && message.stepTranscript.length > 0 ? message.stepTranscript : buildStepTranscriptFromReactEvents(reactEvents);
-      return {
-        ...message,
-        reactEvents,
-        stepTranscript,
-        streaming: false
-      };
-    });
+    return sanitizeChatMessages(messages).map((message) => ({
+      ...normalizeProcessFields(message),
+      streaming: false
+    }));
   }
   function sanitizeChatMessages(messages) {
     return (messages ?? []).filter((message) => !message.__typing);
@@ -16525,6 +17185,7 @@ ${content}`;
       /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*$/u,
       /([\s\S]*?)(?:\n|\r|^)\s*Final:\s*\{/u,
       /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"final"/u,
+      /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*"f(?:i(?:n(?:a(?:l?)?)?)?)?$/u,
       /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*$/u,
       /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*$/u,
       /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"$/u,
@@ -16552,21 +17213,94 @@ ${content}`;
       } : event
     );
   }
+  function convertReactEventsToStepItems(reactEvents) {
+    if (!Array.isArray(reactEvents) || reactEvents.length === 0) {
+      return void 0;
+    }
+    const stepItems = reactEvents.map((event, index) => {
+      if (!event || event.kind === "final") {
+        return void 0;
+      }
+      const type = event.kind;
+      const phase = event.stepKind ?? "system";
+      const title = String(event.label || event.toolName || type).trim() || type;
+      const text = stripFinalControlLikeText(event.text) || "";
+      return {
+        id: `legacy-react-${index}-${type}`,
+        phase,
+        type,
+        status: event.status,
+        title,
+        text,
+        toolName: event.toolName,
+        inputSummary: event.inputSummary,
+        outputSummary: event.outputSummary
+      };
+    }).filter((item) => Boolean(item));
+    return stepItems.length > 0 ? stepItems : [];
+  }
+  function buildIterationStepsFromStepItems(stepItems) {
+    if (!Array.isArray(stepItems) || stepItems.length === 0) {
+      return void 0;
+    }
+    const grouped = /* @__PURE__ */ new Map();
+    stepItems.forEach((item) => {
+      if (!item) return;
+      const id = String(item.id || "");
+      const match = id.match(/^react-(?:task|thought|tool-call|observation)-(\d+)/u);
+      const iteration = match ? Number.parseInt(match[1] || "", 10) : Number.NaN;
+      if (!Number.isFinite(iteration)) return;
+      const bucket = grouped.get(iteration) ?? {
+        iteration,
+        thought: void 0,
+        toolCalls: [],
+        observations: []
+      };
+      if (item.type === "thought") {
+        bucket.thought = item;
+      } else if (item.type === "tool_call") {
+        bucket.toolCalls.push(item);
+      } else if (item.type === "observation") {
+        bucket.observations.push(item);
+      }
+      grouped.set(iteration, bucket);
+    });
+    const iterationSteps = Array.from(grouped.values()).sort((a, b) => a.iteration - b.iteration).map((bucket) => ({
+      id: bucket.thought?.id || `react-iteration-${bucket.iteration}`,
+      iteration: bucket.iteration,
+      status: bucket.thought?.status || bucket.toolCalls[bucket.toolCalls.length - 1]?.status || "pending",
+      thoughtText: stripFinalControlLikeText(bucket.thought?.text || "").trim(),
+      streaming: Boolean(bucket.thought?.streaming),
+      toolEvents: bucket.toolCalls.map((item) => ({
+        toolName: String(item.toolName || item.title || "").trim(),
+        label: String(item.toolName || item.title || "").trim(),
+        status: item.status
+      })),
+      observationTexts: bucket.observations.map((item) => stripFinalControlLikeText(item.outputSummary || item.text || "").trim()).filter(Boolean)
+    })).filter((item) => item.thoughtText || item.toolEvents.length > 0 || item.observationTexts.length > 0);
+    return iterationSteps.length > 0 ? iterationSteps : void 0;
+  }
+  function normalizeProcessFields(message) {
+    const reactEvents = Array.isArray(message.reactEvents) ? sanitizeReactEventsForUi(message.reactEvents) : void 0;
+    const explicitStepItems = Array.isArray(message.stepItems) ? message.stepItems : void 0;
+    const stepItems = Array.isArray(message.iterationSteps) && message.iterationSteps.length > 0 ? explicitStepItems : explicitStepItems ?? convertReactEventsToStepItems(reactEvents);
+    const iterationSteps = Array.isArray(message.iterationSteps) && message.iterationSteps.length > 0 ? message.iterationSteps : buildIterationStepsFromStepItems(stepItems);
+    const stepTranscript = Array.isArray(message.stepTranscript) && message.stepTranscript.length > 0 ? message.stepTranscript : buildStepTranscriptFromStepItems(stepItems) ?? buildStepTranscriptFromReactEvents(reactEvents);
+    return {
+      ...message,
+      reactEvents,
+      stepItems,
+      iterationSteps,
+      stepTranscript
+    };
+  }
   function createPendingAssistantMessage(route) {
     return {
       role: "assistant",
       title: route === "chat" ? "\u52A9\u624B" : route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : "\u5206\u6790\u4E2D",
       // content 只用于最终流式报告/回复，进度与步骤展示由 reactEvents/stepStates 承载，避免污染最终输出。
       content: "",
-      reactEvents: [
-        {
-          kind: "thought",
-          label: "\u601D\u8003",
-          status: "running",
-          text: route === "draft" ? "\u6B63\u5728\u89C4\u5212\u8349\u6848\u4E0E\u6821\u9A8C\u7EA6\u675F..." : route === "analysis" ? "\u6B63\u5728\u8BFB\u53D6\u539F\u7406\u56FE\u5E76\u51C6\u5907\u5206\u6790..." : "\u6B63\u5728\u5206\u6790\u7528\u6237\u610F\u56FE\u5E76\u89C4\u5212\u4E0B\u4E00\u6B65...",
-          stepKind: "llm"
-        }
-      ],
+      iterationSteps: [],
       streaming: true
     };
   }
@@ -16587,6 +17321,8 @@ ${content}`;
     const last = list[list.length - 1];
     const normalized = Array.isArray(replacements) ? replacements : [replacements];
     if (last?.role === "assistant" && last.streaming) {
+      const preservedStepItems = last.stepItems;
+      const preservedIterationSteps = last.iterationSteps;
       const preservedReactEvents = last.reactEvents;
       const preservedStepStates = last.stepStates;
       const preservedWorkingMemory = last.workingMemory;
@@ -16601,12 +17337,22 @@ ${content}`;
       list.pop();
       const mergedReplacements = normalized.map((msg, idx) => {
         if (idx === 0 && msg.role === "assistant") {
-          const mergedReactEvents = preferNonEmptyArray(msg.reactEvents, preservedReactEvents);
+          const mergedStepItems = msg.stepItems === void 0 ? preservedStepItems : msg.stepItems;
+          const mergedIterationSteps = msg.iterationSteps === void 0 ? preservedIterationSteps : msg.iterationSteps;
+          const mergedReactEvents = preferDefinedArray(msg.reactEvents, preservedReactEvents);
+          const normalizedProcess = normalizeProcessFields({
+            ...msg,
+            stepItems: mergedStepItems,
+            iterationSteps: mergedIterationSteps,
+            reactEvents: mergedReactEvents
+          });
           return {
             ...msg,
-            reactEvents: mergedReactEvents,
-            stepTranscript: buildStepTranscriptFromReactEvents(mergedReactEvents) ?? msg.stepTranscript,
-            stepStates: preferNonEmptyArray(msg.stepStates, preservedStepStates),
+            stepItems: normalizedProcess.stepItems,
+            iterationSteps: normalizedProcess.iterationSteps,
+            reactEvents: normalizedProcess.reactEvents,
+            stepTranscript: normalizedProcess.stepTranscript,
+            stepStates: preferDefinedArray(msg.stepStates, preservedStepStates),
             workingMemory: msg.workingMemory || preservedWorkingMemory
           };
         }
@@ -16620,21 +17366,35 @@ ${content}`;
     return replaceTrailingPendingAssistant(previousMessages, draftMessages);
   }
   function mergeAssistantFinalMessage(pendingMessage, finalMessage) {
-    const preservedReactEvents = pendingMessage.reactEvents;
+    const normalizedPending = normalizeProcessFields(pendingMessage);
+    const normalizedFinal = normalizeProcessFields(finalMessage);
+    const preservedStepItems = normalizedPending.stepItems;
+    const preservedIterationSteps = normalizedPending.iterationSteps;
+    const preservedReactEvents = normalizedPending.reactEvents;
     const preservedStepStates = pendingMessage.stepStates;
     const preservedWorkingMemory = pendingMessage.workingMemory;
-    const mergedReactEvents = preferNonEmptyArray(finalMessage.reactEvents, preservedReactEvents);
+    const mergedStepItems = normalizedFinal.stepItems === void 0 ? preservedStepItems : normalizedFinal.stepItems;
+    const mergedIterationSteps = normalizedFinal.iterationSteps === void 0 ? preservedIterationSteps : normalizedFinal.iterationSteps;
+    const mergedReactEvents = preferDefinedArray(normalizedFinal.reactEvents, preservedReactEvents);
+    const mergedProcess = normalizeProcessFields({
+      ...normalizedFinal,
+      stepItems: mergedStepItems,
+      iterationSteps: mergedIterationSteps,
+      reactEvents: mergedReactEvents
+    });
     return {
-      ...finalMessage,
+      ...normalizedFinal,
       role: "assistant",
       streaming: false,
-      reactEvents: mergedReactEvents,
-      stepTranscript: buildStepTranscriptFromReactEvents(mergedReactEvents) ?? finalMessage.stepTranscript ?? pendingMessage.stepTranscript,
-      stepStates: preferNonEmptyArray(finalMessage.stepStates, preservedStepStates),
-      workingMemory: finalMessage.workingMemory || preservedWorkingMemory,
-      toolTraces: finalMessage.toolTraces || pendingMessage.toolTraces,
-      executionTraces: finalMessage.executionTraces || pendingMessage.executionTraces,
-      uiEvents: finalMessage.uiEvents || pendingMessage.uiEvents
+      stepItems: mergedProcess.stepItems,
+      iterationSteps: mergedProcess.iterationSteps,
+      reactEvents: mergedProcess.reactEvents,
+      stepTranscript: mergedProcess.stepTranscript ?? normalizedFinal.stepTranscript ?? normalizedPending.stepTranscript,
+      stepStates: preferDefinedArray(normalizedFinal.stepStates, preservedStepStates),
+      workingMemory: normalizedFinal.workingMemory || preservedWorkingMemory,
+      toolTraces: normalizedFinal.toolTraces || pendingMessage.toolTraces,
+      executionTraces: normalizedFinal.executionTraces || pendingMessage.executionTraces,
+      uiEvents: normalizedFinal.uiEvents || pendingMessage.uiEvents
     };
   }
   function appendAssistantMessages(previousMessages, nextMessages) {
@@ -16650,14 +17410,8 @@ ${content}`;
       }
     ];
   }
-  function preferNonEmptyArray(primary, fallback) {
-    if (Array.isArray(primary) && primary.length > 0) {
-      return primary;
-    }
-    if (Array.isArray(fallback) && fallback.length > 0) {
-      return fallback;
-    }
-    return primary ?? fallback;
+  function preferDefinedArray(primary, fallback) {
+    return primary === void 0 ? fallback : primary;
   }
   async function fillSettingsState(state, sessionStore, authClient, creditsClient, customLlmConfigStore, llmModeStore2) {
     state.loggedIn = false;

@@ -49,6 +49,8 @@ export interface PluginAgent {
       reasoningDelta?: string;
       detail?: string;
       reactEvents?: AgentResult["reactEvents"];
+      stepItems?: AgentResult["stepItems"];
+      iterationSteps?: AgentResult["iterationSteps"];
       stepStates?: AgentResult["stepStates"];
       workingMemory?: AgentResult["workingMemory"];
     }) => void;
@@ -68,6 +70,8 @@ export interface PluginAgent {
       reasoningDelta?: string;
       detail?: string;
       reactEvents?: AgentResult["reactEvents"];
+      stepItems?: AgentResult["stepItems"];
+      iterationSteps?: AgentResult["iterationSteps"];
       stepStates?: AgentResult["stepStates"];
       workingMemory?: AgentResult["workingMemory"];
     }) => void;
@@ -88,6 +92,8 @@ export interface PluginAgent {
     executionTraces?: AgentResult["executionTraces"];
     uiEvents?: AgentResult["uiEvents"];
     reactEvents?: AgentResult["reactEvents"];
+    stepItems?: AgentResult["stepItems"];
+    iterationSteps?: AgentResult["iterationSteps"];
     stepStates?: AgentResult["stepStates"];
     workingMemory?: AgentResult["workingMemory"];
     nextSuggestions?: AgentResult["nextSuggestions"];
@@ -102,6 +108,8 @@ export interface PluginAgent {
     executionTraces?: AgentResult["executionTraces"];
     uiEvents?: AgentResult["uiEvents"];
     reactEvents?: AgentResult["reactEvents"];
+    stepItems?: AgentResult["stepItems"];
+    iterationSteps?: AgentResult["iterationSteps"];
     stepStates?: AgentResult["stepStates"];
     workingMemory?: AgentResult["workingMemory"];
     draftRisk?: AgentResult["draftRisk"];
@@ -484,6 +492,8 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
         executionTraces: result.executionTraces,
         uiEvents: undefined,
         reactEvents,
+        stepItems: result.stepItems,
+        iterationSteps: result.iterationSteps,
         stepTranscript: hasToolSteps ? buildStepTranscript(reactEvents) : undefined,
         stepStates: hasToolSteps ? result.stepStates : undefined,
         workingMemory: result.workingMemory,
@@ -632,6 +642,8 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           executionTraces: input.executionTraces,
           uiEvents: input.uiEvents,
           reactEvents: displayReactEvents,
+          stepItems: input.stepItems,
+          iterationSteps: input.iterationSteps,
           stepTranscript: buildStepTranscript(displayReactEvents),
           stepStates: input.stepStates,
           workingMemory: input.workingMemory,
@@ -724,9 +736,11 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
              uiEvents: input.uiEvents,
            }),
              toolTraces: input.toolTraces,
-            executionTraces: input.executionTraces,
-            uiEvents: input.uiEvents,
-             reactEvents: displayReactEvents,
+             executionTraces: input.executionTraces,
+             uiEvents: input.uiEvents,
+              reactEvents: displayReactEvents,
+              stepItems: input.stepItems,
+              iterationSteps: input.iterationSteps,
               stepTranscript: buildStepTranscript(displayReactEvents),
               stepStates: input.stepStates,
               workingMemory: input.workingMemory,
