@@ -28,6 +28,7 @@ import { isCancelledError } from "../agent/core/cancelledError";
 const GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
 const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
 const PANEL_STATE_STORAGE_KEY = "lceda_ai.panel.last_state";
+const PERF_DEBUG_STORAGE_KEY = "lceda_ai.perf_debug";
 const PANEL_SESSION_INDEX_STORAGE_KEY = "lceda_ai.panel.session_index";
 const PANEL_SESSION_STATE_PREFIX = "lceda_ai.panel.session.";
 const MAX_SESSION_HISTORY = 20;
@@ -38,9 +39,7 @@ const ENABLE_STREAM_STEP_DEBUG =
   (typeof globalThis !== "undefined" &&
     Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_STREAM_DEBUG__));
 // Streaming can emit lots of deltas; committing/persisting on every delta makes the UI churn.
-const STREAM_COMMIT_MIN_INTERVAL_MS = 220;
-const STREAMING_ASSISTANT_CONTENT_MAX_CHARS = 3200;
-const STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE = "\n\n[原始流式内容过长，已截断显示，请等待最终结果。]";
+const STREAM_COMMIT_MIN_INTERVAL_MS = 120;
 const PERSIST_PANEL_STATE_THROTTLE_MS = 600;
 const CONTEXT_COMPACTION_TRIGGER_TURNS = 20;
 const CONTEXT_COMPACTION_KEEP_RECENT_TURNS = 3;
@@ -51,6 +50,35 @@ let persistPanelTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPersist: { storage: LocalStorageKeyValueStore; state: MainPanelState } | null = null;
 
 type ChatMessage = NonNullable<MainPanelState["chatMessages"]>[number];
+
+export function isPerfDebugEnabled(): boolean {
+  let storageFlag = false;
+  try {
+    storageFlag =
+      typeof localStorage !== "undefined" &&
+      localStorage.getItem(PERF_DEBUG_STORAGE_KEY) === "1";
+  } catch {
+    storageFlag = false;
+  }
+  return (
+    typeof globalThis !== "undefined" &&
+    Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_PERF_DEBUG__)
+  ) || storageFlag;
+}
+
+function getPerfNow(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function logPerf(label: string, detail: Record<string, unknown>): void {
+  if (!isPerfDebugEnabled() || typeof console === "undefined") {
+    return;
+  }
+  console.log(`${LOG_PREFIX} perf.${label}`, detail);
+}
 
 export function planContextCompaction(messages: MainPanelState["chatMessages"]): {
   shouldCompact: boolean;
@@ -791,14 +819,87 @@ export function upsertLlmReasoningStepItem(
 }
 
 export function clampStreamingAssistantContent(previous: string, deltaOrNext: string): string {
-  const merged = `${String(previous || "")}${String(deltaOrNext || "")}`;
-  if (merged.length <= STREAMING_ASSISTANT_CONTENT_MAX_CHARS) {
-    return merged;
+  return `${String(previous || "")}${String(deltaOrNext || "")}`;
+}
+
+export function shouldMirrorStreamingTextToAssistantBody(input: {
+  route: "chat" | "analysis" | "draft";
+  hasStepItems?: boolean;
+  hasIterationSteps?: boolean;
+  hasReactEvents?: boolean;
+  hasReasoningDelta?: boolean;
+}): boolean {
+  if (input.route === "chat") {
+    return true;
   }
-  const maxBodyLength =
-    STREAMING_ASSISTANT_CONTENT_MAX_CHARS - STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE.length;
-  const clipped = merged.slice(0, Math.max(0, maxBodyLength)).trimEnd();
-  return `${clipped}${STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE}`;
+  return !(
+    input.hasStepItems ||
+    input.hasIterationSteps ||
+    input.hasReactEvents ||
+    input.hasReasoningDelta
+  );
+}
+
+export function shouldApplyStreamingReactEvents(input: {
+  reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"];
+  stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"];
+  iterationSteps?: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"];
+}): boolean {
+  if (!Array.isArray(input.reactEvents) || input.reactEvents.length === 0) {
+    return false;
+  }
+  if (Array.isArray(input.stepItems) && input.stepItems.length > 0) {
+    return false;
+  }
+  if (Array.isArray(input.iterationSteps) && input.iterationSteps.length > 0) {
+    return false;
+  }
+  return true;
+}
+
+export function buildStreamingProcessSignature(input: {
+  stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"];
+  iterationSteps?: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"];
+  reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"];
+  stepStates?: NonNullable<MainPanelState["chatMessages"]>[number]["stepStates"];
+  workingMemory?: NonNullable<MainPanelState["chatMessages"]>[number]["workingMemory"];
+}): string {
+  const lastStepItem =
+    Array.isArray(input.stepItems) && input.stepItems.length > 0
+      ? input.stepItems[input.stepItems.length - 1]
+      : undefined;
+  const lastIteration =
+    Array.isArray(input.iterationSteps) && input.iterationSteps.length > 0
+      ? input.iterationSteps[input.iterationSteps.length - 1]
+      : undefined;
+  const lastReactEvent =
+    Array.isArray(input.reactEvents) && input.reactEvents.length > 0
+      ? input.reactEvents[input.reactEvents.length - 1]
+      : undefined;
+  const lastStepState =
+    Array.isArray(input.stepStates) && input.stepStates.length > 0
+      ? input.stepStates[input.stepStates.length - 1]
+      : undefined;
+  return [
+    Array.isArray(input.stepItems) ? input.stepItems.length : 0,
+    lastStepItem?.id || "",
+    lastStepItem?.status || "",
+    String(lastStepItem?.text || "").length,
+    Array.isArray(input.iterationSteps) ? input.iterationSteps.length : 0,
+    lastIteration?.id || "",
+    lastIteration?.status || "",
+    String(lastIteration?.thoughtText || "").length,
+    Array.isArray(lastIteration?.toolEvents) ? lastIteration.toolEvents.length : 0,
+    Array.isArray(lastIteration?.observationTexts) ? lastIteration.observationTexts.length : 0,
+    Array.isArray(input.reactEvents) ? input.reactEvents.length : 0,
+    lastReactEvent?.kind || "",
+    lastReactEvent?.status || "",
+    String(lastReactEvent?.text || "").length,
+    Array.isArray(input.stepStates) ? input.stepStates.length : 0,
+    lastStepState?.kind || "",
+    lastStepState?.status || "",
+    input.workingMemory ? JSON.stringify(input.workingMemory) : "",
+  ].join("|");
 }
 
 export interface AssistantRuntime {
@@ -1821,18 +1922,35 @@ function createAssistantRuntime(): AssistantRuntime {
           adapter,
           signal: internals.activeTurnAbortController.signal,
           onStreamEvent: (event) => {
+            const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
             // Ignore late events from previous turns to prevent UI getting stuck.
             if (internals.activeTurnId !== turnId) return;
             touchTurnActivity?.();
             const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
             const sanitizedText = stripFinalControlLikeText(event.text);
             const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
-            const sanitizedReactEvents = sanitizeReactEventsForUi(event.reactEvents);
+            const shouldKeepReactEvents = shouldApplyStreamingReactEvents({
+              reactEvents: event.reactEvents,
+              stepItems: event.stepItems,
+              iterationSteps: event.iterationSteps,
+            });
+            const sanitizedReactEvents = shouldKeepReactEvents
+              ? sanitizeReactEventsForUi(event.reactEvents)
+              : undefined;
             const messages = current.chatMessages ?? [];
             const lastMessage = messages[messages.length - 1];
             if (!lastMessage || lastMessage.role !== "assistant") {
               return;
             }
+            const previousDetail = String(current.agentRunDetail || "");
+            const previousContent = String(lastMessage.content || "");
+            const previousProcessSignature = buildStreamingProcessSignature({
+              stepItems: lastMessage.stepItems,
+              iterationSteps: lastMessage.iterationSteps,
+              reactEvents: lastMessage.reactEvents,
+              stepStates: lastMessage.stepStates,
+              workingMemory: lastMessage.workingMemory,
+            });
             if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
               console.log("[LCEDA-AI][stream-debug] onStreamEvent.before", {
                 stage: event.stage,
@@ -1853,52 +1971,24 @@ function createAssistantRuntime(): AssistantRuntime {
             if (event.stage === "llm") {
               lastMessage.streaming = true;
               lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "analysis" ? "分析中" : "处理中";
+              const shouldMirrorTextToBody = shouldMirrorStreamingTextToAssistantBody({
+                route: event.route,
+                hasStepItems: event.stepItems !== undefined && Boolean(event.stepItems?.length),
+                hasIterationSteps: event.iterationSteps !== undefined && Boolean(event.iterationSteps?.length),
+                hasReactEvents: sanitizedReactEvents !== undefined && Boolean(sanitizedReactEvents?.length),
+                hasReasoningDelta: Boolean(sanitizedReasoningDelta),
+              });
               // ReAct 过程中，LLM 流式文本应进入当前 step，而不是底部正式报告区。
               // 最终报告只在 turn 完成后由 final message 渲染。
-              if (lastMessage.content === "正在思考...") {
+              if (shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
                 lastMessage.content = "";
               }
-              if (sanitizedTextDelta) {
+              if (shouldMirrorTextToBody && sanitizedTextDelta) {
                 lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", sanitizedTextDelta);
-              } else if (sanitizedText !== undefined && String(sanitizedText).trim()) {
+              } else if (shouldMirrorTextToBody && sanitizedText !== undefined && String(sanitizedText).trim()) {
                 lastMessage.content = clampStreamingAssistantContent("", sanitizedText);
-              }
-              const mergedProcessSource: NonNullable<MainPanelState["chatMessages"]>[number] = {
-                ...lastMessage,
-                stepItems: event.stepItems ?? lastMessage.stepItems,
-                iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
-                reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents,
-              };
-              if (sanitizedReasoningDelta) {
-                const existingSteps = Array.isArray(mergedProcessSource.iterationSteps)
-                  ? mergedProcessSource.iterationSteps.slice()
-                  : [];
-                const nextSteps =
-                  existingSteps.length > 0
-                    ? existingSteps.map((step, index) =>
-                        index === existingSteps.length - 1
-                          ? {
-                              ...step,
-                              thoughtText: `${String(step.thoughtText || "")}${sanitizedReasoningDelta}`.trim(),
-                              status: step.status === "done" ? "done" : "running",
-                              streaming: true,
-                            }
-                          : step
-                      )
-                    : existingSteps;
-                mergedProcessSource.iterationSteps = nextSteps;
-              }
-              if (!sanitizedReasoningDelta && event.iterationSteps !== undefined && String(sanitizedText || "").trim()) {
-                mergedProcessSource.iterationSteps = event.iterationSteps.map((step, index, arr) =>
-                  index === arr.length - 1
-                    ? {
-                        ...step,
-                        thoughtText: String(sanitizedText || "").trim(),
-                        status: step.status === "done" ? "done" : "running",
-                        streaming: true,
-                      }
-                    : step
-                );
+              } else if (!shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
+                lastMessage.content = "";
               }
               if (
                 event.stepItems !== undefined ||
@@ -1906,11 +1996,14 @@ function createAssistantRuntime(): AssistantRuntime {
                 sanitizedReactEvents !== undefined ||
                 sanitizedReasoningDelta
               ) {
-                const normalizedStreamProcess = normalizeProcessFields(mergedProcessSource);
-                lastMessage.stepItems = normalizedStreamProcess.stepItems;
-                lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
-                lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
-                lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
+                mergeStreamProcessFields({
+                  lastMessage,
+                  stepItems: event.stepItems,
+                  iterationSteps: event.iterationSteps,
+                  reactEvents: sanitizedReactEvents,
+                  reasoningDelta: sanitizedReasoningDelta,
+                  text: sanitizedText,
+                });
               }
               if (event.stepStates) {
                 lastMessage.stepStates = event.stepStates;
@@ -1927,16 +2020,12 @@ function createAssistantRuntime(): AssistantRuntime {
                 event.iterationSteps !== undefined ||
                 sanitizedReactEvents !== undefined
               ) {
-                const normalizedStreamProcess = normalizeProcessFields({
-                  ...lastMessage,
-                  stepItems: event.stepItems ?? lastMessage.stepItems,
-                  iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
-                  reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents,
+                mergeStreamProcessFields({
+                  lastMessage,
+                  stepItems: event.stepItems,
+                  iterationSteps: event.iterationSteps,
+                  reactEvents: sanitizedReactEvents,
                 });
-                lastMessage.stepItems = normalizedStreamProcess.stepItems;
-                lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
-                lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
-                lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
               }
               if (event.stepStates) {
                 lastMessage.stepStates = event.stepStates;
@@ -1944,6 +2033,19 @@ function createAssistantRuntime(): AssistantRuntime {
               if (event.workingMemory) {
                 lastMessage.workingMemory = event.workingMemory;
               }
+            }
+            const nextProcessSignature = buildStreamingProcessSignature({
+              stepItems: lastMessage.stepItems,
+              iterationSteps: lastMessage.iterationSteps,
+              reactEvents: lastMessage.reactEvents,
+              stepStates: lastMessage.stepStates,
+              workingMemory: lastMessage.workingMemory,
+            });
+            const contentChanged = previousContent !== String(lastMessage.content || "");
+            const processChanged = previousProcessSignature !== nextProcessSignature;
+            const detailChanged = previousDetail !== String(current.agentRunDetail || "");
+            if (!contentChanged && !processChanged && !detailChanged) {
+              return;
             }
             if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
               console.log("[LCEDA-AI][stream-debug] onStreamEvent.after", {
@@ -1957,6 +2059,20 @@ function createAssistantRuntime(): AssistantRuntime {
                   iterationSteps: lastMessage.iterationSteps,
                   reactEvents: lastMessage.reactEvents,
                 },
+              });
+            }
+            if (isPerfDebugEnabled()) {
+              logPerf("onStreamEvent", {
+                route: event.route,
+                stage: event.stage,
+                durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+                textDeltaLength: String(sanitizedTextDelta || "").length,
+                textLength: String(sanitizedText || "").length,
+                reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+                stepItems: Array.isArray(lastMessage.stepItems) ? lastMessage.stepItems.length : 0,
+                iterationSteps: Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
+                reactEvents: Array.isArray(lastMessage.reactEvents) ? lastMessage.reactEvents.length : 0,
+                contentLength: String(lastMessage.content || "").length,
               });
             }
             scheduleTurnCommit(false);
@@ -2635,6 +2751,7 @@ function commitState(
   state: MainPanelState,
   storage?: LocalStorageKeyValueStore
 ): MainPanelState {
+  const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
   const isRunning =
     state.agentRunState === "planning" ||
     state.agentRunState === "running_tools" ||
@@ -2671,8 +2788,11 @@ function commitState(
     // Ignore assignment failures in constrained runtimes.
   }
   if (storage) {
-    // Persisting on every state delta is expensive; throttle while running.
-    schedulePersistPanelState(storage, nextState, !isRunning);
+    // Persisting large streaming state snapshots is expensive and can stall the host UI.
+    // While a turn is running, keep state in-memory + broadcast to iframe only; persist once when it settles.
+    if (!isRunning) {
+      schedulePersistPanelState(storage, nextState, true);
+    }
   }
   try {
     const runtime = globalThis as typeof globalThis & {
@@ -2698,6 +2818,20 @@ function commitState(
       messageCount: nextState.chatMessages?.length ?? 0,
       streamingCount,
       detail: nextState.agentRunDetail,
+    });
+  }
+  if (isPerfDebugEnabled()) {
+    const messages = nextState.chatMessages ?? [];
+    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+    logPerf("commitState", {
+      durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+      version: nextState.__stateVersion,
+      agentRunState: nextState.agentRunState,
+      messageCount: messages.length,
+      contentLength: String(lastAssistant?.content || "").length,
+      iterationSteps: Array.isArray(lastAssistant?.iterationSteps) ? lastAssistant.iterationSteps.length : 0,
+      reactEvents: Array.isArray(lastAssistant?.reactEvents) ? lastAssistant.reactEvents.length : 0,
+      stepItems: Array.isArray(lastAssistant?.stepItems) ? lastAssistant.stepItems.length : 0,
     });
   }
   return nextState;
@@ -2885,6 +3019,54 @@ function normalizeProcessFields(message: NonNullable<MainPanelState["chatMessage
     iterationSteps,
     stepTranscript,
   };
+}
+
+function mergeStreamProcessFields(input: {
+  lastMessage: NonNullable<MainPanelState["chatMessages"]>[number];
+  stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"];
+  iterationSteps?: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"];
+  reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"];
+  reasoningDelta?: string;
+  text?: string;
+}): void {
+  const { lastMessage, stepItems, iterationSteps, reactEvents, reasoningDelta, text } = input;
+  if (stepItems !== undefined) {
+    lastMessage.stepItems = stepItems;
+  }
+  if (reactEvents !== undefined) {
+    lastMessage.reactEvents = sanitizeReactEventsForUi(reactEvents);
+  }
+  if (iterationSteps !== undefined) {
+    lastMessage.iterationSteps = iterationSteps;
+  }
+
+  const currentSteps = Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps : [];
+  if (reasoningDelta && currentSteps.length > 0) {
+    lastMessage.iterationSteps = currentSteps.map((step, index) =>
+      index === currentSteps.length - 1
+        ? {
+            ...step,
+            thoughtText: `${String(step.thoughtText || "")}${reasoningDelta}`.trim(),
+            status: step.status === "done" ? "done" : "running",
+            streaming: true,
+          }
+        : step
+    );
+    return;
+  }
+
+  if (!reasoningDelta && iterationSteps !== undefined && String(text || "").trim()) {
+    lastMessage.iterationSteps = iterationSteps.map((step, index, arr) =>
+      index === arr.length - 1
+        ? {
+            ...step,
+            thoughtText: String(text || "").trim(),
+            status: step.status === "done" ? "done" : "running",
+            streaming: true,
+          }
+        : step
+    );
+  }
 }
 
 function createPendingAssistantMessage(route: "chat" | "analysis" | "draft"): NonNullable<MainPanelState["chatMessages"]>[number] {

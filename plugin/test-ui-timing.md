@@ -11,6 +11,17 @@ cd plugin
 npm run build
 ```
 
+### 1.1 打开性能诊断日志
+在 EDA 的开发者工具 Console 里先执行：
+```javascript
+localStorage.setItem("lceda_ai.perf_debug", "1");
+```
+
+如需关闭：
+```javascript
+localStorage.removeItem("lceda_ai.perf_debug");
+```
+
 ### 2. 在 EDA 中加载插件
 重新加载或重启 EDA 应用
 
@@ -45,6 +56,24 @@ npm run build
 1. **时间差 < 100ms**：从 `sendChat.state-committed` 到 `renderChat.appended` 的时间差应该很小
 2. **卡片立即可见**：用户点击发送后，立即看到"处理中"的助手卡片
 3. **状态正确**：卡片显示"处理中"状态，内容为"正在思考..."
+
+### 性能日志关注点
+
+开启 `__LCEDA_AI_PERF_DEBUG__` 后，会出现以下日志：
+
+```text
+[LCEDA-AI][runtime] perf.onStreamEvent ...
+[LCEDA-AI][runtime] perf.commitState ...
+[LCEDA-AI][iframe] perf.syncUI ...
+[LCEDA-AI][iframe] perf.renderChat ...
+[LCEDA-AI][iframe] perf.patchMessageDom ...
+[LCEDA-AI][iframe] perf.renderStepsUI ...
+```
+
+请重点观察步骤 5 以后：
+- 哪一类日志的 `durationMs` 开始明显升高
+- 升高时对应的 `contentLength / iterationSteps / renderedStepEntries`
+- 是否是 `syncUI` 总耗时高，还是 `patchMessageDom / renderStepsUI` 单独高
 
 #### ❌ 失败标志：
 1. **延迟 > 500ms**：从点击发送到卡片出现有明显延迟

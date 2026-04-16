@@ -3098,6 +3098,7 @@
     const LOG_PREFIX = "[LCEDA-AI][iframe]";
     // Default: keep console clean. Enable only when debugging UI sync issues.
     const ENABLE_DEBUG_IFRAME_LOGS = false;
+    const PERF_DEBUG_STORAGE_KEY = "lceda_ai.perf_debug";
     
     if (ENABLE_DEBUG_IFRAME_LOGS) {
       console.log(`${LOG_PREFIX} HTML loaded, version: 2.0.0-new-ui`);
@@ -3115,11 +3116,35 @@
     let stickToBottom = true;
     let lastHasStreaming = false;
     let devicePickerBusy = false;
+    let lastDevicePickerOpen = false;
+    let lastAutoScrollAt = 0;
+    const STEP_UI_STREAM_MIN_INTERVAL_MS = 240;
+    const AUTO_SCROLL_MIN_INTERVAL_MS = 140;
     const optimistic = {
       active: false,
       userText: "",
       nodes: /** @type {HTMLElement[]} */ ([]),
     };
+
+    function getPerfNow() {
+      if (typeof performance !== "undefined" && typeof performance.now === "function") {
+        return performance.now();
+      }
+      return Date.now();
+    }
+
+    function isPerfDebugEnabled() {
+      let storageFlag = false;
+      try {
+        storageFlag = localStorage.getItem(PERF_DEBUG_STORAGE_KEY) === "1";
+      } catch {}
+      return Boolean(window.__LCEDA_AI_PERF_DEBUG__) || storageFlag;
+    }
+
+    function logPerf(label, detail) {
+      if (!isPerfDebugEnabled() || typeof console === "undefined") return;
+      console.log(`${LOG_PREFIX} perf.${label}`, detail);
+    }
 
     function getHostRuntime() {
       return window.__LCEDA_AI_ASSISTANT_FRAME_RUNTIME__ || null;
@@ -3268,9 +3293,9 @@
     }
 
     function renderChat(messages) {
+      const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
       const list = document.getElementById("chat-list");
       if (!list) return;
-      updateAssistantPaneHeights();
 
       const finalMessages = Array.isArray(messages) ? messages : [];
       if (finalMessages.length === 0) {
@@ -3357,6 +3382,18 @@
       // Only auto-scroll when user hasn't intentionally scrolled away.
       // (stickToBottom is toggled by the scroll handler below.)
       scrollToBottom(list, stickToBottom);
+      if (isPerfDebugEnabled()) {
+        const lastMessage = finalMessages[finalMessages.length - 1];
+        logPerf("renderChat", {
+          durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+          messageCount: finalMessages.length,
+          hasStreaming,
+          renderedMessageCount,
+          lastRole: lastMessage && lastMessage.role ? lastMessage.role : "",
+          lastContentLength: String(lastMessage && lastMessage.content ? lastMessage.content : "").length,
+          lastIterationSteps: Array.isArray(lastMessage && lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
+        });
+      }
     }
 
     function scrollToBottom(list, force) {
@@ -3364,6 +3401,11 @@
       const scroller = list.parentElement;
       const nearBottom = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight) < 160;
       if (force || nearBottom) {
+        const now = Date.now();
+        if (!force && now - lastAutoScrollAt < AUTO_SCROLL_MIN_INTERVAL_MS) {
+          return;
+        }
+        lastAutoScrollAt = now;
         requestAnimationFrame(() => {
           scroller.scrollTop = scroller.scrollHeight;
           requestAnimationFrame(() => {
@@ -3492,6 +3534,7 @@
         row,
         cardEl: card,
         contentEl: content,
+        streamingTextNode: content.firstChild instanceof Text ? content.firstChild : null,
         topPaneEl: topPane,
         mainPaneEl: null,
         stepsHostEl: stepsHost,
@@ -3507,6 +3550,10 @@
         lastText: message.content || "",
         lastWasMarkdown: false,
         lastSignature: "",
+        lastActionsSignature: "",
+        lastStepEntriesSourceSignature: "",
+        cachedStepEntries: [],
+        lastStepUiRenderAt: 0,
       };
       if (role !== "user") {
         const actionsHost = document.createElement("div");
@@ -3529,11 +3576,17 @@
       const lastStepState = stepStatesCount > 0 ? message.stepStates[stepStatesCount - 1] : null;
       const actionsCount = Array.isArray(message.actions) ? message.actions.length : 0;
       const suggestionsCount = Array.isArray(message.suggestions) ? message.suggestions.length : 0;
+      const content = String(message.content || "");
+      const reportMarkdown = String(message.reportMarkdown || "");
+      const contentTail = content.length > 96 ? content.slice(-96) : content;
+      const reportTail = reportMarkdown.length > 48 ? reportMarkdown.slice(-48) : reportMarkdown;
       return [
         resolveMessageRole(message),
         message.title || "",
-        message.content || "",
-        message.reportMarkdown || "",
+        content.length,
+        contentTail,
+        reportMarkdown.length,
+        reportTail,
         message.streaming ? "1" : "0",
         message.tone || "",
         stepItemsCount,
@@ -3602,6 +3655,46 @@
       });
     }
 
+    function buildActionsSignature(actions) {
+      const list = Array.isArray(actions) ? actions : [];
+      if (list.length === 0) return "0";
+      return list
+        .map((item) => {
+          if (!item || typeof item !== "object") return "";
+          return [
+            String(item.action || ""),
+            String(item.label || ""),
+            String(item.payload || ""),
+          ].join("~");
+        })
+        .join("|");
+    }
+
+    function buildIterationStepsSourceSignature(iterationSteps) {
+      const list = Array.isArray(iterationSteps) ? iterationSteps : [];
+      if (list.length === 0) return "0";
+      const summarizeStep = (step, index) => {
+        const thought = String(step && step.thoughtText ? step.thoughtText : "");
+        const thoughtTail = thought.length > 32 ? thought.slice(-32) : thought;
+        return [
+          step && step.id ? String(step.id) : `idx:${index}`,
+          step && Number.isFinite(step.iteration) ? Number(step.iteration) : "",
+          step && step.status ? String(step.status) : "",
+          thought.length,
+          thoughtTail,
+          step && Array.isArray(step.toolEvents) ? step.toolEvents.length : 0,
+          step && Array.isArray(step.observationTexts) ? step.observationTexts.length : 0,
+        ].join("~");
+      };
+      const lastIndex = list.length - 1;
+      const prevIndex = lastIndex - 1;
+      return [
+        list.length,
+        prevIndex >= 0 ? summarizeStep(list[prevIndex], prevIndex) : "",
+        summarizeStep(list[lastIndex], lastIndex),
+      ].join("|");
+    }
+
     function getAssistantCardLayoutState(input) {
       if (input.contextCompaction) {
         return {
@@ -3630,6 +3723,7 @@
     }
 
     function patchMessageDom(dom, message) {
+      const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
       const role = resolveMessageRole(message);
       if (dom.role !== role) {
         const index = Number(dom.row.dataset.index);
@@ -3674,27 +3768,37 @@
           });
           dom.lastText = signature;
         }
+        dom.streamingTextNode = null;
         dom.lastWasMarkdown = false;
       } else if (nextStreaming) {
         dom.contentEl.classList.remove("structured");
-        // Streaming: render markdown incrementally so tables/lists look like ChatGPT.
+        // Streaming: keep this path cheap. Full markdown re-render on every delta
+        // becomes expensive once the assistant body grows large.
         if (dom.lastWasMarkdown) {
           dom.contentEl.classList.remove("md");
           dom.contentEl.textContent = prevText;
           dom.lastWasMarkdown = false;
+          dom.streamingTextNode = dom.contentEl.firstChild instanceof Text ? dom.contentEl.firstChild : null;
         }
         if (nextText.startsWith(prevText)) {
           const delta = nextText.slice(prevText.length);
           if (delta) {
+            if (!(dom.streamingTextNode instanceof Text) || dom.contentEl.childNodes.length !== 1 || dom.contentEl.firstChild !== dom.streamingTextNode) {
+              dom.contentEl.textContent = prevText;
+              dom.streamingTextNode = dom.contentEl.firstChild instanceof Text ? dom.contentEl.firstChild : null;
+              if (!(dom.streamingTextNode instanceof Text)) {
+                dom.streamingTextNode = document.createTextNode(prevText);
+                dom.contentEl.innerHTML = "";
+                dom.contentEl.appendChild(dom.streamingTextNode);
+              }
+            }
+            dom.streamingTextNode.appendData(delta);
             dom.lastText = nextText;
-            dom.contentEl.classList.add("md");
-            dom.contentEl.innerHTML = renderMarkdown(nextText);
-            dom.lastWasMarkdown = true;
           }
         } else if (prevText !== nextText) {
-          dom.contentEl.classList.add("md");
-          dom.contentEl.innerHTML = renderMarkdown(nextText);
-          dom.lastWasMarkdown = true;
+          dom.contentEl.textContent = nextText;
+          dom.streamingTextNode = dom.contentEl.firstChild instanceof Text ? dom.contentEl.firstChild : null;
+          dom.lastText = nextText;
         }
       } else {
         dom.contentEl.classList.remove("structured");
@@ -3705,6 +3809,7 @@
           dom.contentEl.innerHTML = renderMarkdown(nextText);
           dom.lastWasMarkdown = true;
         }
+        dom.streamingTextNode = null;
       }
 
       if (!(structured && structured.length > 0 && !preferMarkdownOverStructured)) dom.lastText = nextText;
@@ -3721,8 +3826,19 @@
       }
 
       if (role === "assistant") {
-        renderMessageActions(dom, message);
-        const stepEntries = collectStepEntries(message);
+        const nextActionsSignature = buildActionsSignature(message && message.actions);
+        if (dom.lastActionsSignature !== nextActionsSignature) {
+          renderMessageActions(dom, message);
+          dom.lastActionsSignature = nextActionsSignature;
+        }
+
+        const iterationSteps = Array.isArray(message && message.iterationSteps) ? message.iterationSteps : [];
+        const nextStepEntriesSourceSignature = buildIterationStepsSourceSignature(iterationSteps);
+        if (dom.lastStepEntriesSourceSignature !== nextStepEntriesSourceSignature) {
+          dom.cachedStepEntries = mergeStepEntries(dom.cachedStepEntries, iterationSteps);
+          dom.lastStepEntriesSourceSignature = nextStepEntriesSourceSignature;
+        }
+        const stepEntries = Array.isArray(dom.cachedStepEntries) ? dom.cachedStepEntries : [];
         const hadRenderedSteps = Boolean(dom.stepsUI && Array.isArray(dom.stepsUI.events) && dom.stepsUI.events.length > 0);
         if (stepEntries.length > 0 || hadRenderedSteps) {
           const activeUI = simpleEnsureStepsUI(dom, nextStreaming);
@@ -3734,7 +3850,18 @@
           } else if (nextStreaming && !activeUI.userToggled) {
             activeUI.open = true;
           }
-          renderStepsUI(activeUI);
+          const now = Date.now();
+          const shouldThrottleStepUi =
+            nextStreaming &&
+            dom.lastStepUiRenderAt > 0 &&
+            now - dom.lastStepUiRenderAt < STEP_UI_STREAM_MIN_INTERVAL_MS;
+          if (!shouldThrottleStepUi) {
+            renderStepsUI(activeUI);
+            dom.lastStepUiRenderAt = now;
+          }
+        }
+        if (!nextStreaming) {
+          dom.lastStepUiRenderAt = 0;
         }
       }
 
@@ -3757,6 +3884,17 @@
 
       dom.isStreaming = nextStreaming;
       dom.lastSignature = buildMessageSignature(message);
+      if (isPerfDebugEnabled() && role === "assistant") {
+        const stepEntries = Array.isArray(dom.cachedStepEntries) ? dom.cachedStepEntries : [];
+        logPerf("patchMessageDom", {
+          durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+          streaming: nextStreaming,
+          contentLength: String(message && message.content ? message.content : "").length,
+          iterationSteps: Array.isArray(message && message.iterationSteps) ? message.iterationSteps.length : 0,
+          renderedStepEntries: stepEntries.length,
+          hiddenContent: Boolean(dom.contentEl && dom.contentEl.hidden),
+        });
+      }
     }
 
     function formatSimpleStepLine(event) {
@@ -3773,33 +3911,68 @@
       const iterationSteps = Array.isArray(message.iterationSteps) ? message.iterationSteps : [];
       if (iterationSteps.length > 0) {
         return iterationSteps
-          .map((step) => ({
-            id: String(step.id || `react-iteration-${step.iteration}`),
-            iteration: Number(step.iteration || 0),
-            kind: "thought",
-            status: step.status || "pending",
-            stepKind: "llm",
-            title: "",
-            meta: "",
-            text: cleanTimelineText(step.thoughtText || ""),
-            tools: Array.isArray(step.toolEvents)
-              ? step.toolEvents
-                  .map((tool) => ({
-                    name: formatToolLabel(tool.label || tool.toolName || ""),
-                    rawName: String(tool.toolName || tool.label || ""),
-                    status: tool.status || "pending",
-                  }))
-                  .filter((tool) => !shouldHideToolChip(tool.rawName, tool.name))
-              : [],
-            observations: Array.isArray(step.observationTexts)
-              ? step.observationTexts
-                  .map((item) => formatObservationText(item))
-                  .filter((item) => !shouldHideObservationText(item))
-              : [],
-          }))
+          .map(toStepEntry)
           .filter((item) => item.text || item.tools.length > 0 || item.observations.length > 0);
       }
       return [];
+    }
+
+    function toStepEntry(step) {
+      return {
+        id: String(step.id || `react-iteration-${step.iteration}`),
+        iteration: Number(step.iteration || 0),
+        kind: "thought",
+        status: step.status || "pending",
+        stepKind: "llm",
+        title: "",
+        meta: "",
+        text: cleanTimelineText(step.thoughtText || ""),
+        tools: Array.isArray(step.toolEvents)
+          ? step.toolEvents
+              .map((tool) => ({
+                name: formatToolLabel(tool.label || tool.toolName || ""),
+                rawName: String(tool.toolName || tool.label || ""),
+                status: tool.status || "pending",
+              }))
+              .filter((tool) => !shouldHideToolChip(tool.rawName, tool.name))
+          : [],
+        observations: Array.isArray(step.observationTexts)
+          ? step.observationTexts
+              .map((item) => formatObservationText(item))
+              .filter((item) => !shouldHideObservationText(item))
+          : [],
+      };
+    }
+
+    function mergeStepEntries(previousEntries, iterationSteps) {
+      const prev = Array.isArray(previousEntries) ? previousEntries : [];
+      const nextSteps = Array.isArray(iterationSteps) ? iterationSteps : [];
+      if (nextSteps.length === 0) return [];
+      if (prev.length === 0) return collectStepEntries({ iterationSteps: nextSteps });
+      if (nextSteps.length === prev.length) {
+        const lastIndex = nextSteps.length - 1;
+        const lastStep = nextSteps[lastIndex];
+        const lastEntry = toStepEntry(lastStep);
+        const expectedId = String(lastStep && lastStep.id ? lastStep.id : `react-iteration-${lastStep && lastStep.iteration}`);
+        if ((prev[lastIndex] && prev[lastIndex].id) === expectedId) {
+          const nextEntries = prev.slice();
+          if (lastEntry.text || lastEntry.tools.length > 0 || lastEntry.observations.length > 0) {
+            nextEntries[lastIndex] = lastEntry;
+            return nextEntries;
+          }
+          nextEntries.pop();
+          return nextEntries;
+        }
+      }
+      if (nextSteps.length === prev.length + 1) {
+        const nextEntries = prev.slice();
+        const appended = toStepEntry(nextSteps[nextSteps.length - 1]);
+        if (appended.text || appended.tools.length > 0 || appended.observations.length > 0) {
+          nextEntries.push(appended);
+        }
+        return nextEntries;
+      }
+      return collectStepEntries({ iterationSteps: nextSteps });
     }
 
     function formatStepKindLabel(kind) {
@@ -4040,6 +4213,7 @@
           statusMemory: Object.create(null), // stepKey -> status
           runtimeMemory: Object.create(null), // stepKey -> startedAt
           lastEntriesSignature: "",
+          nodeMap: new Map(),
         };
 
        ui.btn.addEventListener("click", () => {
@@ -4059,28 +4233,33 @@
       return `entry:${index}`;
     }
 
-    function buildStepEntriesSignature(entries) {
+    function buildStepEntriesSignature(entries, latestRunningIndex) {
       const list = Array.isArray(entries) ? entries : [];
       if (list.length === 0) return "0";
-      return list
-        .map((entry, index) => [
-          getTimelineEntryKey(entry, index),
-          normalizeTimelineStatus(entry && entry.status),
-          cleanTimelineText(entry && entry.text ? entry.text : "").length,
-          cleanTimelineText(entry && entry.title ? entry.title : "").length,
-          Array.isArray(entry && entry.tools) ? entry.tools.length : 0,
-          Array.isArray(entry && entry.observations) ? entry.observations.length : 0,
-        ].join("~"))
-        .join("|");
+      const summarizeEntry = (entry, index, trackBody) => [
+        getTimelineEntryKey(entry, index),
+        normalizeTimelineStatus(entry && entry.status),
+        trackBody ? String(entry && entry.text ? entry.text : "") : "",
+        trackBody ? String(entry && entry.title ? entry.title : "") : "",
+        Array.isArray(entry && entry.tools) ? entry.tools.length : 0,
+        Array.isArray(entry && entry.observations) ? entry.observations.length : 0,
+      ].join("~");
+      const lastIndex = list.length - 1;
+      const prevIndex = lastIndex - 1;
+      return [
+        list.length,
+        prevIndex >= 0 ? summarizeEntry(list[prevIndex], prevIndex, prevIndex === latestRunningIndex) : "",
+        summarizeEntry(list[lastIndex], lastIndex, lastIndex === latestRunningIndex),
+      ].join("|");
     }
 
     function renderStepsUI(ui) {
+      const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
       const hasLines = ui.lines.length > 0;
       const rawEntries = Array.isArray(ui.events) && ui.events.length > 0
         ? ui.events
         : [];
       const entries = Array.isArray(rawEntries) ? rawEntries : [];
-      const nextEntriesSignature = buildStepEntriesSignature(entries);
       const latestRunningIndex = (() => {
         for (let index = entries.length - 1; index >= 0; index -= 1) {
           if (normalizeTimelineStatus(entries[index] && entries[index].status) === "running") {
@@ -4089,21 +4268,13 @@
         }
         return -1;
       })();
+      const nextEntriesSignature = buildStepEntriesSignature(entries, latestRunningIndex);
       if (ui.lastEntriesSignature !== nextEntriesSignature) {
-        ui.body.innerHTML = "";
-        entries.forEach((entry, index) => {
-          ui.body.appendChild(buildTimelineNode(entry, ui, {
-            isLatestRunning: index === latestRunningIndex,
-          }));
-        });
+        patchTimelineNodes(ui, entries, latestRunningIndex);
         ui.lastEntriesSignature = nextEntriesSignature;
         if (ui.streaming) {
           requestAnimationFrame(() => {
             ui.body.scrollTop = ui.body.scrollHeight;
-            const lastNode = ui.body.lastElementChild;
-            if (lastNode && typeof lastNode.scrollIntoView === "function") {
-              lastNode.scrollIntoView({ block: "end" });
-            }
           });
         }
       }
@@ -4117,6 +4288,99 @@
       }
       ui.btn.textContent = "执行过程";
       ui.btn.setAttribute("data-open", hasLines && ui.open ? "true" : "false");
+      if (isPerfDebugEnabled()) {
+        logPerf("renderStepsUI", {
+          durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+          lineCount: ui.lines.length,
+          entryCount: entries.length,
+          latestRunningIndex,
+          streaming: Boolean(ui.streaming),
+          open: Boolean(ui.open),
+        });
+      }
+    }
+
+    function patchTimelineNodes(ui, entries, latestRunningIndex) {
+      const nextNodeMap = new Map();
+      entries.forEach((entry, index) => {
+        const key = getTimelineEntryKey(entry, index);
+        const signature = buildTimelineNodeSignature(entry, index === latestRunningIndex);
+        const cached = ui.nodeMap.get(key);
+        let node = cached && cached.node ? cached.node : null;
+        if (node && cached && cached.signature !== signature && canPatchTimelineNodeInPlace(cached, entry, index === latestRunningIndex)) {
+          patchTimelineNodeInPlace(node, entry, ui, {
+            isLatestRunning: index === latestRunningIndex,
+          });
+        } else if (!node || !cached || cached.signature !== signature) {
+          const nextNode = buildTimelineNode(entry, ui, {
+            isLatestRunning: index === latestRunningIndex,
+          });
+          if (node && node.parentNode === ui.body) {
+            ui.body.replaceChild(nextNode, node);
+          } else {
+            ui.body.appendChild(nextNode);
+          }
+          node = nextNode;
+        } else if (node.parentNode !== ui.body) {
+          ui.body.appendChild(node);
+        }
+        nextNodeMap.set(key, { node, signature });
+      });
+
+      ui.nodeMap.forEach((cached, key) => {
+        if (nextNodeMap.has(key)) return;
+        if (cached && cached.node && cached.node.parentNode === ui.body) {
+          cached.node.remove();
+        }
+      });
+
+      entries.forEach((entry, index) => {
+        const key = getTimelineEntryKey(entry, index);
+        const cached = nextNodeMap.get(key);
+        const expectedNode = cached && cached.node ? cached.node : null;
+        if (!expectedNode) return;
+        const currentNode = ui.body.children[index];
+        if (currentNode !== expectedNode) {
+          ui.body.insertBefore(expectedNode, currentNode || null);
+        }
+      });
+
+      ui.nodeMap = nextNodeMap;
+    }
+
+    function buildTimelineNodeSignature(entry, isLatestRunning) {
+      const statusClass = normalizeTimelineStatus(entry && entry.status);
+      const stepKey = String(entry && (entry.stepKind || entry.title || entry.kind || ""));
+      return [
+        entry && entry.kind ? entry.kind : "",
+        statusClass,
+        isLatestRunning ? "1" : "0",
+        stepKey,
+        Number.isFinite(entry && entry.iteration) ? entry.iteration : "",
+        entry && entry.isSummary ? "1" : "0",
+        buildTimelineBodySignature(entry, isLatestRunning || statusClass === "running"),
+      ].join("|");
+    }
+
+    function buildTimelineBodySignature(entry, trackBody) {
+      const text = String(entry && entry.text ? entry.text : "");
+      const title = String(entry && entry.title ? entry.title : "");
+      return [
+        trackBody ? "1" : "0",
+        text.length,
+        text.length > 48 ? text.slice(-48) : text,
+        title.length,
+        title.length > 24 ? title.slice(-24) : title,
+        Array.isArray(entry && entry.tools) ? entry.tools.length : 0,
+        Array.isArray(entry && entry.observations) ? entry.observations.length : 0,
+      ].join("~");
+    }
+
+    function canPatchTimelineNodeInPlace(cached, entry, isLatestRunning) {
+      const meta = cached && cached.meta ? cached.meta : null;
+      if (!meta || !meta.patchable) return false;
+      const statusClass = normalizeTimelineStatus(entry && entry.status);
+      return Boolean(isLatestRunning || statusClass === "running" || meta.statusClass === "running");
     }
 
     function formatRunningElapsed(startedAt) {
@@ -4134,6 +4398,42 @@
       node.className = "assistant-step-node";
 
       const marker = document.createElement("div");
+      const card = document.createElement("div");
+      const label = Number.isFinite(entry.iteration) ? document.createElement("div") : null;
+      const text = document.createElement("div");
+      applyTimelineNodeState(node, marker, card, label, text, entry, ui, options);
+      node.appendChild(marker);
+      if (label) {
+        card.appendChild(label);
+      }
+      const bodyText = formatTimelineBody(entry);
+      if (bodyText) {
+        text.className = `assistant-step-text${entry && entry.isSummary ? " summary" : ""} compact`;
+        text.textContent = bodyText;
+        card.appendChild(text);
+      }
+      node.appendChild(card);
+      node.__timelineRefs = { marker, card, label, text };
+      return node;
+    }
+
+    function patchTimelineNodeInPlace(node, entry, ui, options) {
+      const refs = node && node.__timelineRefs ? node.__timelineRefs : null;
+      if (!refs) return;
+      applyTimelineNodeState(node, refs.marker, refs.card, refs.label, refs.text, entry, ui, options);
+      const bodyText = formatTimelineBody(entry);
+      if (bodyText) {
+        refs.text.className = `assistant-step-text${entry && entry.isSummary ? " summary" : ""} compact`;
+        refs.text.textContent = bodyText;
+        if (refs.text.parentNode !== refs.card) {
+          refs.card.appendChild(refs.text);
+        }
+      } else if (refs.text.parentNode === refs.card) {
+        refs.text.remove();
+      }
+    }
+
+    function applyTimelineNodeState(node, marker, card, label, text, entry, ui, options) {
       const statusClass = normalizeTimelineStatus(entry && entry.status);
       const stepKey = String(entry && (entry.stepKind || entry.title || entry.kind || ""));
       const previousStatus = stepKey && ui && ui.statusMemory ? ui.statusMemory[stepKey] : undefined;
@@ -4148,33 +4448,15 @@
         }
       }
       marker.className = `assistant-step-marker ${entry.kind || "observation"} ${statusClass}${options && options.isLatestRunning ? " active-running" : ""}${isRecentlyDone ? " recently-done" : ""}`;
-      node.appendChild(marker);
-
-      const card = document.createElement("div");
       card.className = `assistant-step-card ${entry.kind || "observation"} ${statusClass}${isRecentlyDone ? " recently-done" : ""}`;
-
-      if (Number.isFinite(entry.iteration)) {
-        const label = document.createElement("div");
+      if (label) {
         label.className = "assistant-step-label";
         label.textContent = `步骤 ${entry.iteration}`;
-        card.appendChild(label);
-      }
-
-      const bodyText = formatTimelineBody(entry);
-      if (bodyText) {
-        const text = document.createElement("div");
-        const compactClass = " compact";
-        text.className = `assistant-step-text${entry && entry.isSummary ? " summary" : ""}${compactClass}`;
-        text.textContent = bodyText;
-        card.appendChild(text);
       }
 
       if (stepKey && ui && ui.statusMemory) {
         ui.statusMemory[stepKey] = statusClass;
       }
-
-      node.appendChild(card);
-      return node;
     }
 
     function formatTimelineBody(entry) {
@@ -4183,7 +4465,7 @@
       const rawTitle = cleanTimelineText(entry.title || "");
       if (entry.kind === "thought") {
         if (rawText) {
-          return rawText;
+          return summarizeTimelineThought(rawText, normalizeTimelineStatus(entry.status));
         }
         const lines = [];
         if (Array.isArray(entry.tools)) {
@@ -4216,6 +4498,14 @@
         return rawText || rawTitle;
       }
       return rawText || rawTitle;
+    }
+
+    function summarizeTimelineThought(text, status) {
+      const raw = cleanTimelineText(text);
+      if (!raw) {
+        return status === "running" ? "正在整理当前步骤..." : "";
+      }
+      return raw;
     }
 
     function normalizeTimelineStatus(status) {
@@ -4768,7 +5058,7 @@
       });
     }
 
-    const UI_SYNC_MIN_INTERVAL_MS = 200;
+    const UI_SYNC_MIN_INTERVAL_MS = 120;
     let scheduledUiSyncTimer = null;
     let lastUiSyncAt = 0;
     let scheduledUiSyncForce = false;
@@ -4813,6 +5103,7 @@
     }
 
     function syncUI(forceUpdate = false) {
+      const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
       const state = readState();
       if (!state) return;
 
@@ -4824,7 +5115,7 @@
       lastSeenStateVersion = version;
       currentState = state;
       
-       const isRunning = state.agentRunState === "planning" ||
+        const isRunning = state.agentRunState === "planning" ||
                         state.agentRunState === "running_tools" ||
                         state.agentRunState === "waiting_llm";
        
@@ -4850,9 +5141,17 @@
 
       // Render messages
       renderChat(state.chatMessages || []);
-      syncDevicePicker(state);
+      const pickerOpen = Boolean(state && state.devicePicker && state.devicePicker.open);
+      if (!isRunning || pickerOpen || lastDevicePickerOpen) {
+        syncDevicePicker(state);
+      }
+      lastDevicePickerOpen = pickerOpen;
 
-      syncSettingsPanel(state);
+      const settingsDrawer = document.getElementById("settings-drawer");
+      const settingsOpen = Boolean(settingsDrawer && settingsDrawer.classList.contains("open"));
+      if (!isRunning || settingsOpen) {
+        syncSettingsPanel(state);
+      }
       maybeToast(state);
 
       if (!isRunning && syncTimer) {
@@ -4862,6 +5161,19 @@
           clearInterval(runningTicker);
           runningTicker = null;
         }
+      }
+      if (isPerfDebugEnabled()) {
+        const messages = state.chatMessages || [];
+        const lastMessage = messages[messages.length - 1];
+        logPerf("syncUI", {
+          durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+          version,
+          forceUpdate,
+          agentRunState: state.agentRunState,
+          messageCount: messages.length,
+          lastContentLength: String(lastMessage && lastMessage.content ? lastMessage.content : "").length,
+          lastIterationSteps: Array.isArray(lastMessage && lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
+        });
       }
     }
 
@@ -14975,15 +15287,14 @@ ${summarizeDraftRationale(preview.rationale)}`
   var GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
   var FRAME_STATE_EVENT = "lceda-ai-assistant:state";
   var PANEL_STATE_STORAGE_KEY = "lceda_ai.panel.last_state";
+  var PERF_DEBUG_STORAGE_KEY = "lceda_ai.perf_debug";
   var PANEL_SESSION_INDEX_STORAGE_KEY = "lceda_ai.panel.session_index";
   var PANEL_SESSION_STATE_PREFIX = "lceda_ai.panel.session.";
   var MAX_SESSION_HISTORY = 20;
   var LOG_PREFIX = "[LCEDA-AI][runtime]";
   var ENABLE_VERBOSE_RUNTIME_LOGS = false;
   var ENABLE_STREAM_STEP_DEBUG = typeof globalThis !== "undefined" && Boolean(globalThis.__LCEDA_AI_STREAM_DEBUG__);
-  var STREAM_COMMIT_MIN_INTERVAL_MS = 220;
-  var STREAMING_ASSISTANT_CONTENT_MAX_CHARS = 3200;
-  var STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE = "\n\n[\u539F\u59CB\u6D41\u5F0F\u5185\u5BB9\u8FC7\u957F\uFF0C\u5DF2\u622A\u65AD\u663E\u793A\uFF0C\u8BF7\u7B49\u5F85\u6700\u7EC8\u7ED3\u679C\u3002]";
+  var STREAM_COMMIT_MIN_INTERVAL_MS = 120;
   var PERSIST_PANEL_STATE_THROTTLE_MS = 600;
   var CONTEXT_COMPACTION_TRIGGER_TURNS = 20;
   var CONTEXT_COMPACTION_KEEP_RECENT_TURNS = 3;
@@ -14991,6 +15302,27 @@ ${summarizeDraftRationale(preview.rationale)}`
   var CONTEXT_COMPACTION_TITLE = "\u4E0A\u4E0B\u6587\u4E0B\u538B\u7F29";
   var persistPanelTimer = null;
   var pendingPersist = null;
+  function isPerfDebugEnabled() {
+    let storageFlag = false;
+    try {
+      storageFlag = typeof localStorage !== "undefined" && localStorage.getItem(PERF_DEBUG_STORAGE_KEY) === "1";
+    } catch {
+      storageFlag = false;
+    }
+    return typeof globalThis !== "undefined" && Boolean(globalThis.__LCEDA_AI_PERF_DEBUG__) || storageFlag;
+  }
+  function getPerfNow() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+    return Date.now();
+  }
+  function logPerf(label, detail) {
+    if (!isPerfDebugEnabled() || typeof console === "undefined") {
+      return;
+    }
+    console.log(`${LOG_PREFIX} perf.${label}`, detail);
+  }
   function planContextCompaction(messages) {
     const sanitized = sanitizeChatMessages(messages).filter((message) => !message.streaming);
     const turnIndices = sanitized.map((message, index) => message.role === "user" ? index : -1).filter((index) => index >= 0);
@@ -15504,13 +15836,51 @@ ${content}`;
     return lines.length > 0 ? lines : void 0;
   }
   function clampStreamingAssistantContent(previous, deltaOrNext) {
-    const merged = `${String(previous || "")}${String(deltaOrNext || "")}`;
-    if (merged.length <= STREAMING_ASSISTANT_CONTENT_MAX_CHARS) {
-      return merged;
+    return `${String(previous || "")}${String(deltaOrNext || "")}`;
+  }
+  function shouldMirrorStreamingTextToAssistantBody(input) {
+    if (input.route === "chat") {
+      return true;
     }
-    const maxBodyLength = STREAMING_ASSISTANT_CONTENT_MAX_CHARS - STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE.length;
-    const clipped = merged.slice(0, Math.max(0, maxBodyLength)).trimEnd();
-    return `${clipped}${STREAMING_ASSISTANT_CONTENT_TRUNCATION_NOTICE}`;
+    return !(input.hasStepItems || input.hasIterationSteps || input.hasReactEvents || input.hasReasoningDelta);
+  }
+  function shouldApplyStreamingReactEvents(input) {
+    if (!Array.isArray(input.reactEvents) || input.reactEvents.length === 0) {
+      return false;
+    }
+    if (Array.isArray(input.stepItems) && input.stepItems.length > 0) {
+      return false;
+    }
+    if (Array.isArray(input.iterationSteps) && input.iterationSteps.length > 0) {
+      return false;
+    }
+    return true;
+  }
+  function buildStreamingProcessSignature(input) {
+    const lastStepItem = Array.isArray(input.stepItems) && input.stepItems.length > 0 ? input.stepItems[input.stepItems.length - 1] : void 0;
+    const lastIteration = Array.isArray(input.iterationSteps) && input.iterationSteps.length > 0 ? input.iterationSteps[input.iterationSteps.length - 1] : void 0;
+    const lastReactEvent = Array.isArray(input.reactEvents) && input.reactEvents.length > 0 ? input.reactEvents[input.reactEvents.length - 1] : void 0;
+    const lastStepState = Array.isArray(input.stepStates) && input.stepStates.length > 0 ? input.stepStates[input.stepStates.length - 1] : void 0;
+    return [
+      Array.isArray(input.stepItems) ? input.stepItems.length : 0,
+      lastStepItem?.id || "",
+      lastStepItem?.status || "",
+      String(lastStepItem?.text || "").length,
+      Array.isArray(input.iterationSteps) ? input.iterationSteps.length : 0,
+      lastIteration?.id || "",
+      lastIteration?.status || "",
+      String(lastIteration?.thoughtText || "").length,
+      Array.isArray(lastIteration?.toolEvents) ? lastIteration.toolEvents.length : 0,
+      Array.isArray(lastIteration?.observationTexts) ? lastIteration.observationTexts.length : 0,
+      Array.isArray(input.reactEvents) ? input.reactEvents.length : 0,
+      lastReactEvent?.kind || "",
+      lastReactEvent?.status || "",
+      String(lastReactEvent?.text || "").length,
+      Array.isArray(input.stepStates) ? input.stepStates.length : 0,
+      lastStepState?.kind || "",
+      lastStepState?.status || "",
+      input.workingMemory ? JSON.stringify(input.workingMemory) : ""
+    ].join("|");
   }
   function getAssistantRuntime() {
     const runtime = globalThis;
@@ -16384,17 +16754,32 @@ ${content}`;
             adapter,
             signal: internals.activeTurnAbortController.signal,
             onStreamEvent: (event) => {
+              const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
               if (internals.activeTurnId !== turnId) return;
               touchTurnActivity?.();
               const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
               const sanitizedText = stripFinalControlLikeText(event.text);
               const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
-              const sanitizedReactEvents = sanitizeReactEventsForUi(event.reactEvents);
+              const shouldKeepReactEvents = shouldApplyStreamingReactEvents({
+                reactEvents: event.reactEvents,
+                stepItems: event.stepItems,
+                iterationSteps: event.iterationSteps
+              });
+              const sanitizedReactEvents = shouldKeepReactEvents ? sanitizeReactEventsForUi(event.reactEvents) : void 0;
               const messages2 = current.chatMessages ?? [];
               const lastMessage = messages2[messages2.length - 1];
               if (!lastMessage || lastMessage.role !== "assistant") {
                 return;
               }
+              const previousDetail = String(current.agentRunDetail || "");
+              const previousContent = String(lastMessage.content || "");
+              const previousProcessSignature = buildStreamingProcessSignature({
+                stepItems: lastMessage.stepItems,
+                iterationSteps: lastMessage.iterationSteps,
+                reactEvents: lastMessage.reactEvents,
+                stepStates: lastMessage.stepStates,
+                workingMemory: lastMessage.workingMemory
+              });
               if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
                 console.log("[LCEDA-AI][stream-debug] onStreamEvent.before", {
                   stage: event.stage,
@@ -16415,48 +16800,32 @@ ${content}`;
               if (event.stage === "llm") {
                 lastMessage.streaming = true;
                 lastMessage.title = event.route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : event.route === "analysis" ? "\u5206\u6790\u4E2D" : "\u5904\u7406\u4E2D";
-                if (lastMessage.content === "\u6B63\u5728\u601D\u8003...") {
+                const shouldMirrorTextToBody = shouldMirrorStreamingTextToAssistantBody({
+                  route: event.route,
+                  hasStepItems: event.stepItems !== void 0 && Boolean(event.stepItems?.length),
+                  hasIterationSteps: event.iterationSteps !== void 0 && Boolean(event.iterationSteps?.length),
+                  hasReactEvents: sanitizedReactEvents !== void 0 && Boolean(sanitizedReactEvents?.length),
+                  hasReasoningDelta: Boolean(sanitizedReasoningDelta)
+                });
+                if (shouldMirrorTextToBody && lastMessage.content === "\u6B63\u5728\u601D\u8003...") {
                   lastMessage.content = "";
                 }
-                if (sanitizedTextDelta) {
+                if (shouldMirrorTextToBody && sanitizedTextDelta) {
                   lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", sanitizedTextDelta);
-                } else if (sanitizedText !== void 0 && String(sanitizedText).trim()) {
+                } else if (shouldMirrorTextToBody && sanitizedText !== void 0 && String(sanitizedText).trim()) {
                   lastMessage.content = clampStreamingAssistantContent("", sanitizedText);
-                }
-                const mergedProcessSource = {
-                  ...lastMessage,
-                  stepItems: event.stepItems ?? lastMessage.stepItems,
-                  iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
-                  reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents
-                };
-                if (sanitizedReasoningDelta) {
-                  const existingSteps = Array.isArray(mergedProcessSource.iterationSteps) ? mergedProcessSource.iterationSteps.slice() : [];
-                  const nextSteps = existingSteps.length > 0 ? existingSteps.map(
-                    (step, index) => index === existingSteps.length - 1 ? {
-                      ...step,
-                      thoughtText: `${String(step.thoughtText || "")}${sanitizedReasoningDelta}`.trim(),
-                      status: step.status === "done" ? "done" : "running",
-                      streaming: true
-                    } : step
-                  ) : existingSteps;
-                  mergedProcessSource.iterationSteps = nextSteps;
-                }
-                if (!sanitizedReasoningDelta && event.iterationSteps !== void 0 && String(sanitizedText || "").trim()) {
-                  mergedProcessSource.iterationSteps = event.iterationSteps.map(
-                    (step, index, arr) => index === arr.length - 1 ? {
-                      ...step,
-                      thoughtText: String(sanitizedText || "").trim(),
-                      status: step.status === "done" ? "done" : "running",
-                      streaming: true
-                    } : step
-                  );
+                } else if (!shouldMirrorTextToBody && lastMessage.content === "\u6B63\u5728\u601D\u8003...") {
+                  lastMessage.content = "";
                 }
                 if (event.stepItems !== void 0 || event.iterationSteps !== void 0 || sanitizedReactEvents !== void 0 || sanitizedReasoningDelta) {
-                  const normalizedStreamProcess = normalizeProcessFields(mergedProcessSource);
-                  lastMessage.stepItems = normalizedStreamProcess.stepItems;
-                  lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
-                  lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
-                  lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
+                  mergeStreamProcessFields({
+                    lastMessage,
+                    stepItems: event.stepItems,
+                    iterationSteps: event.iterationSteps,
+                    reactEvents: sanitizedReactEvents,
+                    reasoningDelta: sanitizedReasoningDelta,
+                    text: sanitizedText
+                  });
                 }
                 if (event.stepStates) {
                   lastMessage.stepStates = event.stepStates;
@@ -16468,16 +16837,12 @@ ${content}`;
                 lastMessage.streaming = true;
                 lastMessage.title = event.route === "draft" ? "\u8349\u6848\u751F\u6210\u4E2D" : "\u5206\u6790\u4E2D";
                 if (event.stepItems !== void 0 || event.iterationSteps !== void 0 || sanitizedReactEvents !== void 0) {
-                  const normalizedStreamProcess = normalizeProcessFields({
-                    ...lastMessage,
-                    stepItems: event.stepItems ?? lastMessage.stepItems,
-                    iterationSteps: event.iterationSteps ?? lastMessage.iterationSteps,
-                    reactEvents: sanitizedReactEvents ?? lastMessage.reactEvents
+                  mergeStreamProcessFields({
+                    lastMessage,
+                    stepItems: event.stepItems,
+                    iterationSteps: event.iterationSteps,
+                    reactEvents: sanitizedReactEvents
                   });
-                  lastMessage.stepItems = normalizedStreamProcess.stepItems;
-                  lastMessage.iterationSteps = normalizedStreamProcess.iterationSteps;
-                  lastMessage.reactEvents = normalizedStreamProcess.reactEvents;
-                  lastMessage.stepTranscript = normalizedStreamProcess.stepTranscript;
                 }
                 if (event.stepStates) {
                   lastMessage.stepStates = event.stepStates;
@@ -16485,6 +16850,19 @@ ${content}`;
                 if (event.workingMemory) {
                   lastMessage.workingMemory = event.workingMemory;
                 }
+              }
+              const nextProcessSignature = buildStreamingProcessSignature({
+                stepItems: lastMessage.stepItems,
+                iterationSteps: lastMessage.iterationSteps,
+                reactEvents: lastMessage.reactEvents,
+                stepStates: lastMessage.stepStates,
+                workingMemory: lastMessage.workingMemory
+              });
+              const contentChanged = previousContent !== String(lastMessage.content || "");
+              const processChanged = previousProcessSignature !== nextProcessSignature;
+              const detailChanged = previousDetail !== String(current.agentRunDetail || "");
+              if (!contentChanged && !processChanged && !detailChanged) {
+                return;
               }
               if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
                 console.log("[LCEDA-AI][stream-debug] onStreamEvent.after", {
@@ -16498,6 +16876,20 @@ ${content}`;
                     iterationSteps: lastMessage.iterationSteps,
                     reactEvents: lastMessage.reactEvents
                   }
+                });
+              }
+              if (isPerfDebugEnabled()) {
+                logPerf("onStreamEvent", {
+                  route: event.route,
+                  stage: event.stage,
+                  durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+                  textDeltaLength: String(sanitizedTextDelta || "").length,
+                  textLength: String(sanitizedText || "").length,
+                  reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+                  stepItems: Array.isArray(lastMessage.stepItems) ? lastMessage.stepItems.length : 0,
+                  iterationSteps: Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
+                  reactEvents: Array.isArray(lastMessage.reactEvents) ? lastMessage.reactEvents.length : 0,
+                  contentLength: String(lastMessage.content || "").length
                 });
               }
               scheduleTurnCommit(false);
@@ -17112,6 +17504,7 @@ ${content}`;
     }
   }
   function commitState(internals, state, storage) {
+    const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
     const isRunning = state.agentRunState === "planning" || state.agentRunState === "running_tools" || state.agentRunState === "waiting_llm";
     if (!isRunning && Array.isArray(state.chatMessages)) {
       let clearedCount = 0;
@@ -17137,7 +17530,9 @@ ${content}`;
     } catch {
     }
     if (storage) {
-      schedulePersistPanelState(storage, nextState, !isRunning);
+      if (!isRunning) {
+        schedulePersistPanelState(storage, nextState, true);
+      }
     }
     try {
       const runtime = globalThis;
@@ -17156,6 +17551,20 @@ ${content}`;
         messageCount: nextState.chatMessages?.length ?? 0,
         streamingCount,
         detail: nextState.agentRunDetail
+      });
+    }
+    if (isPerfDebugEnabled()) {
+      const messages = nextState.chatMessages ?? [];
+      const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+      logPerf("commitState", {
+        durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+        version: nextState.__stateVersion,
+        agentRunState: nextState.agentRunState,
+        messageCount: messages.length,
+        contentLength: String(lastAssistant?.content || "").length,
+        iterationSteps: Array.isArray(lastAssistant?.iterationSteps) ? lastAssistant.iterationSteps.length : 0,
+        reactEvents: Array.isArray(lastAssistant?.reactEvents) ? lastAssistant.reactEvents.length : 0,
+        stepItems: Array.isArray(lastAssistant?.stepItems) ? lastAssistant.stepItems.length : 0
       });
     }
     return nextState;
@@ -17293,6 +17702,40 @@ ${content}`;
       iterationSteps,
       stepTranscript
     };
+  }
+  function mergeStreamProcessFields(input) {
+    const { lastMessage, stepItems, iterationSteps, reactEvents, reasoningDelta, text } = input;
+    if (stepItems !== void 0) {
+      lastMessage.stepItems = stepItems;
+    }
+    if (reactEvents !== void 0) {
+      lastMessage.reactEvents = sanitizeReactEventsForUi(reactEvents);
+    }
+    if (iterationSteps !== void 0) {
+      lastMessage.iterationSteps = iterationSteps;
+    }
+    const currentSteps = Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps : [];
+    if (reasoningDelta && currentSteps.length > 0) {
+      lastMessage.iterationSteps = currentSteps.map(
+        (step, index) => index === currentSteps.length - 1 ? {
+          ...step,
+          thoughtText: `${String(step.thoughtText || "")}${reasoningDelta}`.trim(),
+          status: step.status === "done" ? "done" : "running",
+          streaming: true
+        } : step
+      );
+      return;
+    }
+    if (!reasoningDelta && iterationSteps !== void 0 && String(text || "").trim()) {
+      lastMessage.iterationSteps = iterationSteps.map(
+        (step, index, arr) => index === arr.length - 1 ? {
+          ...step,
+          thoughtText: String(text || "").trim(),
+          status: step.status === "done" ? "done" : "running",
+          streaming: true
+        } : step
+      );
+    }
   }
   function createPendingAssistantMessage(route) {
     return {

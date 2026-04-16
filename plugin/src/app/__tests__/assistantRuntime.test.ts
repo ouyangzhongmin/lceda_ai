@@ -19,6 +19,10 @@ import {
   inferDraftComponentRole,
   mergeAssistantFinalMessage,
   normalizeDevicePickerCandidates,
+  isPerfDebugEnabled,
+  buildStreamingProcessSignature,
+  shouldApplyStreamingReactEvents,
+  shouldMirrorStreamingTextToAssistantBody,
   stripFinalControlLikeText,
   shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
@@ -498,11 +502,135 @@ test("clampStreamingAssistantContent keeps short streamed text unchanged", () =>
   assert.equal(next, text);
 });
 
-test("clampStreamingAssistantContent truncates oversized streamed text and appends a notice", () => {
+test("shouldMirrorStreamingTextToAssistantBody keeps natural chat streaming in the assistant body", () => {
+  assert.equal(
+    shouldMirrorStreamingTextToAssistantBody({
+      route: "chat",
+      hasStepItems: true,
+      hasIterationSteps: true,
+      hasReactEvents: true,
+      hasReasoningDelta: true,
+    }),
+    true
+  );
+});
+
+test("shouldMirrorStreamingTextToAssistantBody suppresses duplicate body streaming for draft reasoning when steps are present", () => {
+  assert.equal(
+    shouldMirrorStreamingTextToAssistantBody({
+      route: "draft",
+      hasStepItems: false,
+      hasIterationSteps: true,
+      hasReactEvents: false,
+      hasReasoningDelta: true,
+    }),
+    false
+  );
+});
+
+test("isPerfDebugEnabled reads the global flag dynamically", () => {
+  const runtime = globalThis as typeof globalThis & { __LCEDA_AI_PERF_DEBUG__?: boolean };
+  const previous = runtime.__LCEDA_AI_PERF_DEBUG__;
+  runtime.__LCEDA_AI_PERF_DEBUG__ = true;
+  assert.equal(isPerfDebugEnabled(), true);
+  runtime.__LCEDA_AI_PERF_DEBUG__ = false;
+  assert.equal(isPerfDebugEnabled(), false);
+  runtime.__LCEDA_AI_PERF_DEBUG__ = previous;
+});
+
+test("isPerfDebugEnabled also reads the localStorage flag when available", () => {
+  const runtime = globalThis as typeof globalThis & {
+    __LCEDA_AI_PERF_DEBUG__?: boolean;
+    localStorage?: { getItem(key: string): string | null };
+  };
+  const previousFlag = runtime.__LCEDA_AI_PERF_DEBUG__;
+  const previousStorage = runtime.localStorage;
+  runtime.__LCEDA_AI_PERF_DEBUG__ = false;
+  runtime.localStorage = {
+    getItem(key: string) {
+      return key === "lceda_ai.perf_debug" ? "1" : null;
+    },
+  };
+  assert.equal(isPerfDebugEnabled(), true);
+  runtime.__LCEDA_AI_PERF_DEBUG__ = previousFlag;
+  runtime.localStorage = previousStorage;
+});
+
+test("shouldApplyStreamingReactEvents skips react events when stepItems are present", () => {
+  assert.equal(
+    shouldApplyStreamingReactEvents({
+      reactEvents: [{ kind: "thought" as const, text: "x" }],
+      stepItems: [{ id: "step-1", phase: "llm" as const, type: "thought" as const, status: "running" as const, title: "t", text: "x" }],
+      iterationSteps: undefined,
+    }),
+    false
+  );
+});
+
+test("shouldApplyStreamingReactEvents skips react events when iterationSteps are present", () => {
+  assert.equal(
+    shouldApplyStreamingReactEvents({
+      reactEvents: [{ kind: "thought" as const, text: "x" }],
+      stepItems: undefined,
+      iterationSteps: [{ id: "react-iteration-1", iteration: 1, status: "running" as const, thoughtText: "x", toolEvents: [], observationTexts: [] }],
+    }),
+    false
+  );
+});
+
+test("shouldApplyStreamingReactEvents keeps react events only when no structured step payload exists", () => {
+  assert.equal(
+    shouldApplyStreamingReactEvents({
+      reactEvents: [{ kind: "thought" as const, text: "x" }],
+      stepItems: undefined,
+      iterationSteps: undefined,
+    }),
+    true
+  );
+});
+
+test("buildStreamingProcessSignature is stable for identical tail state", () => {
+  const signature = buildStreamingProcessSignature({
+    stepItems: undefined,
+    iterationSteps: [
+      {
+        id: "react-iteration-7",
+        iteration: 7,
+        status: "running" as const,
+        thoughtText: "abc",
+        toolEvents: [],
+        observationTexts: [],
+      },
+    ],
+    reactEvents: undefined,
+    stepStates: undefined,
+    workingMemory: undefined,
+  });
+  assert.equal(
+    signature,
+    buildStreamingProcessSignature({
+      stepItems: undefined,
+      iterationSteps: [
+        {
+          id: "react-iteration-7",
+          iteration: 7,
+          status: "running" as const,
+          thoughtText: "abc",
+          toolEvents: [],
+          observationTexts: [],
+        },
+      ],
+      reactEvents: undefined,
+      stepStates: undefined,
+      workingMemory: undefined,
+    })
+  );
+});
+
+test("clampStreamingAssistantContent keeps oversized streamed text unchanged", () => {
   const chunk = "A".repeat(9000);
   const next = clampStreamingAssistantContent("", chunk);
-  assert.equal(next.includes("原始流式内容过长，已截断显示"), true);
-  assert.equal(next.length < chunk.length, true);
+  assert.equal(next, chunk);
 });
 
 test("upsertLlmReasoningStepItem fills the active llm thought step item with streamed reasoning text", () => {
