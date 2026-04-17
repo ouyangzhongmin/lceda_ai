@@ -202,3 +202,53 @@ test("draftSpecToPlan merges pinIds from repeated connections targeting the same
 
   assert.deepEqual(powerNet?.nodeIds, ["usb-vbus", "chg-vin", "mcu-3v3"]);
 });
+
+test("draftSpecToPlan injects a power connector when a simple LED spec leaves a power net orphaned", () => {
+  const spec: DraftDesignSpec = {
+    systemType: "simple_led_circuit",
+    title: "Simple LED",
+    rationale: "minimal",
+    components: [
+      {
+        id: "draft-r1",
+        ref: "R1",
+        role: "resistor",
+        name: "220R",
+        pins: [
+          { id: "draft-r1-1", pinNumber: "1", pinName: "1", electricalType: "passive" },
+          { id: "draft-r1-2", pinNumber: "2", pinName: "2", electricalType: "passive" },
+        ],
+      },
+      {
+        id: "draft-d1",
+        ref: "D1",
+        role: "led",
+        name: "LED",
+        pins: [
+          { id: "draft-d1-a", pinNumber: "1", pinName: "A", electricalType: "passive" },
+          { id: "draft-d1-k", pinNumber: "2", pinName: "K", electricalType: "passive" },
+        ],
+      },
+    ],
+    nets: [
+      { id: "net-3v3", name: "3V3", isPower: true },
+      { id: "net-led", name: "LED_ANODE" },
+      { id: "net-gnd", name: "GND", isPower: true },
+    ],
+    connections: [
+      { netName: "3V3", pinIds: ["draft-r1-1"] },
+      { netName: "LED_ANODE", pinIds: ["draft-r1-2", "draft-d1-a"] },
+      { netName: "GND", pinIds: ["draft-d1-k"] },
+    ],
+  };
+
+  const plan = draftSpecToPlan({ spec });
+  const byRef = new Map(plan.components.map((component) => [component.ref, component]));
+  const powerNet = plan.nets.find((net) => net.name === "3V3");
+  const groundNet = plan.nets.find((net) => net.name === "GND");
+
+  assert.equal(byRef.has("J1"), true);
+  assert.equal(byRef.get("J1")?.properties.role, "power_connector");
+  assert.deepEqual(powerNet?.nodeIds, ["draft-r1-1", "draft-j1-pos"]);
+  assert.deepEqual(groundNet?.nodeIds, ["draft-d1-k", "draft-j1-gnd"]);
+});

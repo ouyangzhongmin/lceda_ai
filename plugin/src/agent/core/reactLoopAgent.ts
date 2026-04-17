@@ -322,6 +322,77 @@ export async function runReActLoop(input: {
     if (patch.streaming !== undefined) item.streaming = patch.streaming;
     item.updatedAt = nowIso();
   };
+  const buildProgressSignature = (payload: {
+    detail: string;
+    textDelta?: string;
+    text?: string;
+    reasoningDelta?: string;
+    reactEvents: AgentReactEvent[];
+    stepItems: AgentStepItem[];
+    iterationSteps?: ReactAgentState["iterationSteps"];
+    stepStates: AgentStepState[];
+    workingMemory: AgentWorkingMemory;
+  }): string => {
+    const lastReactEvent = Array.isArray(payload.reactEvents) && payload.reactEvents.length > 0
+      ? payload.reactEvents[payload.reactEvents.length - 1]
+      : undefined;
+    const lastStepItem = Array.isArray(payload.stepItems) && payload.stepItems.length > 0
+      ? payload.stepItems[payload.stepItems.length - 1]
+      : undefined;
+    const lastIteration = Array.isArray(payload.iterationSteps) && payload.iterationSteps.length > 0
+      ? payload.iterationSteps[payload.iterationSteps.length - 1]
+      : undefined;
+    const lastStepState = Array.isArray(payload.stepStates) && payload.stepStates.length > 0
+      ? payload.stepStates[payload.stepStates.length - 1]
+      : undefined;
+    return [
+      payload.detail,
+      payload.textDelta || "",
+      payload.text || "",
+      payload.reasoningDelta || "",
+      Array.isArray(payload.reactEvents) ? payload.reactEvents.length : 0,
+      lastReactEvent?.kind || "",
+      lastReactEvent?.status || "",
+      lastReactEvent?.text || "",
+      Array.isArray(payload.stepItems) ? payload.stepItems.length : 0,
+      lastStepItem?.id || "",
+      lastStepItem?.status || "",
+      lastStepItem?.text || "",
+      lastStepItem?.inputSummary || "",
+      lastStepItem?.outputSummary || "",
+      String(lastStepItem?.streaming || false),
+      Array.isArray(payload.iterationSteps) ? payload.iterationSteps.length : 0,
+      lastIteration?.id || "",
+      lastIteration?.status || "",
+      lastIteration?.thoughtText || "",
+      JSON.stringify(lastIteration?.toolEvents || []),
+      JSON.stringify(lastIteration?.observationTexts || []),
+      Array.isArray(payload.stepStates) ? payload.stepStates.length : 0,
+      lastStepState?.kind || "",
+      lastStepState?.status || "",
+      lastStepState?.observation || "",
+      JSON.stringify(payload.workingMemory || {}),
+    ].join("|");
+  };
+  let lastProgressSignature = "";
+  const emitProgressIfChanged = (payload: {
+    detail: string;
+    textDelta?: string;
+    text?: string;
+    reasoningDelta?: string;
+    reactEvents: AgentReactEvent[];
+    stepItems: AgentStepItem[];
+    iterationSteps?: ReactAgentState["iterationSteps"];
+    stepStates: AgentStepState[];
+    workingMemory: AgentWorkingMemory;
+  }): void => {
+    const signature = buildProgressSignature(payload);
+    if (signature === lastProgressSignature) {
+      return;
+    }
+    lastProgressSignature = signature;
+    deps.onProgress?.(payload);
+  };
 
   const safeJsonParse = (text: string): unknown => {
     const raw = String(text || "").trim();
@@ -453,7 +524,7 @@ export async function runReActLoop(input: {
         });
       }
     }
-    deps.onProgress?.({
+    emitProgressIfChanged({
       detail: `LLM 决策中（${i + 1}/${maxIterations}）`,
       reactEvents: state.reactEvents,
       stepItems: state.stepItems,
@@ -502,7 +573,7 @@ export async function runReActLoop(input: {
             if (!streamReasoning.trim()) {
               return;
             }
-            deps.onProgress?.({
+            emitProgressIfChanged({
               detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
               reasoningDelta: event.reasoning_delta,
               reactEvents: state.reactEvents,
@@ -561,7 +632,7 @@ export async function runReActLoop(input: {
             if (!emittedDelta) {
               return;
             }
-            deps.onProgress?.({
+            emitProgressIfChanged({
               detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
               textDelta: emittedDelta,
               text: streamText,
@@ -676,7 +747,7 @@ export async function runReActLoop(input: {
         existing.status = "failed";
         existing.observation = "LLM 未产生合法动作，正在重试";
       }
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `LLM 输出无效，准备重试（${i + 1}/${maxIterations}）`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
@@ -709,7 +780,7 @@ export async function runReActLoop(input: {
         existing.status = "done";
         existing.observation = "LLM 已生成最终结论";
       }
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `LLM 已生成结论（${i + 1}/${maxIterations}）`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
@@ -781,7 +852,7 @@ export async function runReActLoop(input: {
         existing.observation = `LLM 已决定调用：${toolName}`;
       }
     }
-    deps.onProgress?.({
+    emitProgressIfChanged({
       detail: `LLM 已决定调用工具：${toolDisplayName}`,
       reactEvents: state.reactEvents,
       stepItems: state.stepItems,
@@ -807,7 +878,7 @@ export async function runReActLoop(input: {
       }
     }
 
-    deps.onProgress?.({
+    emitProgressIfChanged({
       detail: `执行工具：${toolDisplayName}`,
       reactEvents: state.reactEvents,
       stepItems: state.stepItems,
@@ -900,7 +971,7 @@ export async function runReActLoop(input: {
       startedAt: nowIso(),
       updatedAt: nowIso(),
     });
-    deps.onProgress?.({
+    emitProgressIfChanged({
       detail: `执行工具：${toolDisplayName}`,
       reactEvents: state.reactEvents,
       stepItems: state.stepItems,
@@ -960,7 +1031,7 @@ export async function runReActLoop(input: {
           existing.observation = `已完成：${toolName}`;
         }
       }
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `完成工具：${toolDisplayName}`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
@@ -1014,7 +1085,7 @@ export async function runReActLoop(input: {
           existing.observation = `失败：${toolName} ${msg}`;
         }
       }
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `工具失败：${toolName}`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,

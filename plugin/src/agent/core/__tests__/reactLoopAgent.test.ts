@@ -788,6 +788,62 @@ test("runReActLoop keeps a single thought step item while reasoning deltas strea
   assert.equal(thoughtItems[0]?.status, "done");
 });
 
+test("runReActLoop drops duplicate empty streaming progress events at the source", async () => {
+  const progressEvents: Array<{ detail: string; textDelta?: string; reasoningDelta?: string; text?: string }> = [];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: [],
+    listToolNames: () => ["llm_generate"],
+    onProgress: (payload) => {
+      progressEvents.push({
+        detail: payload.detail,
+        textDelta: payload.textDelta,
+        reasoningDelta: payload.reasoningDelta,
+        text: payload.text,
+      });
+    },
+    invokeTool: async (toolName, input) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      const payload = input as {
+        onEvent?: (event: {
+          type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+          delta?: string;
+          reasoning_delta?: string;
+        }) => void;
+      };
+      payload.onEvent?.({ type: "start" });
+      payload.onEvent?.({ type: "reasoning_delta", reasoning_delta: "   " });
+      payload.onEvent?.({ type: "reasoning_delta", reasoning_delta: "\n\n" });
+      payload.onEvent?.({ type: "delta", delta: "```json\n" });
+      payload.onEvent?.({ type: "delta", delta: "{\n" });
+      payload.onEvent?.({ type: "delta", delta: '  "type": "final"\n' });
+      payload.onEvent?.({ type: "done" });
+      return {
+        output_text: '{"type":"final","route":"analysis","rationale":"done","output":"## 报告"}',
+      } as never;
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+  });
+
+  assert.equal(
+    progressEvents.filter((event) => event.detail.includes("ReAct 决策中")).length,
+    0
+  );
+  assert.equal(
+    progressEvents.filter((event) => event.detail.includes("LLM 决策中")).length,
+    1
+  );
+});
+
 test("runReActLoop fills thought step item from rationale when model does not emit reasoning deltas", async () => {
   const state = createState();
 

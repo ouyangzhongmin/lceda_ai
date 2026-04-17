@@ -9160,8 +9160,96 @@ var edaEsbuildExportName = (() => {
     }
     return connectionMap;
   }
+  function isGroundNetName(name) {
+    const normalized = normalizeNetName(name, name || "");
+    return normalized === "GND";
+  }
+  function shouldAutoInjectLedPowerConnector(spec) {
+    const systemType = String(spec.systemType || "").trim().toLowerCase();
+    if (systemType === "simple_led_circuit") {
+      return true;
+    }
+    const roles = new Set(spec.components.map((component) => String(component.role || "").trim().toLowerCase()).filter(Boolean));
+    return roles.has("led") && roles.has("resistor") && !roles.has("power_connector");
+  }
+  function ensureApplyablePowerConnectivity(spec) {
+    if (!shouldAutoInjectLedPowerConnector(spec)) {
+      return spec;
+    }
+    if (spec.components.some((component) => String(component.role || "").trim().toLowerCase() === "power_connector")) {
+      return spec;
+    }
+    const normalizedConnectionMap = buildNormalizedConnectionMap(spec.connections);
+    const groundNet = spec.nets.find((net) => isGroundNetName(net.name || net.id));
+    if (!groundNet) {
+      return spec;
+    }
+    const orphanPositivePowerNets = spec.nets.filter((net) => {
+      const normalizedName = normalizeNetName(net.name, net.id);
+      if (!net.isPower || normalizedName === "GND") {
+        return false;
+      }
+      const nodeIds = normalizedConnectionMap.get(normalizedName)?.pinIds ?? [];
+      return nodeIds.length === 1;
+    });
+    if (orphanPositivePowerNets.length === 0) {
+      return spec;
+    }
+    const injectedComponents = orphanPositivePowerNets.map((net, index) => {
+      const suffix = orphanPositivePowerNets.length > 1 ? `${index + 1}` : "";
+      const componentId = `draft-j1${suffix}`;
+      const ref = `J${index + 1}`;
+      const posPinId = `${componentId}-pos`;
+      const gndPinId = `${componentId}-gnd`;
+      return {
+        net,
+        component: {
+          id: componentId,
+          ref,
+          role: "power_connector",
+          name: "Power Header",
+          value: normalizeNetName(net.name, net.id),
+          packageName: "HDR-TH_1X2",
+          searchQuery: `2pin power header ${normalizeNetName(net.name, net.id)} GND`,
+          placement: { x: 180, y: 180 + index * 140, rotation: 0 },
+          pins: [
+            {
+              id: posPinId,
+              pinNumber: "1",
+              pinName: normalizeNetName(net.name, net.id),
+              electricalType: "power_out"
+            },
+            {
+              id: gndPinId,
+              pinNumber: "2",
+              pinName: "GND",
+              electricalType: "power_out"
+            }
+          ]
+        },
+        netConnection: {
+          netName: net.name || net.id,
+          pinIds: [posPinId]
+        },
+        groundConnection: {
+          netName: groundNet.name || groundNet.id,
+          pinIds: [gndPinId]
+        }
+      };
+    });
+    return {
+      ...spec,
+      components: [...injectedComponents.map((item) => item.component), ...spec.components],
+      connections: [
+        ...spec.connections,
+        ...injectedComponents.map((item) => item.netConnection),
+        ...injectedComponents.map((item) => item.groundConnection)
+      ]
+    };
+  }
   function draftSpecToPlan(input) {
-    const { spec, guidance } = input;
+    const guidance = input.guidance;
+    const spec = ensureApplyablePowerConnectivity(input.spec);
     assertValidDraftSpec(spec);
     const placements = buildPlacementMap(spec);
     const normalizedConnections = spec.connections.map((connection) => ({
@@ -11698,6 +11786,49 @@ ${text}`;
       if (patch.streaming !== void 0) item.streaming = patch.streaming;
       item.updatedAt = nowIso();
     };
+    const buildProgressSignature = (payload) => {
+      const lastReactEvent = Array.isArray(payload.reactEvents) && payload.reactEvents.length > 0 ? payload.reactEvents[payload.reactEvents.length - 1] : void 0;
+      const lastStepItem = Array.isArray(payload.stepItems) && payload.stepItems.length > 0 ? payload.stepItems[payload.stepItems.length - 1] : void 0;
+      const lastIteration = Array.isArray(payload.iterationSteps) && payload.iterationSteps.length > 0 ? payload.iterationSteps[payload.iterationSteps.length - 1] : void 0;
+      const lastStepState = Array.isArray(payload.stepStates) && payload.stepStates.length > 0 ? payload.stepStates[payload.stepStates.length - 1] : void 0;
+      return [
+        payload.detail,
+        payload.textDelta || "",
+        payload.text || "",
+        payload.reasoningDelta || "",
+        Array.isArray(payload.reactEvents) ? payload.reactEvents.length : 0,
+        lastReactEvent?.kind || "",
+        lastReactEvent?.status || "",
+        lastReactEvent?.text || "",
+        Array.isArray(payload.stepItems) ? payload.stepItems.length : 0,
+        lastStepItem?.id || "",
+        lastStepItem?.status || "",
+        lastStepItem?.text || "",
+        lastStepItem?.inputSummary || "",
+        lastStepItem?.outputSummary || "",
+        String(lastStepItem?.streaming || false),
+        Array.isArray(payload.iterationSteps) ? payload.iterationSteps.length : 0,
+        lastIteration?.id || "",
+        lastIteration?.status || "",
+        lastIteration?.thoughtText || "",
+        JSON.stringify(lastIteration?.toolEvents || []),
+        JSON.stringify(lastIteration?.observationTexts || []),
+        Array.isArray(payload.stepStates) ? payload.stepStates.length : 0,
+        lastStepState?.kind || "",
+        lastStepState?.status || "",
+        lastStepState?.observation || "",
+        JSON.stringify(payload.workingMemory || {})
+      ].join("|");
+    };
+    let lastProgressSignature = "";
+    const emitProgressIfChanged = (payload) => {
+      const signature = buildProgressSignature(payload);
+      if (signature === lastProgressSignature) {
+        return;
+      }
+      lastProgressSignature = signature;
+      deps.onProgress?.(payload);
+    };
     const safeJsonParse3 = (text) => {
       const raw = String(text || "").trim();
       if (!raw) return null;
@@ -11820,7 +11951,7 @@ ${text}`;
           });
         }
       }
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `LLM \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
@@ -11859,7 +11990,7 @@ ${text}`;
             if (!streamReasoning.trim()) {
               return;
             }
-            deps.onProgress?.({
+            emitProgressIfChanged({
               detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
               reasoningDelta: event.reasoning_delta,
               reactEvents: state.reactEvents,
@@ -11908,7 +12039,7 @@ ${text}`;
             if (!emittedDelta) {
               return;
             }
-            deps.onProgress?.({
+            emitProgressIfChanged({
               detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
               textDelta: emittedDelta,
               text: streamText,
@@ -12004,7 +12135,7 @@ ${text}`;
           existing.status = "failed";
           existing.observation = "LLM \u672A\u4EA7\u751F\u5408\u6CD5\u52A8\u4F5C\uFF0C\u6B63\u5728\u91CD\u8BD5";
         }
-        deps.onProgress?.({
+        emitProgressIfChanged({
           detail: `LLM \u8F93\u51FA\u65E0\u6548\uFF0C\u51C6\u5907\u91CD\u8BD5\uFF08${i + 1}/${maxIterations}\uFF09`,
           reactEvents: state.reactEvents,
           stepItems: state.stepItems,
@@ -12035,7 +12166,7 @@ ${text}`;
           existing.status = "done";
           existing.observation = "LLM \u5DF2\u751F\u6210\u6700\u7EC8\u7ED3\u8BBA";
         }
-        deps.onProgress?.({
+        emitProgressIfChanged({
           detail: `LLM \u5DF2\u751F\u6210\u7ED3\u8BBA\uFF08${i + 1}/${maxIterations}\uFF09`,
           reactEvents: state.reactEvents,
           stepItems: state.stepItems,
@@ -12106,7 +12237,7 @@ ${text}`;
           existing.observation = `LLM \u5DF2\u51B3\u5B9A\u8C03\u7528\uFF1A${toolName}`;
         }
       }
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `LLM \u5DF2\u51B3\u5B9A\u8C03\u7528\u5DE5\u5177\uFF1A${toolDisplayName}`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
@@ -12130,7 +12261,7 @@ ${text}`;
           });
         }
       }
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `\u6267\u884C\u5DE5\u5177\uFF1A${toolDisplayName}`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
@@ -12210,7 +12341,7 @@ ${text}`;
         startedAt: nowIso(),
         updatedAt: nowIso()
       });
-      deps.onProgress?.({
+      emitProgressIfChanged({
         detail: `\u6267\u884C\u5DE5\u5177\uFF1A${toolDisplayName}`,
         reactEvents: state.reactEvents,
         stepItems: state.stepItems,
@@ -12267,7 +12398,7 @@ ${text}`;
             existing.observation = `\u5DF2\u5B8C\u6210\uFF1A${toolName}`;
           }
         }
-        deps.onProgress?.({
+        emitProgressIfChanged({
           detail: `\u5B8C\u6210\u5DE5\u5177\uFF1A${toolDisplayName}`,
           reactEvents: state.reactEvents,
           stepItems: state.stepItems,
@@ -12321,7 +12452,7 @@ ${text}`;
             existing.observation = `\u5931\u8D25\uFF1A${toolName} ${msg}`;
           }
         }
-        deps.onProgress?.({
+        emitProgressIfChanged({
           detail: `\u5DE5\u5177\u5931\u8D25\uFF1A${toolName}`,
           reactEvents: state.reactEvents,
           stepItems: state.stepItems,
