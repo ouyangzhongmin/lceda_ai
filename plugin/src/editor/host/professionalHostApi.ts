@@ -33,6 +33,11 @@ export interface ProfessionalRawHostApi {
       libraryUuid?: string;
       scope?: LibraryScope;
     }) => Promise<LibraryDeviceDetail> | LibraryDeviceDetail;
+    getSymbol?: (input: {
+      symbolUuid: string;
+      libraryUuid?: string;
+      scope?: LibraryScope;
+    }) => Promise<LibraryDeviceDetail> | LibraryDeviceDetail;
     getDevicesByLcscIds?: (input: {
       lcscIds: string[];
       libraryUuid?: string;
@@ -69,6 +74,11 @@ export interface ProfessionalHostCapabilities {
   }) => Promise<LibrarySearchResultItem[]>;
   getLibraryDevice?: (input: {
     deviceUuid: string;
+    libraryUuid?: string;
+    scope?: LibraryScope;
+  }) => Promise<LibraryDeviceDetail>;
+  getLibrarySymbol?: (input: {
+    symbolUuid: string;
     libraryUuid?: string;
     scope?: LibraryScope;
   }) => Promise<LibraryDeviceDetail>;
@@ -118,6 +128,9 @@ export function resolveProfessionalHostCapabilities(
       : undefined,
     getLibraryDevice: rawApi?.library?.getDevice
       ? async (input): Promise<LibraryDeviceDetail> => rawApi.library!.getDevice!(input)
+      : undefined,
+    getLibrarySymbol: rawApi?.library?.getSymbol
+      ? async (input): Promise<LibraryDeviceDetail> => rawApi.library!.getSymbol!(input)
       : undefined,
     getLibraryDevicesByLcscIds: rawApi?.library?.getDevicesByLcscIds
       ? async (input): Promise<LibraryDeviceDetail[]> => rawApi.library!.getDevicesByLcscIds!(input)

@@ -249,6 +249,6 @@ test("draftSpecToPlan injects a power connector when a simple LED spec leaves a 
 
   assert.equal(byRef.has("J1"), true);
   assert.equal(byRef.get("J1")?.properties.role, "power_connector");
-  assert.deepEqual(powerNet?.nodeIds, ["draft-r1-1", "draft-j1-pos"]);
-  assert.deepEqual(groundNet?.nodeIds, ["draft-d1-k", "draft-j1-gnd"]);
+  assert.deepEqual(powerNet?.nodeIds, ["draft-r1-1", "repair-j1-pos"]);
+  assert.deepEqual(groundNet?.nodeIds, ["draft-d1-k", "repair-j1-gnd"]);
 });

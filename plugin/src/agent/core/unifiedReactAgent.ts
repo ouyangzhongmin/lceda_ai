@@ -196,6 +196,12 @@ function looksLikeDraftFollowUpRevisionQuery(userQuery: string): boolean {
   return /(修改|调整|改成|换成|增加|新增|加入|补充|删掉|删除|替换|优化|重生成|重新生成|重做草案|重新设计|增加模块|新增模块)/iu.test(text);
 }
 
+function looksLikeDraftRepairQuery(userQuery: string): boolean {
+  const text = String(userQuery || "").trim().toLowerCase();
+  if (!text) return false;
+  return /(应用草案失败|apply.*fail|修复草案|修一下|补齐.*网络|缺失网络|missing endpoints|required nets|unmapped required nets|net mismatch|重新补充连接|补齐连接后再试|不能应用|应用失败)/iu.test(text);
+}
+
 function looksLikeDraftRiskAnalysisQuery(userQuery: string): boolean {
   const text = String(userQuery || "").trim().toLowerCase();
   if (!text) return false;
@@ -274,6 +280,7 @@ function buildDecisionToolNames(input: {
       "library_search_devices",
       "library_get_device",
       "library_get_devices_by_lcsc_ids",
+      "draft_repair_plan",
       "draft_generate_plan",
       "draft_preview_plan",
       "rules_validate_draft",
@@ -373,6 +380,8 @@ export async function runUnifiedReactAgent(input: {
     input.panelState.agentRunState === "awaiting_confirmation" &&
     (looksLikeDraftFollowUpRevisionQuery(input.userQuery)
       ? "revise_existing_draft"
+      : looksLikeDraftRepairQuery(input.userQuery)
+        ? "repair_existing_draft"
       : looksLikeDraftRiskAnalysisQuery(input.userQuery)
         ? "analyze_existing_draft_risk"
         : "summarize_existing_draft");
@@ -418,6 +427,8 @@ export async function runUnifiedReactAgent(input: {
     taskType:
       draftFollowUpIntent === "revise_existing_draft"
         ? "schematic_draft"
+        : draftFollowUpIntent === "repair_existing_draft"
+          ? "natural_chat"
         : draftFollowUpIntent === "analyze_existing_draft_risk"
           ? "schematic_analysis"
           : draftFollowUpIntent
@@ -430,6 +441,8 @@ export async function runUnifiedReactAgent(input: {
     draftFollowUpIntent === "summarize_existing_draft"
       ? !["draft_generate_plan", "draft_preview_plan", "rules_validate_draft", "editor_preview_apply_plan"].includes(tool.name) &&
         decisionToolNames.includes(tool.name)
+      : draftFollowUpIntent === "repair_existing_draft"
+        ? !["draft_generate_plan"].includes(tool.name) && decisionToolNames.includes(tool.name)
       : decisionToolNames.includes(tool.name)
   );
 
@@ -457,6 +470,8 @@ export async function runUnifiedReactAgent(input: {
       ? "这是基于现有草案的追问：优先复用当前草案摘要直接回答；除非用户明确要求重生成或修改草案，否则不要调用 draft_generate_plan / draft_preview_plan / rules_validate_draft。"
       : draftFollowUpIntent === "revise_existing_draft"
         ? "这是基于现有草案的修改请求：优先继承当前草案，只修改用户明确提出的部分；允许调用 draft_generate_plan 和 draft_preview_plan，但不要把整个系统从零重做。"
+        : draftFollowUpIntent === "repair_existing_draft"
+          ? "这是基于现有草案的修复请求：优先使用 draft_repair_plan 处理结构化应用错误，并在修补后继续预览或验证；除非修补失败或用户明确要求重做，否则不要调用 draft_generate_plan。"
       : draftFollowUpIntent === "analyze_existing_draft_risk"
         ? "这是基于现有草案的风险复核请求：优先说明当前草案的问题、阻断项和待补充内容；可调用 rules_validate_draft，但不要无必要重生成草案。"
       :
@@ -472,6 +487,8 @@ export async function runUnifiedReactAgent(input: {
     taskType:
       draftFollowUpIntent === "revise_existing_draft"
         ? "schematic_draft"
+        : draftFollowUpIntent === "repair_existing_draft"
+          ? "natural_chat"
         : draftFollowUpIntent === "analyze_existing_draft_risk"
           ? "schematic_analysis"
           : draftFollowUpIntent
@@ -581,6 +598,14 @@ export async function runUnifiedReactAgent(input: {
       if (payload.plan) return payload;
       if (!draftPlan) throw new Error("draftPlan missing: call draft_generate_plan first");
       return { plan: draftPlan };
+    }
+    if (toolName === "draft_repair_plan") {
+      const payload = llmInput && typeof llmInput === "object" ? (llmInput as any) : {};
+      if (!draftPlan) throw new Error("draftPlan missing: call draft_generate_plan first");
+      if (typeof payload.applyError !== "string" || !payload.applyError.trim()) {
+        throw new Error("applyError missing: provide the original apply failure message");
+      }
+      return { plan: draftPlan, applyError: payload.applyError };
     }
     if (toolName === "rules_validate_draft") {
       const payload = llmInput && typeof llmInput === "object" ? (llmInput as any) : {};
@@ -790,6 +815,18 @@ export async function runUnifiedReactAgent(input: {
         messageForModel: JSON.stringify(output),
       };
     }
+    if (toolName === "draft_repair_plan") {
+      const payload = asRecord(output);
+      const classification = asRecord(payload.classification);
+      const kind = cleanText(classification.kind);
+      const repaired = payload.repaired === true;
+      return {
+        summary: repaired
+          ? `已按结构化错误完成草案局部修补${kind ? `：${kind}` : ""}`
+          : `已分析草案应用错误${kind ? `：${kind}` : ""}，当前没有可自动修补的变更`,
+        messageForModel: JSON.stringify(output),
+      };
+    }
     if (toolName === "draft_preview_plan" || toolName === "editor_preview_apply_plan") {
       const preview = asRecord(output) as DraftPreview & { warnings?: string[] };
       const unresolved = Array.isArray(preview.unresolvedDeviceDetails) ? preview.unresolvedDeviceDetails.length : 0;
@@ -905,6 +942,15 @@ export async function runUnifiedReactAgent(input: {
         draftPlan = output as AgentResult["draftPlan"];
         state.workingMemory.draftReady = true;
         markStep(state, "draft", "running", "草案计划已生成");
+      }
+      if (toolName === "draft_repair_plan") {
+        const repairedOutput = output as { plan?: DraftPlan; repaired?: boolean };
+        if (repairedOutput?.plan) {
+          draftPlan = repairedOutput.plan;
+          draftPreview = undefined;
+          state.workingMemory.draftReady = true;
+          markStep(state, "draft", repairedOutput.repaired ? "running" : "done", repairedOutput.repaired ? "草案计划已完成局部修补" : "草案修补分析已完成");
+        }
       }
       if (toolName === "draft_preview_plan") {
         draftPreview = output as AgentResult["draftPreview"];

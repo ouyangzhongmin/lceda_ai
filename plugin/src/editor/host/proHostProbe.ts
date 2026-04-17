@@ -319,6 +319,28 @@ export async function typedGetLibraryDevice(input: {
   }
 }
 
+export async function typedGetLibrarySymbol(input: {
+  symbolUuid: string;
+  libraryUuid?: string;
+  scope?: LibraryScope;
+}): Promise<LibraryDeviceDetail | null> {
+  if (
+    typeof eda === "undefined" ||
+    typeof eda.lib_Symbol?.get !== "function" ||
+    typeof eda.lib_LibrariesList?.getSystemLibraryUuid !== "function"
+  ) {
+    return null;
+  }
+
+  try {
+    const libraryUuid = input.libraryUuid ?? (await resolveScopeLibraryUuid(input.scope ?? "system"));
+    const result = await eda.lib_Symbol.get(input.symbolUuid, libraryUuid);
+    return normalizeLibraryDeviceDetail(result);
+  } catch {
+    return null;
+  }
+}
+
 export async function typedGetLibraryDevicesByLcscIds(input: {
   lcscIds: string[];
   libraryUuid?: string;

@@ -318,16 +318,66 @@ test("createDraftTools rewrites structured spec pins against real library device
     },
   });
 
-  assert.equal(plan.pins.find((pin) => pin.id === "draft-u1-i2s-sck")?.pinName, "BCLK");
-  assert.equal(plan.pins.find((pin) => pin.id === "draft-u1-i2s-sck")?.pinNumber, "12");
-  assert.equal(plan.pins.find((pin) => pin.id === "draft-u2-i2s-sck")?.pinName, "SCLK");
-  assert.equal(plan.pins.find((pin) => pin.id === "draft-u2-i2s-sck")?.pinNumber, "5");
+  assert.equal(plan.pins.find((pin) => pin.id === "draft-u1-i2s-sck")?.pinName, "I2S_SCK");
+  assert.equal(plan.pins.find((pin) => pin.id === "draft-u1-i2s-sck")?.resolvedPinName, "BCLK");
+  assert.equal(plan.pins.find((pin) => pin.id === "draft-u1-i2s-sck")?.resolvedPinNumber, "12");
+  assert.equal(plan.pins.find((pin) => pin.id === "draft-u2-i2s-sck")?.pinName, "I2S_SCK");
+  assert.equal(plan.pins.find((pin) => pin.id === "draft-u2-i2s-sck")?.resolvedPinName, "SCLK");
+  assert.equal(plan.pins.find((pin) => pin.id === "draft-u2-i2s-sck")?.resolvedPinNumber, "5");
 
   const previewTool = tools.find((item) => item.name === "draft_preview_plan");
   if (!previewTool) throw new Error("draft_preview_plan missing");
   const preview = await previewTool.execute({ plan });
   assert.equal(preview.selectedDeviceDetails?.some((item: string) => item.includes("pins=2")), true);
   assert.equal(preview.selectedDeviceDetails?.some((item: string) => item.includes("pin_sample=12:BCLK, 13:LRCK")), true);
+});
+
+test("createDraftTools falls back to associated symbol detail when device detail has no pins", async () => {
+  const tools = createDraftTools(
+    {
+      search: async () => ({ results: [] }),
+      buildCitations: async () => ({ query: "", results: [] }),
+    } as any,
+    async () => [
+      {
+        uuid: "dev-d1",
+        name: "LED0805",
+        libraryUuid: "lib-d1",
+        symbolUuid: "sym-d1",
+        footprintName: "LED0805",
+      },
+    ],
+    async () =>
+      ({
+        uuid: "dev-d1",
+        raw: {
+          association: {
+            symbolUuid: "sym-d1",
+          },
+        },
+      }) as any,
+    async ({ symbolUuid }) => {
+      assert.equal(symbolUuid, "sym-d1");
+      return {
+        uuid: "sym-d1",
+        raw: {
+          pins: [
+            { pinName: "A", pinNumber: "1", electricalType: "passive" },
+            { pinName: "K", pinNumber: "2", electricalType: "passive" },
+          ],
+        },
+      } as any;
+    }
+  );
+  const tool = tools.find((item) => item.name === "draft_generate_plan");
+  if (!tool) throw new Error("draft_generate_plan missing");
+
+  const plan = await tool.execute({ userQuery: "帮我设计一个点亮LED的电路" });
+
+  const ledPins = plan.pins.filter((pin) => pin.componentId === "draft-d1");
+  assert.equal(ledPins.some((pin) => pin.resolvedPinName === "A" && pin.resolvedPinNumber === "1"), true);
+  assert.equal(ledPins.some((pin) => pin.resolvedPinName === "K" && pin.resolvedPinNumber === "2"), true);
+  assert.equal(ledPins.every((pin) => pin.pinResolutionStatus === "resolved"), true);
 });
 
 test("createDraftTools rejects structured_spec_required draft requests without llm-authored spec", async () => {
@@ -416,4 +466,123 @@ test("createDraftTools rejects malformed structured_spec_required spec instead o
       }),
     /planningMode=structured_spec_required requires spec to match DraftDesignSpec/i
   );
+});
+
+test("createDraftTools can repair a draft plan for unmapped required power nets", async () => {
+  const tools = createDraftTools(
+    {
+      search: async () => ({ results: [] }),
+      buildCitations: async () => ({ query: "", results: [] }),
+    } as any
+  );
+  const tool = tools.find((item) => item.name === "draft_repair_plan");
+  if (!tool) throw new Error("draft_repair_plan missing");
+
+  const result = await tool.execute({
+    applyError: "unmapped required nets: 3V3 (missing endpoints)",
+    plan: {
+      title: "Simple LED",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-r1",
+          ref: "R1",
+          name: "220R",
+          componentType: "part",
+          addIntoBom: true,
+          addIntoPcb: true,
+          properties: { role: "resistor" },
+        },
+        {
+          id: "draft-d1",
+          ref: "D1",
+          name: "LED",
+          componentType: "part",
+          addIntoBom: true,
+          addIntoPcb: true,
+          properties: { role: "led" },
+        },
+      ],
+      pins: [
+        { id: "draft-r1-1", componentId: "draft-r1", pinNumber: "1", pinName: "1", electricalType: "passive", netName: "3V3" },
+        { id: "draft-r1-2", componentId: "draft-r1", pinNumber: "2", pinName: "2", electricalType: "passive", netName: "LED_ANODE" },
+        { id: "draft-d1-a", componentId: "draft-d1", pinNumber: "1", pinName: "A", electricalType: "passive", netName: "LED_ANODE" },
+        { id: "draft-d1-k", componentId: "draft-d1", pinNumber: "2", pinName: "K", electricalType: "passive", netName: "GND" },
+      ],
+      nets: [
+        { id: "net-3v3", name: "3V3", isPower: true, nodeIds: ["draft-r1-1"] },
+        { id: "net-led", name: "LED_ANODE", isPower: false, nodeIds: ["draft-r1-2", "draft-d1-a"] },
+        { id: "net-gnd", name: "GND", isPower: true, nodeIds: ["draft-d1-k"] },
+      ],
+    },
+  } as any);
+
+  assert.equal(result.classification.kind, "unmapped_required_nets");
+  assert.equal(result.repaired, true);
+  assert.equal(result.plan.components.some((component: any) => component.ref === "J1"), true);
+});
+
+test("createDraftTools can repair a draft plan for required connection unresolved", async () => {
+  const tools = createDraftTools(
+    {
+      search: async () => ({ results: [] }),
+      buildCitations: async () => ({ query: "", results: [] }),
+    } as any
+  );
+  const tool = tools.find((item) => item.name === "draft_repair_plan");
+  if (!tool) throw new Error("draft_repair_plan missing");
+
+  const result = await tool.execute({
+    applyError: "required connection unresolved: U1.VOUT -> J1.1 (3V3)",
+    plan: {
+      title: "LDO Output",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u1",
+          ref: "U1",
+          name: "LDO",
+          componentType: "part",
+          addIntoBom: true,
+          addIntoPcb: true,
+          properties: { role: "ldo" },
+        },
+        {
+          id: "draft-j1",
+          ref: "J1",
+          name: "Header",
+          componentType: "part",
+          addIntoBom: true,
+          addIntoPcb: true,
+          properties: { role: "power_connector" },
+        },
+      ],
+      pins: [
+        { id: "draft-u1-vout", componentId: "draft-u1", pinNumber: "3", pinName: "VOUT", electricalType: "power_out", netName: "LDO_OUT" },
+        { id: "draft-j1-1", componentId: "draft-j1", pinNumber: "1", pinName: "1", electricalType: "passive", netName: "VIN" },
+      ],
+      nets: [
+        { id: "net-3v3", name: "3V3", isPower: true, nodeIds: [] },
+        { id: "net-ldo-out", name: "LDO_OUT", isPower: true, nodeIds: ["draft-u1-vout"] },
+        { id: "net-vin", name: "VIN", isPower: true, nodeIds: ["draft-j1-1"] },
+      ],
+      guidance: {
+        templateId: "ldo_test",
+        rationale: "test",
+        requiredConnections: [
+          {
+            fromComponentRef: "U1",
+            fromPin: "VOUT",
+            toComponentRef: "J1",
+            toPin: "1",
+            netName: "3V3",
+          },
+        ],
+      },
+    },
+  } as any);
+
+  assert.equal(result.classification.kind, "required_connection_unresolved");
+  assert.equal(result.repaired, true);
+  assert.deepEqual(result.plan.nets.find((net: any) => net.name === "3V3")?.nodeIds, ["draft-u1-vout", "draft-j1-1"]);
 });

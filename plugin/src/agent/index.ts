@@ -1372,7 +1372,8 @@ function createAgentToolRegistry(
   for (const tool of createDraftTools(
     deps.ragClient,
     deps.hostBridge?.searchLibraryDevices,
-    deps.hostBridge?.getLibraryDevice
+    deps.hostBridge?.getLibraryDevice,
+    deps.hostBridge?.getLibrarySymbol
   )) {
     tools.register(tool);
   }

@@ -119,6 +119,7 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
       showToastMessage: Boolean(capabilities.showToastMessage || typedToastAvailable),
       searchLibraryDevices: Boolean(capabilities.searchLibraryDevices),
       getLibraryDevice: Boolean(capabilities.getLibraryDevice),
+      getLibrarySymbol: Boolean(capabilities.getLibrarySymbol),
       getLibraryDevicesByLcscIds: Boolean(capabilities.getLibraryDevicesByLcscIds),
     }
   );
@@ -157,6 +158,7 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
     },
     searchLibraryDevices: capabilities.searchLibraryDevices,
     getLibraryDevice: capabilities.getLibraryDevice,
+    getLibrarySymbol: capabilities.getLibrarySymbol,
     getLibraryDevicesByLcscIds: capabilities.getLibraryDevicesByLcscIds,
     getCapabilityReport: () => capabilityReport,
   };

@@ -92,6 +92,7 @@ export interface DraftPreview {
   netCount: number;
   selectedDeviceDetails?: string[];
   unresolvedDeviceDetails?: string[];
+  unresolvedPinDetails?: string[];
   guidanceSummary?: {
     templateId: string;
     rationale: string;

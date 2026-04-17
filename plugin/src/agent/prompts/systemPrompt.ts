@@ -33,6 +33,7 @@ export function buildSystemPrompt(input: {
     (!isAnalysisTask && /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(userQuery));
   const isDraftFollowUpSummary = input.task.draftFollowUpIntent === "summarize_existing_draft";
   const isDraftFollowUpRevision = input.task.draftFollowUpIntent === "revise_existing_draft";
+  const isDraftFollowUpRepair = input.task.draftFollowUpIntent === "repair_existing_draft";
   const isDraftFollowUpRiskAnalysis = input.task.draftFollowUpIntent === "analyze_existing_draft_risk";
 
   const analysisBlock = isAnalysisTask
@@ -186,6 +187,24 @@ export function buildSystemPrompt(input: {
       ]
     : [];
 
+  const draftRepairBlock = isDraftFollowUpRepair
+    ? [
+        "## 现有草案修复任务定义",
+        "- 当前已经存在一版草案和预览；这轮任务是基于现有草案修补结构化阻断问题，而不是整版重新生成。",
+        "- 当用户提供应用失败、网络缺失、连接缺口、required nets / missing endpoints / net mismatch 之类结构化应用错误时，应优先调用 `draft_repair_plan`。",
+        "- `draft_repair_plan` 的目标是做受限局部修补：补齐缺失供电连接、修复映射缺口、保留现有草案主体结构。",
+        "- 除非 `draft_repair_plan` 明确无法修补，或者用户明确要求整版重做，否则不要直接回退到 `draft_generate_plan`。",
+        "- 修补得到新的 plan 后，应继续调用 `draft_preview_plan`；必要时再调用 `rules_validate_draft` 或 `editor_preview_apply_plan`。",
+        "- 输出重点应是：识别到的结构化应用错误、已执行或建议执行的修补动作、是否还有剩余阻断项。",
+        "",
+        "## 当前已存在草案摘要",
+        `- 标题：${input.task.existingDraftSummary?.title || "未知"}`,
+        `- 说明：${input.task.existingDraftSummary?.rationale || "未知"}`,
+        `- 器件位号：${(input.task.existingDraftSummary?.componentRefs ?? []).join("、") || "未知"}`,
+        `- 主要网络：${(input.task.existingDraftSummary?.netNames ?? []).join("、") || "未知"}`,
+      ]
+    : [];
+
   const draftRiskFollowUpBlock = isDraftFollowUpRiskAnalysis
     ? [
         "## 现有草案风险复核任务定义",
@@ -232,6 +251,8 @@ export function buildSystemPrompt(input: {
     ...(draftFollowUpBlock.length > 0 ? [""] : []),
     ...draftRevisionBlock,
     ...(draftRevisionBlock.length > 0 ? [""] : []),
+    ...draftRepairBlock,
+    ...(draftRepairBlock.length > 0 ? [""] : []),
     ...draftRiskFollowUpBlock,
     ...(draftRiskFollowUpBlock.length > 0 ? [""] : []),
     ...draftBlock,

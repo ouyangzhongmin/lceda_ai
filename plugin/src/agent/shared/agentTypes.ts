@@ -7,6 +7,7 @@ export type DraftFollowUpIntent =
   | "summarize_existing_draft"
   | "revise_existing_draft"
   | "apply_existing_draft"
+  | "repair_existing_draft"
   | "analyze_existing_draft_risk";
 
 export interface AgentTask {

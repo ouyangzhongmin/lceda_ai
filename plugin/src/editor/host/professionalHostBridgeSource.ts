@@ -12,6 +12,7 @@ import {
   locateTypedHostObject,
   openTypedHostWindow,
   typedGetLibraryDevice,
+  typedGetLibrarySymbol,
   typedGetLibraryDevicesByLcscIds,
   typedSearchLibraryDevices,
 } from "./proHostProbe";
@@ -148,6 +149,15 @@ export function resolveProfessionalRawHostApi(): ProfessionalRawHostApi | undefi
               return typedResult;
             }
             throw new Error("professional host library get is not available");
+          },
+      getSymbol: fromNamespace?.library?.getSymbol
+        ? fromNamespace.library.getSymbol
+        : async (input) => {
+            const typedResult = await typedGetLibrarySymbol(input);
+            if (typedResult) {
+              return typedResult;
+            }
+            throw new Error("professional host library symbol get is not available");
           },
       getDevicesByLcscIds: fromNamespace?.library?.getDevicesByLcscIds
         ? fromNamespace.library.getDevicesByLcscIds

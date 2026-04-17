@@ -3,6 +3,7 @@ import { buildDraftGuidanceFromRag } from "../../editor/apply-plan/ragDraftGuida
 import { previewDraftPlan } from "../../editor/apply-plan/previewDraftPlan";
 import { resolveDraftPlanDevices } from "../../editor/apply-plan/resolveDraftPlanDevices";
 import { draftSpecToPlan, isDraftDesignSpec } from "../../editor/apply-plan/draftSpecToPlan";
+import { classifyDraftApplyError, repairDraftPlanPowerConnectivity } from "../../editor/apply-plan/repairDraftPlan";
 import type { RagClient } from "../../services/rag/ragClient";
 import type { AgentTool } from "./toolRegistry";
 import type { DraftDesignSpec, DraftPlanGuidance, DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
@@ -46,10 +47,17 @@ type GetLibraryDevice = (input: {
   scope?: "system" | "project" | "personal" | "favorite";
 }) => Promise<LibraryDeviceDetail>;
 
+type GetLibrarySymbol = (input: {
+  symbolUuid: string;
+  libraryUuid?: string;
+  scope?: "system" | "project" | "personal" | "favorite";
+}) => Promise<LibraryDeviceDetail>;
+
 export function createDraftTools(
   ragClient?: RagClient,
   searchLibraryDevices?: SearchLibraryDevices,
-  getLibraryDevice?: GetLibraryDevice
+  getLibraryDevice?: GetLibraryDevice,
+  getLibrarySymbol?: GetLibrarySymbol
 ): AgentTool[] {
   return [
     {
@@ -135,6 +143,14 @@ export function createDraftTools(
                     libraryUuid,
                     scope: "system",
                   })
+              : undefined,
+            getLibrarySymbol
+              ? async ({ symbolUuid, libraryUuid }) =>
+                  getLibrarySymbol({
+                    symbolUuid,
+                    libraryUuid,
+                    scope: "system",
+                  })
               : undefined
           );
         }
@@ -157,6 +173,44 @@ export function createDraftTools(
       execute: async (input: {
         plan: ReturnType<typeof generateDraftPlanFromPrompt>;
       }) => previewDraftPlan(input.plan),
+    },
+    {
+      name: "draft_repair_plan",
+      description: "基于结构化应用错误，对当前草案做受限的局部修补，而不是整版重生成",
+      parameters: {
+        type: "object",
+        properties: {
+          plan: {
+            type: "object",
+            description: "待修补的草案计划",
+          },
+          applyError: {
+            type: "string",
+            description: "应用草案失败时返回的原始错误信息",
+          },
+        },
+        required: ["plan", "applyError"],
+        additionalProperties: false,
+      },
+      execute: async (input: {
+        plan: ReturnType<typeof generateDraftPlanFromPrompt>;
+        applyError: string;
+      }) => {
+        const classification = classifyDraftApplyError(input.applyError);
+        if (classification.kind !== "unknown") {
+          const repaired = repairDraftPlanPowerConnectivity(input.plan);
+          return {
+            classification,
+            repaired: repaired.changed,
+            plan: repaired.plan,
+          };
+        }
+        return {
+          classification,
+          repaired: false,
+          plan: input.plan,
+        };
+      },
     },
   ];
 }

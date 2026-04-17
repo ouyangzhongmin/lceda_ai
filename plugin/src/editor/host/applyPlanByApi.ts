@@ -2,7 +2,8 @@ import { previewDraftPlan } from "../apply-plan/previewDraftPlan";
 import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
 import { normalizeDraftPlan } from "../apply-plan/generateDraftPlan";
 import { resolveDraftPlanDevices } from "../apply-plan/resolveDraftPlanDevices";
-import { typedSearchLibraryDevices } from "./proHostProbe";
+import { typedGetLibrarySymbol, typedSearchLibraryDevices } from "./proHostProbe";
+import { resolveHostEditorBridge } from "./runtime";
 import type { ApplyPlanResult } from "../adapters/editorAdapter";
 
 export interface ApiApplyPlanAdapter {
@@ -35,6 +36,9 @@ export function createApiApplyPlanAdapter(
             `typed placement requires all draft components to have resolved devices: ${listUnresolvedPlacementComponents(plan).join(", ")}`
           );
         }
+      }
+      if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
+        plan = await enrichResolvedPinsFromLibraryBeforeApply(plan);
       }
       const transactionId = createTransactionId();
       if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
@@ -153,6 +157,42 @@ export function createApiApplyPlanAdapter(
   };
 }
 
+async function enrichResolvedPinsFromLibraryBeforeApply(plan: DraftPlan): Promise<DraftPlan> {
+  const needsPinResolution = plan.pins.some(
+    (pin) => pin.pinResolutionStatus === "unresolved" || !(pin.resolvedPinName || pin.resolvedPinNumber)
+  );
+  if (!needsPinResolution) {
+    return plan;
+  }
+  const bridge = resolveHostEditorBridge();
+  if (!bridge?.getLibraryDevice) {
+    return plan;
+  }
+  return resolveDraftPlanDevices(
+    plan,
+    async () => [],
+    async ({ deviceUuid, libraryUuid }) =>
+      bridge.getLibraryDevice!({
+        deviceUuid,
+        libraryUuid,
+        scope: "system",
+      }),
+    bridge.getLibrarySymbol
+      ? async ({ symbolUuid, libraryUuid }) =>
+          bridge.getLibrarySymbol!({
+            symbolUuid,
+            libraryUuid,
+            scope: "system",
+          })
+      : async ({ symbolUuid, libraryUuid }) =>
+          typedGetLibrarySymbol({
+            symbolUuid,
+            libraryUuid,
+            scope: "system",
+          })
+  );
+}
+
 function hasAnyPlacementDevice(plan: DraftPlan): boolean {
   return plan.components.some((component) => {
     const deviceUuid = component.properties.device_uuid;
@@ -195,6 +235,7 @@ async function applyTypedSchematicPlan(plan: DraftPlan): Promise<{ componentIds:
   const gridX = 140;
   const gridY = 100;
   try {
+    ensureResolvedDraftPinsForTypedPlacement(plan);
     for (const [index, component] of plan.components.entries()) {
       const deviceUuid = component.properties.device_uuid;
       const libraryUuid = component.properties.library_uuid;
@@ -370,38 +411,52 @@ function resolvePlanPin(
   );
 }
 
+function ensureResolvedDraftPinsForTypedPlacement(plan: DraftPlan): void {
+  const componentsById = new Map(plan.components.map((component) => [component.id, component]));
+  const unresolvedPins = plan.pins.filter((pin) => {
+    if (pin.pinResolutionStatus === "unresolved") {
+      return true;
+    }
+    return !(pin.resolvedPinName || pin.resolvedPinNumber);
+  });
+  if (unresolvedPins.length === 0) {
+    return;
+  }
+  const labels = unresolvedPins.map((pin) => {
+    const component = componentsById.get(pin.componentId);
+    const ref = component?.ref ?? component?.id ?? pin.componentId;
+    const label = pin.pinName || pin.pinNumber || pin.id;
+    return `${ref}.${label}`;
+  });
+  throw new Error(`unresolved draft pin mappings: ${labels.join(", ")}`);
+}
+
 function findBestMatchingPlanPin(
   pins: DraftPlan["pins"],
   componentId: string,
   pinName?: string,
   pinNumber?: string
 ): DraftPlan["pins"][number] | undefined {
-  const candidates = pins.filter((item) => item.componentId === componentId);
+  const candidates = pins.filter(
+    (item) =>
+      item.componentId === componentId &&
+      item.pinResolutionStatus !== "unresolved" &&
+      Boolean(item.resolvedPinName || item.resolvedPinNumber)
+  );
   if (candidates.length === 0) {
     return undefined;
   }
 
-  const runtimeAliases = normalizePinSemantic(pinName, pinNumber);
   let bestScore = -1;
   let bestMatch: DraftPlan["pins"][number] | undefined;
 
   for (const candidate of candidates) {
     let score = 0;
-    if (candidate.pinNumber && pinNumber && candidate.pinNumber === pinNumber) {
-      score += 100;
+    if (candidate.resolvedPinNumber && pinNumber && candidate.resolvedPinNumber === pinNumber) {
+      score += 200;
     }
-    if (candidate.pinName && pinName && candidate.pinName === pinName) {
-      score += 90;
-    }
-    const candidateAliases = normalizePinSemantic(candidate.pinName, candidate.pinNumber);
-    if (candidateAliases.some((alias) => runtimeAliases.includes(alias))) {
-      score += 60;
-    }
-    if (candidate.electricalType) {
-      const electricalAlias = normalizeElectricalType(candidate.electricalType);
-      if (electricalAlias && runtimeAliases.includes(electricalAlias)) {
-        score += 25;
-      }
+    if (candidate.resolvedPinName && pinName && candidate.resolvedPinName === pinName) {
+      score += 180;
     }
     if (score > bestScore) {
       bestScore = score;
@@ -411,109 +466,6 @@ function findBestMatchingPlanPin(
 
   return bestScore > 0 ? bestMatch : undefined;
 }
-
-function normalizePinSemantic(name?: string, pinNumber?: string): string[] {
-  const aliases = new Set<string>();
-  const addAlias = (value: string): void => {
-    const normalized = normalizeToken(value);
-    if (!normalized) {
-      return;
-    }
-    aliases.add(normalized);
-    const semantic = PIN_SEMANTIC_ALIASES[normalized];
-    if (semantic) {
-      aliases.add(semantic);
-    }
-  };
-
-  if (name) {
-    addAlias(name);
-    for (const token of splitTokens(name)) {
-      addAlias(token);
-    }
-  }
-  if (pinNumber) {
-    addAlias(pinNumber);
-  }
-
-  return [...aliases];
-}
-
-function normalizeElectricalType(type: string): string | undefined {
-  switch (type.toLowerCase()) {
-    case "power_in":
-      return "power_in";
-    case "power_out":
-      return "power_out";
-    case "passive":
-      return "passive";
-    default:
-      return undefined;
-  }
-}
-
-function normalizeToken(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9+_-]+/g, "");
-}
-
-function splitTokens(value: string): string[] {
-  return value
-    .split(/[\s/()[\]-]+/g)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
-
-const PIN_SEMANTIC_ALIASES: Record<string, string> = {
-  vin: "power_in",
-  in: "power_in",
-  vi: "power_in",
-  vcc: "power_in",
-  vdd: "power_in",
-  dcin: "power_in",
-  pwrin: "power_in",
-  vout: "power_out",
-  out: "power_out",
-  vo: "power_out",
-  vreg: "power_out",
-  "3v3": "power_out",
-  "5v": "power_out",
-  gnd: "ground",
-  pgnd: "ground",
-  agnd: "ground",
-  ground: "ground",
-  vss: "ground",
-  i2c_sda: "i2c_sda",
-  sda: "i2c_sda",
-  i2c_scl: "i2c_scl",
-  scl: "i2c_scl",
-  neg: "negative",
-  minus: "negative",
-  n: "negative",
-  "-": "negative",
-  pos: "positive",
-  plus: "positive",
-  p: "positive",
-  "+": "positive",
-  i2s_sck: "i2s_bclk",
-  bclk: "i2s_bclk",
-  sclk: "i2s_bclk",
-  i2s_bclk: "i2s_bclk",
-  i2s_ws: "i2s_lrck",
-  ws: "i2s_lrck",
-  lrck: "i2s_lrck",
-  lrc: "i2s_lrck",
-  i2s_lrck: "i2s_lrck",
-  i2s_sd: "i2s_data",
-  sd: "i2s_data",
-  sdin: "i2s_data",
-  sdout: "i2s_data",
-  din: "i2s_data",
-  dout: "i2s_data",
-  adcdat: "i2s_data",
-  dacdat: "i2s_data",
-  i2s_din: "i2s_data",
-  i2s_dout: "i2s_data",
-};
 
 function buildOrthogonalPolyline(points: Array<{ x: number; y: number }>): number[] {
   if (points.length < 2) {

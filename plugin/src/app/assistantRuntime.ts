@@ -23,7 +23,10 @@ import { LocalStorageKeyValueStore } from "../storage/keyValueStore";
 import type { MainPanelState } from "../ui/panels/mainPanel";
 import type { AgentIterationStep } from "../agent/shared/agentTypes";
 import { previewDraftPlan } from "../editor/apply-plan/previewDraftPlan";
+import { shouldRepairDraftApplyError } from "../editor/apply-plan/repairDraftPlan";
 import { isCancelledError } from "../agent/core/cancelledError";
+import { resolveDraftPlanDevices } from "../editor/apply-plan/resolveDraftPlanDevices";
+import type { HostEditorBridge } from "../editor/host/runtime";
 
 const GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
 const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
@@ -45,6 +48,7 @@ const CONTEXT_COMPACTION_TRIGGER_TURNS = 20;
 const CONTEXT_COMPACTION_KEEP_RECENT_TURNS = 3;
 const CONTEXT_COMPACTION_MAX_TURNS = 30;
 const CONTEXT_COMPACTION_TITLE = "上下文下压缩";
+const MAX_DRAFT_REPAIR_ATTEMPTS = 2;
 
 let persistPanelTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPersist: { storage: LocalStorageKeyValueStore; state: MainPanelState } | null = null;
@@ -108,6 +112,49 @@ export function planContextCompaction(messages: MainPanelState["chatMessages"]):
     olderMessages,
     recentMessages,
   };
+}
+
+export async function applyDraftPlanWithRepair(input: {
+  initialPlan: DraftPlan;
+  applyPlan: (plan: DraftPlan) => Promise<{ applied: boolean; componentCount: number; netCount: number; transactionId?: string }>;
+  repairPlan: (args: { plan: DraftPlan; applyError: string }) => Promise<{ repaired?: boolean; plan?: DraftPlan }>;
+  maxRepairAttempts?: number;
+}): Promise<{
+  result: { applied: boolean; componentCount: number; netCount: number; transactionId?: string };
+  finalPlan: DraftPlan;
+  repaired: boolean;
+  repairCount: number;
+}> {
+  let currentPlan = input.initialPlan;
+  let repaired = false;
+  let repairCount = 0;
+  const maxRepairAttempts = Math.max(0, input.maxRepairAttempts ?? 0);
+
+  while (true) {
+    try {
+      const result = await input.applyPlan(currentPlan);
+      return {
+        result,
+        finalPlan: currentPlan,
+        repaired,
+        repairCount,
+      };
+    } catch (error) {
+      if (repairCount >= maxRepairAttempts || !shouldRepairDraftApplyError(error)) {
+        throw error;
+      }
+      const repairedResult = await input.repairPlan({
+        plan: currentPlan,
+        applyError: error instanceof Error ? error.message : String(error),
+      });
+      if (!repairedResult?.repaired || !repairedResult.plan) {
+        throw error;
+      }
+      currentPlan = repairedResult.plan;
+      repaired = true;
+      repairCount += 1;
+    }
+  }
 }
 
 function formatMessagesForCompaction(messages: ChatMessage[]): string {
@@ -297,6 +344,23 @@ export function formatDraftApplyErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const emptyPageMatch = message.match(/draft apply requires an empty schematic page(?:: current page "([^"]+)" already has content)?/i);
   if (!emptyPageMatch) {
+    const unresolvedPinMatch = message.match(/unresolved draft pin mappings:\s*(.+)$/i);
+    if (unresolvedPinMatch) {
+      const rawPins = unresolvedPinMatch[1]
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const refs = Array.from(
+        new Set(
+          rawPins
+            .map((item) => item.split(".")[0]?.trim())
+            .filter(Boolean)
+        )
+      ).join("、");
+      return refs
+        ? `应用草案失败：${refs} 等器件的连接还没有自动校正完成。请先确认相关器件型号，再重新应用草案。`
+        : "应用草案失败：当前草案中仍有部分器件连接未自动校正完成。请先确认相关器件型号，再重新应用草案。";
+    }
     const unresolvedPlacementMatch = message.match(
       /typed placement requires all draft components to have resolved devices:\s*(.+)$/i
     );
@@ -354,6 +418,25 @@ export function buildDraftApplyUnavailableMessage(input: {
   return `应用草案失败：宿主未真正执行原理图应用。当前适配器来源：${input.adapterSource}${missingText}。请先检查宿主 applyPlan 能力是否已接通。`;
 }
 
+export async function enrichDraftPlanFromBridge(
+  plan: DraftPlan | undefined,
+  bridge?: Pick<HostEditorBridge, "getLibraryDevice">
+): Promise<DraftPlan | undefined> {
+  if (!plan || !bridge?.getLibraryDevice) {
+    return plan;
+  }
+  return resolveDraftPlanDevices(
+    plan,
+    async () => [],
+    async ({ deviceUuid, libraryUuid }) =>
+      bridge.getLibraryDevice!({
+        deviceUuid,
+        libraryUuid,
+        scope: "system",
+      })
+  );
+}
+
 export function shouldUseDraftReplyLeadNarrative(input: {
   draftNarrative?: string;
   naturalReply?: string;
@@ -382,6 +465,44 @@ export interface DevicePickerCandidate {
   supplier?: string;
   supplierId?: string;
   description?: string;
+}
+
+export function applyDraftDeviceCandidateSelection(
+  plan: DraftPlan,
+  input: {
+    componentId: string;
+    candidate: DevicePickerCandidate;
+  }
+): DraftPlan {
+  const component = plan.components.find((entry) => entry.id === input.componentId);
+  if (!component) {
+    return plan;
+  }
+  component.libraryId = input.candidate.uuid;
+  component.packageName = input.candidate.footprintName || component.packageName;
+  component.properties = {
+    ...component.properties,
+    device_uuid: input.candidate.uuid,
+    library_uuid: input.candidate.libraryUuid,
+    device_resolution_status: "resolved",
+    device_resolution_reason: "manual_selection",
+  };
+  const role = inferDraftComponentRole(component.ref ?? component.id);
+  plan.selectedDevices = [
+    ...(plan.selectedDevices ?? []).filter((entry) => entry.componentId !== input.componentId),
+    {
+      componentId: input.componentId,
+      componentRef: component.ref ?? component.id,
+      role,
+      query: component.properties?.preferred_search_query || "",
+      deviceUuid: input.candidate.uuid,
+      libraryUuid: input.candidate.libraryUuid,
+      name: input.candidate.name,
+      manufacturer: input.candidate.manufacturer,
+      footprintName: input.candidate.footprintName,
+    },
+  ];
+  return plan;
 }
 
 export function buildDevicePickerRoleLabel(role: string | undefined): string {
@@ -819,7 +940,25 @@ export function upsertLlmReasoningStepItem(
 }
 
 export function clampStreamingAssistantContent(previous: string, deltaOrNext: string): string {
-  return `${String(previous || "")}${String(deltaOrNext || "")}`;
+  return stripFinalControlLikeText(`${String(previous || "")}${String(deltaOrNext || "")}`);
+}
+
+export function applyStreamingAssistantContentDelta(
+  message: NonNullable<MainPanelState["chatMessages"]>[number],
+  deltaOrNext: string,
+  mode: "append" | "replace" = "append"
+): string {
+  const holder = message as NonNullable<MainPanelState["chatMessages"]>[number] & {
+    __rawStreamingContent?: string;
+  };
+  const previousRaw =
+    mode === "replace"
+      ? ""
+      : String(holder.__rawStreamingContent ?? message.content ?? "");
+  const nextRaw = `${previousRaw}${String(deltaOrNext || "")}`;
+  holder.__rawStreamingContent = nextRaw;
+  message.content = stripFinalControlLikeText(nextRaw);
+  return message.content;
 }
 
 export function shouldMirrorStreamingTextToAssistantBody(input: {
@@ -1172,9 +1311,9 @@ function createAssistantRuntime(): AssistantRuntime {
           lastMessage.title = "分析中";
           if (event.stage === "llm") {
             if (event.textDelta) {
-              lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", event.textDelta);
+              applyStreamingAssistantContentDelta(lastMessage, event.textDelta, "append");
             } else if (event.text !== undefined) {
-              lastMessage.content = clampStreamingAssistantContent("", event.text || lastMessage.content || "");
+              applyStreamingAssistantContentDelta(lastMessage, event.text || lastMessage.content || "", "replace");
             }
           } else {
             // progress 阶段只更新步骤，不写入 content；content 留给最终流式报告。
@@ -1363,25 +1502,51 @@ function createAssistantRuntime(): AssistantRuntime {
     }
     const adapter = createEditorAdapter(resolveRuntimeChannel());
     try {
-      const result = await adapter.applyPlan(draftPlan);
-      if (!result.applied) {
-        const capabilityReport = await adapter.getCapabilityReport().catch(() => null);
-        throw new Error(
-          buildDraftApplyUnavailableMessage({
-            adapterSource: adapter.source,
-            capabilityReport,
-          })
-        );
+      const result = await applyDraftPlanWithRepair({
+        initialPlan: draftPlan,
+        maxRepairAttempts: MAX_DRAFT_REPAIR_ATTEMPTS,
+        applyPlan: async (plan) => {
+          const applyResult = await adapter.applyPlan(plan);
+          if (!applyResult.applied) {
+            const capabilityReport = await adapter.getCapabilityReport().catch(() => null);
+            throw new Error(
+              buildDraftApplyUnavailableMessage({
+                adapterSource: adapter.source,
+                capabilityReport,
+              })
+            );
+          }
+          return applyResult;
+        },
+        repairPlan: async ({ plan, applyError }) =>
+          pluginAgent
+            .createToolRegistry(adapter, { includeIssueTools: false, includeLibraryTools: true })
+            .invoke("draft_repair_plan", {
+              plan,
+              applyError,
+            }) as Promise<{ repaired?: boolean; plan?: DraftPlan }>,
+      });
+      if (result.finalPlan !== draftPlan) {
+        internals.draftPlan = result.finalPlan;
+        syncDraftPreviewState(state, result.finalPlan);
       }
-      internals.lastApplyTransactionId = result.transactionId;
+      internals.lastApplyTransactionId = result.result.transactionId;
       internals.draftBlocked = false;
       state.agentRunState = "completed";
       state.agentRunRoute = "draft";
-      state.agentRunDetail = "草案已应用";
-      state.summary = `草案已应用：器件 ${result.componentCount}，网络 ${result.netCount}。`;
+      state.agentRunDetail = result.repaired ? "草案已自动修补并应用" : "草案已应用";
+      state.summary = result.repaired
+        ? `草案已自动修补 ${result.repairCount} 次后应用：器件 ${result.result.componentCount}，网络 ${result.result.netCount}。`
+        : `草案已应用：器件 ${result.result.componentCount}，网络 ${result.result.netCount}。`;
       state.chatMessages = appendAssistantMessages(
         sanitizeChatMessages(state.chatMessages),
-        pluginAgent.buildDraftAppliedMessages(result.componentCount, result.netCount)
+        result.repaired
+          ? pluginAgent.buildStatusMessages({
+              title: "已自动修补并应用",
+              content: state.summary,
+              tone: "success",
+            })
+          : pluginAgent.buildDraftAppliedMessages(result.result.componentCount, result.result.netCount)
       );
     } catch (error) {
       state.agentRunState = "failed";
@@ -1467,34 +1632,13 @@ function createAssistantRuntime(): AssistantRuntime {
     const picker = state.devicePicker ?? buildDevicePickerState(plan);
     const item = picker?.items.find((entry) => entry.componentId === input.componentId);
     const candidate = item?.candidates?.[input.candidateIndex];
-    const component = plan.components.find((entry) => entry.id === input.componentId);
-    if (!item || !candidate || !component) {
+    if (!item || !candidate) {
       return state;
     }
-    component.libraryId = candidate.uuid;
-    component.packageName = candidate.footprintName || component.packageName;
-    component.properties = {
-      ...component.properties,
-      device_uuid: candidate.uuid,
-      library_uuid: candidate.libraryUuid,
-      device_resolution_status: "resolved",
-      device_resolution_reason: "manual_selection",
-    };
-    const role = inferDraftComponentRole(component.ref ?? component.id);
-    plan.selectedDevices = [
-      ...(plan.selectedDevices ?? []).filter((entry) => entry.componentId !== input.componentId),
-      {
-        componentId: input.componentId,
-        componentRef: component.ref ?? component.id,
-        role,
-        query: component.properties?.preferred_search_query || "",
-        deviceUuid: candidate.uuid,
-        libraryUuid: candidate.libraryUuid,
-        name: candidate.name,
-        manufacturer: candidate.manufacturer,
-        footprintName: candidate.footprintName,
-      },
-    ];
+    applyDraftDeviceCandidateSelection(plan, {
+      componentId: input.componentId,
+      candidate,
+    });
     internals.draftPlan = plan;
     syncDraftPreviewState(state, plan);
     const remainingUnresolved = hasUnresolvedDraftDevices(plan);
@@ -1512,6 +1656,13 @@ function createAssistantRuntime(): AssistantRuntime {
       })
     );
     return state;
+  }
+
+  async function enrichCurrentDraftPlanFromLibrary(state: MainPanelState): Promise<void> {
+    const plan = internals.draftPlan;
+    const bridge = resolveHostEditorBridge();
+    internals.draftPlan = await enrichDraftPlanFromBridge(plan, bridge);
+    syncDraftPreviewState(state, internals.draftPlan);
   }
 
   return {
@@ -1984,9 +2135,9 @@ function createAssistantRuntime(): AssistantRuntime {
                 lastMessage.content = "";
               }
               if (shouldMirrorTextToBody && sanitizedTextDelta) {
-                lastMessage.content = clampStreamingAssistantContent(lastMessage.content || "", sanitizedTextDelta);
+                applyStreamingAssistantContentDelta(lastMessage, sanitizedTextDelta, "append");
               } else if (shouldMirrorTextToBody && sanitizedText !== undefined && String(sanitizedText).trim()) {
-                lastMessage.content = clampStreamingAssistantContent("", sanitizedText);
+                applyStreamingAssistantContentDelta(lastMessage, sanitizedText, "replace");
               } else if (!shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
                 lastMessage.content = "";
               }
@@ -2277,6 +2428,7 @@ function createAssistantRuntime(): AssistantRuntime {
     chooseDraftDeviceCandidate: async (input: { componentId: string; candidateIndex: number }): Promise<MainPanelState> => {
       const state = internals.currentState ?? (await computeAnalysisState());
       chooseDraftDeviceCandidateInternal(state, input);
+      await enrichCurrentDraftPlanFromLibrary(state);
       return commitState(internals, state, storage);
     },
     chooseBestDraftDeviceCandidates: async (): Promise<MainPanelState> => {
@@ -2312,6 +2464,7 @@ function createAssistantRuntime(): AssistantRuntime {
           componentId: item.componentId,
           candidateIndex: 0,
         });
+        await enrichCurrentDraftPlanFromLibrary(state);
         appliedCount += 1;
       }
       const remaining = state.devicePicker?.items.filter((item) => item.status === "unresolved").length ?? 0;
@@ -2876,6 +3029,13 @@ export function stripFinalControlLikeText(text: string | undefined): string {
     /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*:\s*$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"\s*$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*\{\s*"type"$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*"type"\s*:\s*"final"$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*"type"\s*:\s*"f(?:i(?:n(?:a(?:l?)?)?)?)?$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*"type"\s*:\s*$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*"type"\s*$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*"type"$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*:\s*"final"$/u,
+    /([\s\S]*?)(?:\n|\r|^)\s*:\s*"f(?:i(?:n(?:a(?:l?)?)?)?)?$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*```\s*$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*``$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*`$/u,

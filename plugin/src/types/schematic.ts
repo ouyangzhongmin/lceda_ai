@@ -26,6 +26,12 @@ export interface SchematicPin {
   pinNumber?: string;
   pinName?: string;
   electricalType?: string;
+  resolvedPinNumber?: string;
+  resolvedPinName?: string;
+  resolvedElectricalType?: string;
+  pinResolutionStatus?: "resolved" | "unresolved";
+  pinResolutionConfidence?: number;
+  pinResolutionReason?: string;
   noConnected?: boolean;
   netName?: string;
 }

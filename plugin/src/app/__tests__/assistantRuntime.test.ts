@@ -2,7 +2,10 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 
 import {
+  applyStreamingAssistantContentDelta,
+  applyDraftDeviceCandidateSelection,
   applyCustomLlmConfigSavedState,
+  applyDraftPlanWithRepair,
   appendAssistantMessages,
   appendUserChatMessage,
   buildDraftApplyUnavailableMessage,
@@ -15,6 +18,7 @@ import {
   deriveSessionHistoryEntries,
   finalizeDraftTurnMessages,
   formatDraftApplyErrorMessage,
+  enrichDraftPlanFromBridge,
   hasUnresolvedDraftDevices,
   inferDraftComponentRole,
   mergeAssistantFinalMessage,
@@ -34,6 +38,7 @@ import {
 import { getAssistantCardLayout } from "../assistantCardLayout";
 import type { MainPanelState } from "../../ui/panels/mainPanel";
 import { previewDraftPlan } from "../../editor/apply-plan/previewDraftPlan";
+import type { DraftPlan } from "../../editor/apply-plan/draftPlan";
 
 test("shouldIgnoreDuplicateSendWhileRunning returns true for the same pending prompt in an active turn", () => {
   assert.equal(
@@ -169,6 +174,204 @@ test("formatDraftApplyErrorMessage converts unresolved placement device errors i
     ),
     "应用草案失败：以下器件还没有完成可放置器件选型：B1、U3。请先完成器件确认，再重新应用草案。"
   );
+});
+
+test("formatDraftApplyErrorMessage converts unresolved draft pin mappings into actionable guidance", () => {
+  assert.equal(
+    formatDraftApplyErrorMessage(
+      new Error("unresolved draft pin mappings: D1.A, D1.C")
+    ),
+    "应用草案失败：D1 等器件的连接还没有自动校正完成。请先确认相关器件型号，再重新应用草案。"
+  );
+});
+
+test("enrichDraftPlanFromBridge resolves draft pins from host library detail", async () => {
+  const plan = {
+    title: "led",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-d1",
+        ref: "D1",
+        properties: {
+          device_uuid: "led-device",
+          library_uuid: "led-lib",
+        },
+      },
+    ],
+    pins: [
+      {
+        id: "draft-d1-a",
+        componentId: "draft-d1",
+        pinName: "A",
+        pinNumber: "1",
+      },
+      {
+        id: "draft-d1-c",
+        componentId: "draft-d1",
+        pinName: "C",
+        pinNumber: "2",
+      },
+    ],
+    nets: [],
+  } as DraftPlan;
+
+  const enriched = await enrichDraftPlanFromBridge(plan, {
+    getLibraryDevice: async () => ({
+      uuid: "led-device",
+      pins: [
+        { pinName: "A", pinNumber: "1", electricalType: "passive" },
+        { pinName: "K", pinNumber: "2", electricalType: "passive" },
+      ],
+    }),
+  });
+
+  assert.equal(enriched?.pins.find((pin) => pin.id === "draft-d1-a")?.resolvedPinName, "A");
+  assert.equal(enriched?.pins.find((pin) => pin.id === "draft-d1-c")?.resolvedPinName, "K");
+  assert.equal(enriched?.pins.find((pin) => pin.id === "draft-d1-c")?.pinResolutionStatus, "resolved");
+});
+
+test("manual device selection followed by library enrichment clears unresolved pin preview details", async () => {
+  const plan = {
+    title: "led",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-d1",
+        ref: "D1",
+        properties: {
+          preferred_search_query: "KT-0805R",
+          device_resolution_status: "unresolved",
+          device_resolution_reason: "unresolved",
+        },
+      },
+    ],
+    pins: [
+      {
+        id: "draft-d1-a",
+        componentId: "draft-d1",
+        pinName: "A",
+        pinNumber: "1",
+        pinResolutionStatus: "unresolved",
+      },
+      {
+        id: "draft-d1-c",
+        componentId: "draft-d1",
+        pinName: "C",
+        pinNumber: "2",
+        pinResolutionStatus: "unresolved",
+      },
+    ],
+    nets: [
+      { id: "net-vcc", name: "3V3", nodeIds: ["draft-d1-a"], isPower: true },
+      { id: "net-gnd", name: "GND", nodeIds: ["draft-d1-c"], isPower: true },
+    ],
+  } as DraftPlan;
+
+  const previewBefore = previewDraftPlan(plan);
+  assert.equal(previewBefore.unresolvedPinDetails?.length, 2);
+
+  applyDraftDeviceCandidateSelection(plan, {
+    componentId: "draft-d1",
+    candidate: {
+      uuid: "led-device",
+      libraryUuid: "led-lib",
+      name: "KT-0805R",
+      footprintName: "LED0805-R-RD",
+      manufacturer: "KENTO",
+    },
+  });
+
+  const enriched = await enrichDraftPlanFromBridge(plan, {
+    getLibraryDevice: async () => ({
+      uuid: "led-device",
+      pins: [
+        { pinName: "A", pinNumber: "1", electricalType: "passive" },
+        { pinName: "K", pinNumber: "2", electricalType: "passive" },
+      ],
+    }),
+  });
+
+  const previewAfter = previewDraftPlan(enriched as DraftPlan);
+  assert.equal(previewAfter.unresolvedPinDetails?.length ?? 0, 0);
+  assert.equal(previewAfter.unresolvedDeviceDetails?.length ?? 0, 0);
+  assert.match(previewAfter.rationale, /已选器件:\s*led=KT-0805R/);
+  assert.equal(enriched?.pins.find((pin) => pin.id === "draft-d1-c")?.resolvedPinName, "K");
+});
+
+test("applyDraftPlanWithRepair retries structured repair up to the configured limit", async () => {
+  const attempts: DraftPlan[] = [
+    { title: "draft-0", rationale: "r", components: [], pins: [], nets: [] },
+    { title: "draft-1", rationale: "r", components: [], pins: [], nets: [] },
+    { title: "draft-2", rationale: "r", components: [], pins: [], nets: [] },
+  ];
+  let applyCount = 0;
+  let repairCount = 0;
+
+  const result = await applyDraftPlanWithRepair({
+    initialPlan: attempts[0]!,
+    maxRepairAttempts: 2,
+    applyPlan: async (plan) => {
+      const currentIndex = attempts.findIndex((item) => item.title === plan.title);
+      applyCount += 1;
+      if (currentIndex < 2) {
+        throw new Error(currentIndex === 0
+          ? "unmapped required nets: 3V3 (missing endpoints)"
+          : "required connection unresolved: U1.VOUT -> J1.1 (3V3)");
+      }
+      return {
+        applied: true,
+        componentCount: 2,
+        netCount: 1,
+        transactionId: "tx-1",
+      };
+    },
+    repairPlan: async ({ plan, applyError }) => {
+      repairCount += 1;
+      if (applyError.includes("unmapped required nets")) {
+        return { repaired: true, plan: attempts[1]! };
+      }
+      if (applyError.includes("required connection unresolved")) {
+        return { repaired: true, plan: attempts[2]! };
+      }
+      return { repaired: false, plan };
+    },
+  });
+
+  assert.equal(applyCount, 3);
+  assert.equal(repairCount, 2);
+  assert.equal(result.repairCount, 2);
+  assert.equal(result.repaired, true);
+  assert.equal(result.finalPlan.title, "draft-2");
+  assert.equal(result.result.transactionId, "tx-1");
+});
+
+test("applyDraftPlanWithRepair stops once repair budget is exhausted", async () => {
+  let applyCount = 0;
+  let repairCount = 0;
+
+  await assert.rejects(
+    () =>
+      applyDraftPlanWithRepair({
+        initialPlan: { title: "draft-0", rationale: "r", components: [], pins: [], nets: [] },
+        maxRepairAttempts: 1,
+        applyPlan: async () => {
+          applyCount += 1;
+          throw new Error("required connection unresolved: U1.VOUT -> J1.1 (3V3)");
+        },
+        repairPlan: async ({ plan }) => {
+          repairCount += 1;
+          return {
+            repaired: true,
+            plan: { ...plan, title: `${plan.title}-next` },
+          };
+        },
+      }),
+    /required connection unresolved: U1\.VOUT -> J1\.1 \(3V3\)/i
+  );
+
+  assert.equal(applyCount, 2);
+  assert.equal(repairCount, 1);
 });
 
 test("draft confirmation follow-up summary requests should not auto-apply", () => {
@@ -500,6 +703,22 @@ test("clampStreamingAssistantContent keeps short streamed text unchanged", () =>
   const text = "正在为你分析点亮 LED 的基础电路。";
   const next = clampStreamingAssistantContent("", text);
   assert.equal(next, text);
+});
+
+test("clampStreamingAssistantContent strips partial final control payload leaked during streaming", () => {
+  const message = {
+    role: "assistant" as const,
+    title: "处理中",
+    content: "",
+    streaming: true,
+  };
+
+  applyStreamingAssistantContentDelta(message, "这是一个简单的点亮 LED 电路。\n\n", "append");
+  applyStreamingAssistantContentDelta(message, "{\n", "append");
+  applyStreamingAssistantContentDelta(message, '  "type"', "append");
+  applyStreamingAssistantContentDelta(message, ': "final"', "append");
+
+  assert.equal(message.content, "这是一个简单的点亮 LED 电路。");
 });
 
 test("shouldMirrorStreamingTextToAssistantBody keeps natural chat streaming in the assistant body", () => {

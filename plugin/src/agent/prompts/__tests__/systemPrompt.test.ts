@@ -120,6 +120,34 @@ test("buildSystemPrompt includes existing draft risk analysis instructions when 
   assert.equal(prompt.includes("不要无必要重新调用 `draft_generate_plan`"), true);
 });
 
+test("buildSystemPrompt includes existing draft repair instructions when follow-up intent is repair", () => {
+  const prompt = buildSystemPrompt({
+    task: {
+      type: "natural_chat",
+      userQuery: "这版草案应用失败了，补齐缺失网络再试一次",
+      draftFollowUpIntent: "repair_existing_draft" as any,
+      existingDraftSummary: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["U1", "U2", "J1"],
+        netNames: ["5V", "VBAT", "3V3"],
+      },
+    },
+    tools: [
+      {
+        name: "draft_repair_plan",
+        description: "基于结构化应用错误修补草案",
+        parameters: { type: "object", properties: {}, additionalProperties: true },
+      } as any,
+    ],
+  });
+
+  assert.equal(prompt.includes("## 现有草案修复任务定义"), true);
+  assert.equal(prompt.includes("优先调用 `draft_repair_plan`"), true);
+  assert.equal(prompt.includes("而不是整版重新生成"), true);
+  assert.equal(prompt.includes("结构化应用错误"), true);
+});
+
 test("buildSystemPrompt includes preferred output language guidance", () => {
   const prompt = buildSystemPrompt({
     task: {

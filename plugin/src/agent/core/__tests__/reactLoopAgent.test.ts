@@ -690,6 +690,98 @@ test("runUnifiedReactAgent forwards iterationSteps on progress events", async ()
   assert.match(result.iterationSteps?.[0]?.thoughtText || "", /调用工具：整理待办步骤|已完成整理待办步骤/);
 });
 
+test("runUnifiedReactAgent exposes draft_repair_plan and suppresses full regeneration tools for repair follow-up", async () => {
+  const tools = new ToolRegistry();
+  let capturedSystem = "";
+  let capturedUser = "";
+  let capturedToolNames: string[] = [];
+
+  tools.register({
+    name: "draft_repair_plan",
+    description: "基于结构化应用错误修补草案",
+    parameters: {
+      type: "object",
+      properties: {
+        plan: { type: "object" },
+        applyError: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    riskLevel: "low",
+    execute: async () => ({ repaired: false, classification: { kind: "unknown" } }),
+  } as AgentTool);
+  tools.register({
+    name: "draft_generate_plan",
+    description: "生成草案",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    riskLevel: "low",
+    execute: async () => ({ title: "unused", components: [], pins: [], nets: [] }),
+  } as AgentTool);
+  tools.register({
+    name: "draft_preview_plan",
+    description: "预览草案",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    riskLevel: "low",
+    execute: async () => ({ title: "unused", componentCount: 0, netCount: 0 }),
+  } as AgentTool);
+  tools.register({
+    name: "rules_validate_draft",
+    description: "验证草案",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    riskLevel: "low",
+    execute: async () => ({ issues: [] }),
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    riskLevel: "low",
+    execute: async (input) => {
+      const payload = input as {
+        messages?: Array<{ role?: string; content?: string }>;
+        tools?: Array<{ function?: { name?: string } }>;
+      };
+      const messages = Array.isArray(payload.messages) ? payload.messages : [];
+      capturedSystem = String(messages.find((item) => item.role === "system")?.content || "");
+      capturedUser = String(messages.findLast((item) => item.role === "user")?.content || "");
+      capturedToolNames = Array.isArray(payload.tools)
+        ? payload.tools.map((item) => String(item?.function?.name || "")).filter(Boolean)
+        : [];
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"done","output":"已分析当前草案修复路径。"}',
+      } as never;
+    },
+  } as AgentTool);
+
+  await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "应用草案失败：unmapped required nets: 3V3，补齐后再试",
+    panelState: {
+      loggedIn: true,
+      chatMessages: [],
+      agentRunState: "awaiting_confirmation",
+      draftPlan: { title: "draft", rationale: "r", components: [], pins: [], nets: [] } as DraftPlan,
+      draftPreview: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已有草案",
+        componentRefs: ["U1", "J1"],
+        netNames: ["3V3", "GND"],
+        componentCount: 2,
+        netCount: 2,
+      } as any,
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["draft_repair_plan", "draft_generate_plan", "draft_preview_plan", "rules_validate_draft", "llm_generate"],
+  });
+
+  assert.equal(capturedSystem.includes("## 现有草案修复任务定义"), true);
+  assert.equal(capturedSystem.includes("优先调用 `draft_repair_plan`"), true);
+  assert.equal(capturedToolNames.includes("draft_repair_plan"), true);
+  assert.equal(capturedToolNames.includes("draft_generate_plan"), false);
+  assert.equal(capturedToolNames.includes("draft_preview_plan"), true);
+});
+
 test("runReActLoop forwards plain text deltas as textDelta progress for non-reasoning models", async () => {
   const progressEvents: Array<{ detail: string; textDelta?: string; reasoningDelta?: string }> = [];
 

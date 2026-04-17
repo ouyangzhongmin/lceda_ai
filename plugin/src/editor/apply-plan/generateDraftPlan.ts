@@ -120,7 +120,7 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
     : [];
 
   const hasPins = Array.isArray(candidate.pins) && candidate.pins.length > 0;
-  const hasNets = Array.isArray(candidate.nets) && candidate.nets.length > 0;
+  const hasNets = Array.isArray(candidate.nets);
   if (hasPins && hasNets) {
     return {
       title: String(candidate.title || "Draft Plan"),
@@ -132,6 +132,20 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
         pinNumber: typeof pin.pinNumber === "string" ? pin.pinNumber : undefined,
         pinName: typeof pin.pinName === "string" ? pin.pinName : undefined,
         electricalType: typeof pin.electricalType === "string" ? pin.electricalType : undefined,
+        resolvedPinNumber: typeof pin.resolvedPinNumber === "string" ? pin.resolvedPinNumber : undefined,
+        resolvedPinName: typeof pin.resolvedPinName === "string" ? pin.resolvedPinName : undefined,
+        resolvedElectricalType:
+          typeof pin.resolvedElectricalType === "string" ? pin.resolvedElectricalType : undefined,
+        pinResolutionStatus:
+          pin.pinResolutionStatus === "resolved" || pin.pinResolutionStatus === "unresolved"
+            ? pin.pinResolutionStatus
+            : undefined,
+        pinResolutionConfidence:
+          typeof pin.pinResolutionConfidence === "number" && Number.isFinite(pin.pinResolutionConfidence)
+            ? pin.pinResolutionConfidence
+            : undefined,
+        pinResolutionReason:
+          typeof pin.pinResolutionReason === "string" ? pin.pinResolutionReason : undefined,
         noConnected: typeof pin.noConnected === "boolean" ? pin.noConnected : undefined,
         netName: typeof pin.netName === "string" ? pin.netName : undefined,
       })),

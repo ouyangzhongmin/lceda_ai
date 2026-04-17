@@ -7,6 +7,120 @@ type GetLibraryDevice = (input: {
   deviceUuid: string;
   libraryUuid?: string;
 }) => Promise<LibraryDeviceDetail | null>;
+type GetLibrarySymbol = (input: {
+  symbolUuid: string;
+  libraryUuid?: string;
+}) => Promise<LibraryDeviceDetail | null>;
+
+function safeObjectKeys(value: unknown): string[] {
+  return typeof value === "object" && value !== null ? Object.keys(value as Record<string, unknown>).slice(0, 20) : [];
+}
+
+function summarizeStringSample(value: unknown, maxLength = 240): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}…` : trimmed;
+}
+
+export function summarizeLibraryDeviceDetailShape(detail: LibraryDeviceDetail | null | undefined): Record<string, unknown> {
+  if (!detail) {
+    return { hasDetail: false };
+  }
+  const rawRecord =
+    typeof detail.raw === "object" && detail.raw !== null ? (detail.raw as Record<string, unknown>) : undefined;
+  const symbolRecord =
+    rawRecord && typeof rawRecord.symbol === "object" && rawRecord.symbol !== null
+      ? (rawRecord.symbol as Record<string, unknown>)
+      : undefined;
+  const deviceRecord =
+    rawRecord && typeof rawRecord.device === "object" && rawRecord.device !== null
+      ? (rawRecord.device as Record<string, unknown>)
+      : undefined;
+  const dataRecord =
+    rawRecord && typeof rawRecord.data === "object" && rawRecord.data !== null
+      ? (rawRecord.data as Record<string, unknown>)
+      : undefined;
+  return {
+    hasDetail: true,
+    detailKeys: safeObjectKeys(detail),
+    hasPinsArray: Array.isArray(detail.pins),
+    rawKeys: safeObjectKeys(rawRecord),
+    rawPinsArray: Array.isArray(rawRecord?.pins),
+    rawSymbolKeys: safeObjectKeys(symbolRecord),
+    rawSymbolPinsArray: Array.isArray(symbolRecord?.pins),
+    rawDeviceKeys: safeObjectKeys(deviceRecord),
+    rawDevicePinsArray: Array.isArray(deviceRecord?.pins),
+    rawDataKeys: safeObjectKeys(dataRecord),
+    rawDataPinsArray: Array.isArray(dataRecord?.pins),
+    rawDataStrSample:
+      summarizeStringSample(rawRecord?.dataStr) ??
+      summarizeStringSample(rawRecord?.rawData) ??
+      summarizeStringSample((detail as Record<string, unknown>).dataStr),
+    symbolName: detail.symbol?.name,
+    footprintName: detail.footprint?.name,
+  };
+}
+
+function logLibraryPinResolutionFailure(input: {
+  componentId: string;
+  componentRef?: string;
+  deviceUuid?: string;
+  libraryUuid?: string;
+  reason: "device_detail_without_pins" | "no_matching_library_pin";
+  detail: LibraryDeviceDetail | null | undefined;
+  planPins?: SchematicPin[];
+}): void {
+  if (typeof console === "undefined" || typeof console.warn !== "function") {
+    return;
+  }
+  console.warn("[LCEDA-AI][draft-pin-resolution]", {
+    componentId: input.componentId,
+    componentRef: input.componentRef,
+    deviceUuid: input.deviceUuid,
+    libraryUuid: input.libraryUuid,
+    reason: input.reason,
+    planPins: (input.planPins ?? []).map((pin) => ({
+      id: pin.id,
+      pinName: pin.pinName,
+      pinNumber: pin.pinNumber,
+      resolvedPinName: pin.resolvedPinName,
+      resolvedPinNumber: pin.resolvedPinNumber,
+    })),
+    detailShape: summarizeLibraryDeviceDetailShape(input.detail),
+  });
+}
+
+function logLibrarySymbolResolutionProbe(input: {
+  stage: "device_to_symbol_ref" | "symbol_detail_result";
+  componentId: string;
+  componentRef?: string;
+  deviceUuid?: string;
+  libraryUuid?: string;
+  symbolUuid?: string;
+  symbolLibraryUuid?: string;
+  detail?: LibraryDeviceDetail | null;
+  note?: string;
+}): void {
+  if (typeof console === "undefined" || typeof console.warn !== "function") {
+    return;
+  }
+  console.warn("[LCEDA-AI][draft-symbol-resolution]", {
+    stage: input.stage,
+    componentId: input.componentId,
+    componentRef: input.componentRef,
+    deviceUuid: input.deviceUuid,
+    libraryUuid: input.libraryUuid,
+    symbolUuid: input.symbolUuid,
+    symbolLibraryUuid: input.symbolLibraryUuid,
+    note: input.note,
+    detailShape: input.detail ? summarizeLibraryDeviceDetailShape(input.detail) : undefined,
+  });
+}
 
 function hasPlacementDevice(component: SchematicComponent): boolean {
   return Boolean(component.properties?.device_uuid && component.properties?.library_uuid);
@@ -274,8 +388,15 @@ function extractDetailPins(detail: LibraryDeviceDetail | null | undefined): Arra
   const direct = Array.isArray(detail?.pins) ? detail!.pins : undefined;
   const rawRecord =
     typeof detail?.raw === "object" && detail.raw !== null ? (detail.raw as Record<string, unknown>) : undefined;
-  const rawPins = rawRecord?.pins;
-  const source = direct ?? (Array.isArray(rawPins) ? rawPins : undefined);
+  const nestedPinCandidates: unknown[] = [
+    rawRecord?.pins,
+    rawRecord?.symbol && typeof rawRecord.symbol === "object" ? (rawRecord.symbol as Record<string, unknown>).pins : undefined,
+    rawRecord?.device && typeof rawRecord.device === "object" ? (rawRecord.device as Record<string, unknown>).pins : undefined,
+    rawRecord?.data && typeof rawRecord.data === "object" ? (rawRecord.data as Record<string, unknown>).pins : undefined,
+  ];
+  const source =
+    direct ??
+    nestedPinCandidates.find((candidate) => Array.isArray(candidate));
   if (!Array.isArray(source)) {
     return [];
   }
@@ -302,6 +423,41 @@ function extractDetailPins(detail: LibraryDeviceDetail | null | undefined): Arra
     .filter((item): item is { pinName?: string; pinNumber?: string; electricalType?: string } => Boolean(item));
 }
 
+function extractAssociatedSymbolRef(detail: LibraryDeviceDetail | null | undefined): {
+  symbolUuid?: string;
+  libraryUuid?: string;
+} {
+  if (!detail) {
+    return {};
+  }
+  const rawRecord =
+    typeof detail.raw === "object" && detail.raw !== null ? (detail.raw as Record<string, unknown>) : undefined;
+  const association =
+    rawRecord && typeof rawRecord.association === "object" && rawRecord.association !== null
+      ? (rawRecord.association as Record<string, unknown>)
+      : undefined;
+  const associationSymbol =
+    association && typeof association.symbol === "object" && association.symbol !== null
+      ? (association.symbol as Record<string, unknown>)
+      : undefined;
+  const symbol =
+    rawRecord && typeof rawRecord.symbol === "object" && rawRecord.symbol !== null
+      ? (rawRecord.symbol as Record<string, unknown>)
+      : undefined;
+  return {
+    symbolUuid:
+      detail.symbol?.uuid ||
+      (typeof association?.symbolUuid === "string" ? association.symbolUuid : undefined) ||
+      (typeof associationSymbol?.uuid === "string" ? associationSymbol.uuid : undefined) ||
+      (typeof symbol?.uuid === "string" ? symbol.uuid : undefined),
+    libraryUuid:
+      detail.symbol?.libraryUuid ||
+      (typeof associationSymbol?.libraryUuid === "string" ? associationSymbol.libraryUuid : undefined) ||
+      (typeof symbol?.libraryUuid === "string" ? symbol.libraryUuid : undefined) ||
+      detail.libraryUuid,
+  };
+}
+
 function scoreRealPinMatch(planPin: SchematicPin, realPin: { pinName?: string; pinNumber?: string }): number {
   let score = 0;
   if (planPin.pinNumber && realPin.pinNumber && planPin.pinNumber === realPin.pinNumber) {
@@ -326,14 +482,36 @@ function rewritePlanPinsWithResolvedDevicePins(
     return plan;
   }
   const usedRealPinKeys = new Set<string>();
+  const componentsById = new Map(plan.components.map((component) => [component.id, component]));
   const pins = plan.pins.map((pin) => {
     const detail = detailsByComponentId.get(pin.componentId);
+    const component = componentsById.get(pin.componentId);
+    const componentPins = plan.pins.filter((item) => item.componentId === pin.componentId);
     if (!detail) {
-      return pin;
+      return {
+        ...pin,
+        pinResolutionStatus: pin.pinResolutionStatus ?? "unresolved",
+        pinResolutionConfidence: pin.pinResolutionConfidence ?? 0,
+        pinResolutionReason: pin.pinResolutionReason ?? "device_detail_unavailable",
+      };
     }
     const realPins = extractDetailPins(detail);
     if (realPins.length === 0) {
-      return pin;
+      logLibraryPinResolutionFailure({
+        componentId: pin.componentId,
+        componentRef: component?.ref,
+        deviceUuid: component?.properties?.device_uuid,
+        libraryUuid: component?.properties?.library_uuid,
+        reason: "device_detail_without_pins",
+        detail,
+        planPins: componentPins,
+      });
+      return {
+        ...pin,
+        pinResolutionStatus: "unresolved",
+        pinResolutionConfidence: 0,
+        pinResolutionReason: "device_detail_without_pins",
+      };
     }
     let bestScore = -1;
     let bestMatch: (typeof realPins)[number] | undefined;
@@ -349,14 +527,31 @@ function rewritePlanPinsWithResolvedDevicePins(
       }
     }
     if (!bestMatch || bestScore <= 0) {
-      return pin;
+      logLibraryPinResolutionFailure({
+        componentId: pin.componentId,
+        componentRef: component?.ref,
+        deviceUuid: component?.properties?.device_uuid,
+        libraryUuid: component?.properties?.library_uuid,
+        reason: "no_matching_library_pin",
+        detail,
+        planPins: componentPins,
+      });
+      return {
+        ...pin,
+        pinResolutionStatus: "unresolved",
+        pinResolutionConfidence: 0,
+        pinResolutionReason: "no_matching_library_pin",
+      };
     }
     usedRealPinKeys.add(`${pin.componentId}:${bestMatch.pinNumber || ""}:${bestMatch.pinName || ""}`);
     return {
       ...pin,
-      pinName: bestMatch.pinName ?? pin.pinName,
-      pinNumber: bestMatch.pinNumber ?? pin.pinNumber,
-      electricalType: bestMatch.electricalType ?? pin.electricalType,
+      resolvedPinName: bestMatch.pinName ?? pin.pinName,
+      resolvedPinNumber: bestMatch.pinNumber ?? pin.pinNumber,
+      resolvedElectricalType: bestMatch.electricalType ?? pin.electricalType,
+      pinResolutionStatus: "resolved",
+      pinResolutionConfidence: Math.min(1, bestScore / 100),
+      pinResolutionReason: "matched_library_pin",
     };
   });
   return {
@@ -368,7 +563,8 @@ function rewritePlanPinsWithResolvedDevicePins(
 export async function resolveDraftPlanDevices(
   plan: DraftPlan,
   searchLibraryDevices: SearchLibraryDevices,
-  getLibraryDevice?: GetLibraryDevice
+  getLibraryDevice?: GetLibraryDevice,
+  getLibrarySymbol?: GetLibrarySymbol
 ): Promise<DraftPlan> {
   const existingSelectedDevices = Array.isArray(plan.selectedDevices) ? plan.selectedDevices.slice() : [];
   const detailsByComponentId = new Map<string, LibraryDeviceDetail>();
@@ -381,7 +577,49 @@ export async function resolveDraftPlanDevices(
             libraryUuid: component.properties.library_uuid,
           });
           if (detail) {
-            detailsByComponentId.set(component.id, detail);
+            let resolvedDetail = detail;
+            if (extractDetailPins(resolvedDetail).length === 0 && getLibrarySymbol) {
+              const symbolRef = extractAssociatedSymbolRef(resolvedDetail);
+              logLibrarySymbolResolutionProbe({
+                stage: "device_to_symbol_ref",
+                componentId: component.id,
+                componentRef: component.ref,
+                deviceUuid: component.properties.device_uuid,
+                libraryUuid: component.properties.library_uuid,
+                symbolUuid: symbolRef.symbolUuid,
+                symbolLibraryUuid: symbolRef.libraryUuid,
+                detail: resolvedDetail,
+                note: symbolRef.symbolUuid ? "resolved symbol ref from device detail" : "no symbol ref resolved from device detail",
+              });
+              if (symbolRef.symbolUuid) {
+                const symbolDetail = await getLibrarySymbol({
+                  symbolUuid: symbolRef.symbolUuid,
+                  libraryUuid: symbolRef.libraryUuid,
+                });
+                logLibrarySymbolResolutionProbe({
+                  stage: "symbol_detail_result",
+                  componentId: component.id,
+                  componentRef: component.ref,
+                  deviceUuid: component.properties.device_uuid,
+                  libraryUuid: component.properties.library_uuid,
+                  symbolUuid: symbolRef.symbolUuid,
+                  symbolLibraryUuid: symbolRef.libraryUuid,
+                  detail: symbolDetail,
+                  note:
+                    symbolDetail && extractDetailPins(symbolDetail).length > 0
+                      ? "symbol detail returned usable pins"
+                      : "symbol detail missing or still without pins",
+                });
+                if (symbolDetail && extractDetailPins(symbolDetail).length > 0) {
+                  resolvedDetail = {
+                    ...resolvedDetail,
+                    pins: symbolDetail.pins,
+                    raw: symbolDetail.raw ?? resolvedDetail.raw,
+                  };
+                }
+              }
+            }
+            detailsByComponentId.set(component.id, resolvedDetail);
           }
         }
         return withResolutionStatus(component, "resolved", "already_specified");
@@ -442,7 +680,51 @@ export async function resolveDraftPlanDevices(
           libraryUuid: picked.libraryUuid,
         });
         if (detail) {
-          detailsByComponentId.set(component.id, detail);
+          let resolvedDetail = detail;
+          if (extractDetailPins(resolvedDetail).length === 0 && getLibrarySymbol) {
+            const symbolRef = extractAssociatedSymbolRef(resolvedDetail);
+            const fallbackSymbolUuid = symbolRef.symbolUuid || picked.symbolUuid;
+            logLibrarySymbolResolutionProbe({
+              stage: "device_to_symbol_ref",
+              componentId: component.id,
+              componentRef: component.ref,
+              deviceUuid: picked.uuid,
+              libraryUuid: picked.libraryUuid,
+              symbolUuid: fallbackSymbolUuid,
+              symbolLibraryUuid: symbolRef.libraryUuid || picked.libraryUuid,
+              detail: resolvedDetail,
+              note: fallbackSymbolUuid ? "resolved symbol ref from device/search detail" : "no symbol ref resolved from device/search detail",
+            });
+            if (fallbackSymbolUuid) {
+              const symbolDetail = await getLibrarySymbol({
+                symbolUuid: fallbackSymbolUuid,
+                libraryUuid: symbolRef.libraryUuid || picked.libraryUuid,
+              });
+              logLibrarySymbolResolutionProbe({
+                stage: "symbol_detail_result",
+                componentId: component.id,
+                componentRef: component.ref,
+                deviceUuid: picked.uuid,
+                libraryUuid: picked.libraryUuid,
+                symbolUuid: fallbackSymbolUuid,
+                symbolLibraryUuid: symbolRef.libraryUuid || picked.libraryUuid,
+                detail: symbolDetail,
+                note:
+                  symbolDetail && extractDetailPins(symbolDetail).length > 0
+                    ? "symbol detail returned usable pins"
+                    : "symbol detail missing or still without pins",
+              });
+              if (symbolDetail && extractDetailPins(symbolDetail).length > 0) {
+                resolvedDetail = {
+                  ...resolvedDetail,
+                  pins: symbolDetail.pins,
+                  raw: symbolDetail.raw ?? resolvedDetail.raw,
+                };
+              }
+            }
+          }
+          detailsByComponentId.set(component.id, resolvedDetail);
+          detail = resolvedDetail;
         }
       }
       existingSelectedDevices.push(toSelectedDevice(component, effectiveQuery, picked, detail));

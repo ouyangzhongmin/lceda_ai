@@ -50,6 +50,7 @@ export function previewDraftPlan(plan: DraftPlan): DraftPreview {
   const rationaleWithGuidance = normalized.guidance?.rationale
     ? `${normalized.rationale} ${normalized.guidance.rationale}`
     : normalized.rationale;
+  const componentsById = new Map(normalized.components.map((component) => [component.id, component]));
   return {
     title: normalized.title,
     rationale:
@@ -93,6 +94,13 @@ export function previewDraftPlan(plan: DraftPlan): DraftPreview {
           "generic";
         const query = component.properties?.preferred_search_query;
         return `${ref}：${formatGuidanceRole(role)}，暂未自动匹配到可直接放置的器件。${query ? `建议搜索：${query}` : ""}`;
+      }),
+    unresolvedPinDetails: normalized.pins
+      .filter((pin) => pin.pinResolutionStatus === "unresolved")
+      .map((pin) => {
+        const component = componentsById.get(pin.componentId);
+        const ref = component?.ref ?? component?.id ?? pin.componentId;
+        return `${ref}：该器件仍有连接需要系统继续自动校正后才能应用。`;
       }),
     guidanceSummary: guidance
       ? {

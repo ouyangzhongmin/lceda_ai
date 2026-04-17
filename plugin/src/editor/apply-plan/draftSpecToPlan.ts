@@ -1,4 +1,5 @@
 import type { DraftDesignSpec, DraftPlan, DraftPlanGuidance } from "./draftPlan";
+import { repairDraftPlanPowerConnectivity } from "./repairDraftPlan";
 
 function assertValidDraftSpec(spec: DraftDesignSpec): void {
   if (!Array.isArray(spec.components)) {
@@ -190,106 +191,12 @@ function buildNormalizedConnectionMap(
   return connectionMap;
 }
 
-function isGroundNetName(name: string | undefined): boolean {
-  const normalized = normalizeNetName(name, name || "");
-  return normalized === "GND";
-}
-
-function shouldAutoInjectLedPowerConnector(spec: DraftDesignSpec): boolean {
-  const systemType = String(spec.systemType || "").trim().toLowerCase();
-  if (systemType === "simple_led_circuit") {
-    return true;
-  }
-  const roles = new Set(spec.components.map((component) => String(component.role || "").trim().toLowerCase()).filter(Boolean));
-  return roles.has("led") && roles.has("resistor") && !roles.has("power_connector");
-}
-
-function ensureApplyablePowerConnectivity(spec: DraftDesignSpec): DraftDesignSpec {
-  if (!shouldAutoInjectLedPowerConnector(spec)) {
-    return spec;
-  }
-  if (spec.components.some((component) => String(component.role || "").trim().toLowerCase() === "power_connector")) {
-    return spec;
-  }
-
-  const normalizedConnectionMap = buildNormalizedConnectionMap(spec.connections);
-  const groundNet = spec.nets.find((net) => isGroundNetName(net.name || net.id));
-  if (!groundNet) {
-    return spec;
-  }
-
-  const orphanPositivePowerNets = spec.nets.filter((net) => {
-    const normalizedName = normalizeNetName(net.name, net.id);
-    if (!net.isPower || normalizedName === "GND") {
-      return false;
-    }
-    const nodeIds = normalizedConnectionMap.get(normalizedName)?.pinIds ?? [];
-    return nodeIds.length === 1;
-  });
-  if (orphanPositivePowerNets.length === 0) {
-    return spec;
-  }
-
-  const injectedComponents = orphanPositivePowerNets.map((net, index) => {
-    const suffix = orphanPositivePowerNets.length > 1 ? `${index + 1}` : "";
-    const componentId = `draft-j1${suffix}`;
-    const ref = `J${index + 1}`;
-    const posPinId = `${componentId}-pos`;
-    const gndPinId = `${componentId}-gnd`;
-    return {
-      net,
-      component: {
-        id: componentId,
-        ref,
-        role: "power_connector",
-        name: "Power Header",
-        value: normalizeNetName(net.name, net.id),
-        packageName: "HDR-TH_1X2",
-        searchQuery: `2pin power header ${normalizeNetName(net.name, net.id)} GND`,
-        placement: { x: 180, y: 180 + index * 140, rotation: 0 },
-        pins: [
-          {
-            id: posPinId,
-            pinNumber: "1",
-            pinName: normalizeNetName(net.name, net.id),
-            electricalType: "power_out",
-          },
-          {
-            id: gndPinId,
-            pinNumber: "2",
-            pinName: "GND",
-            electricalType: "power_out",
-          },
-        ],
-      },
-      netConnection: {
-        netName: net.name || net.id,
-        pinIds: [posPinId],
-      },
-      groundConnection: {
-        netName: groundNet.name || groundNet.id,
-        pinIds: [gndPinId],
-      },
-    };
-  });
-
-  return {
-    ...spec,
-    components: [...injectedComponents.map((item) => item.component), ...spec.components],
-    connections: [
-      ...spec.connections,
-      ...injectedComponents.map((item) => item.netConnection),
-      ...injectedComponents.map((item) => item.groundConnection),
-    ],
-  };
-}
-
 export function draftSpecToPlan(input: {
   spec: DraftDesignSpec;
   guidance?: DraftPlanGuidance;
 }): DraftPlan {
   const guidance = input.guidance;
-  const spec = ensureApplyablePowerConnectivity(input.spec);
+  const spec = input.spec;
   assertValidDraftSpec(spec);
   const placements = buildPlacementMap(spec);
   const normalizedConnections = spec.connections.map((connection) => ({
@@ -301,7 +208,7 @@ export function draftSpecToPlan(input: {
     ...net,
     name: normalizeNetName(net.name, net.id),
   }));
-  return {
+  const plan: DraftPlan = {
     title: spec.title,
     rationale: spec.rationale,
     components: spec.components.map((component) => ({
@@ -338,6 +245,7 @@ export function draftSpecToPlan(input: {
     })),
     guidance,
   };
+  return repairDraftPlanPowerConnectivity(plan).plan;
 }
 
 export function isDraftDesignSpec(value: unknown): value is DraftDesignSpec {

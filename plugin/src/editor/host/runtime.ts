@@ -87,6 +87,7 @@ export interface HostEditorBridge {
     page?: number;
   }) => Promise<LibrarySearchResultItem[]>;
   getLibraryDevice?: (input: { deviceUuid: string; libraryUuid?: string; scope?: LibraryScope }) => Promise<LibraryDeviceDetail>;
+  getLibrarySymbol?: (input: { symbolUuid: string; libraryUuid?: string; scope?: LibraryScope }) => Promise<LibraryDeviceDetail>;
   getLibraryDevicesByLcscIds?: (input: {
     lcscIds: string[];
     libraryUuid?: string;
