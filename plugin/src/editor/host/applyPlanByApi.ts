@@ -2,9 +2,12 @@ import { previewDraftPlan } from "../apply-plan/previewDraftPlan";
 import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
 import { normalizeDraftPlan } from "../apply-plan/generateDraftPlan";
 import { resolveDraftPlanDevices } from "../apply-plan/resolveDraftPlanDevices";
+import type { SchematicPin } from "../../types/schematic";
 import { typedGetLibrarySymbol, typedSearchLibraryDevices } from "./proHostProbe";
 import { resolveHostEditorBridge } from "./runtime";
 import type { ApplyPlanResult } from "../adapters/editorAdapter";
+import { matchDraftPinsToRealPins } from "./pinMatchEngine";
+import { resolveTransientComponentPins, type TransientPinRecord } from "./transientPinResolver";
 
 export interface ApiApplyPlanAdapter {
   preview: (plan: DraftPlan) => Promise<DraftPreview>;
@@ -16,6 +19,22 @@ type ApplyTransaction =
   | { kind: "source"; sourceSnapshot: unknown }
   | { kind: "shape"; shapeIds: string[] }
   | { kind: "typed_schematic"; componentIds: string[]; wireIds: string[] };
+
+type SkippedConnection = {
+  fromComponentRef?: string;
+  fromPin?: string;
+  toComponentRef?: string;
+  toPin?: string;
+  netName?: string;
+  reason: string;
+};
+
+type TypedApplyResult = {
+  componentIds: string[];
+  wireIds: string[];
+  connectedNetCount: number;
+  skippedConnections: SkippedConnection[];
+};
 
 const applyTransactions = new Map<string, ApplyTransaction>();
 
@@ -38,7 +57,7 @@ export function createApiApplyPlanAdapter(
         }
       }
       if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
-        plan = await enrichResolvedPinsFromLibraryBeforeApply(plan);
+        plan = await enrichResolvedPinsForTypedPlacement(plan);
       }
       const transactionId = createTransactionId();
       if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
@@ -49,7 +68,10 @@ export function createApiApplyPlanAdapter(
           componentIds: placed.componentIds,
           wireIds: placed.wireIds,
         });
-        return summarizeApply(plan, transactionId, applied, applied);
+        return summarizeApply(plan, transactionId, applied, applied, {
+          connectedNetCount: placed.connectedNetCount,
+          skippedConnections: placed.skippedConnections,
+        });
       }
       if (!invoker) {
         return summarizeApply(plan, transactionId, false, false);
@@ -157,7 +179,8 @@ export function createApiApplyPlanAdapter(
   };
 }
 
-async function enrichResolvedPinsFromLibraryBeforeApply(plan: DraftPlan): Promise<DraftPlan> {
+async function enrichResolvedPinsForTypedPlacement(plan: DraftPlan): Promise<DraftPlan> {
+  plan = await enrichResolvedPinsFromTransientPlacement(plan);
   const needsPinResolution = plan.pins.some(
     (pin) => pin.pinResolutionStatus === "unresolved" || !(pin.resolvedPinName || pin.resolvedPinNumber)
   );
@@ -191,6 +214,155 @@ async function enrichResolvedPinsFromLibraryBeforeApply(plan: DraftPlan): Promis
             scope: "system",
           })
   );
+}
+
+async function enrichResolvedPinsFromTransientPlacement(plan: DraftPlan): Promise<DraftPlan> {
+  if (typeof eda === "undefined") {
+    return plan;
+  }
+  if (typeof eda.sch_PrimitiveComponent?.create !== "function") {
+    return plan;
+  }
+  if (typeof eda.sch_PrimitiveComponent?.getAllPinsByPrimitiveId !== "function") {
+    return plan;
+  }
+  if (typeof eda.sch_PrimitiveComponent?.delete !== "function") {
+    return plan;
+  }
+
+  const components = plan.components
+    .map((component) => {
+      const deviceUuid = component.properties.device_uuid;
+      const libraryUuid = component.properties.library_uuid;
+      if (!deviceUuid || !libraryUuid) {
+        return null;
+      }
+      return {
+        componentId: component.id,
+        ref: component.ref,
+        deviceUuid,
+        libraryUuid,
+      };
+    })
+    .filter((component): component is { componentId: string; ref?: string; deviceUuid: string; libraryUuid: string } =>
+      Boolean(component)
+    );
+
+  if (components.length === 0) {
+    return plan;
+  }
+
+  const resolved = await resolveTransientComponentPins(
+    { components },
+    {
+      createComponent: async ({ deviceUuid, libraryUuid, index }) => {
+        const x = 12000 + (index % 6) * 240;
+        const y = 12000 + Math.floor(index / 6) * 180;
+        const created = await eda.sch_PrimitiveComponent.create(
+          {
+            uuid: deviceUuid,
+            libraryUuid,
+          },
+          x,
+          y,
+          undefined,
+          0,
+          false,
+          true,
+          true
+        );
+        if (!created) {
+          return null;
+        }
+        return { primitiveId: created.getState_PrimitiveId() };
+      },
+      getPinsByPrimitiveId: async (primitiveId) => readTransientPins(primitiveId),
+      deleteComponents: async (primitiveIds) => eda.sch_PrimitiveComponent.delete(primitiveIds),
+    }
+  );
+
+  const nextPins = plan.pins.map((pin) => ({ ...pin }));
+  let changed = false;
+  for (const component of plan.components) {
+    const realPins = resolved.componentPins.get(component.id);
+    if (!realPins || realPins.length === 0) {
+      continue;
+    }
+    const planPins = nextPins.filter((pin) => pin.componentId === component.id);
+    const matches = matchDraftPinsToRealPins({
+      role: inferTransientPinMatchRole(component.ref, component.name),
+      planPins,
+      realPins,
+    });
+    for (const planPin of planPins) {
+      const match = matches.get(planPin.id);
+      if (!match) {
+        continue;
+      }
+      const changedPin = applyResolvedPinMatch(planPin, match);
+      if (changedPin !== planPin) {
+        const index = nextPins.findIndex((candidate) => candidate.id === changedPin.id);
+        nextPins[index] = changedPin;
+        changed = true;
+      }
+    }
+  }
+
+  return changed ? { ...plan, pins: nextPins } : plan;
+}
+
+function readTransientPins(primitiveId: string): Promise<TransientPinRecord[]> {
+  return Promise.resolve(eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId)).then((pins) =>
+    (pins ?? []).map((pin) => ({
+      primitiveId: pin.getState_PrimitiveId(),
+      pinName: pin.getState_PinName(),
+      pinNumber: pin.getState_PinNumber(),
+      x: pin.getState_X(),
+      y: pin.getState_Y(),
+    }))
+  );
+}
+
+function inferTransientPinMatchRole(ref: string | undefined, name: string | undefined): string | undefined {
+  const upperRef = String(ref || "").toUpperCase();
+  const lowerName = String(name || "").toLowerCase();
+  if (upperRef.startsWith("D") || lowerName.includes("led")) {
+    return "led";
+  }
+  if (upperRef.startsWith("R") || lowerName.includes("resistor")) {
+    return "resistor";
+  }
+  if (upperRef.startsWith("C") || lowerName.includes("capacitor")) {
+    return "capacitor";
+  }
+  if (upperRef.startsWith("J") || lowerName.includes("connector") || lowerName.includes("header")) {
+    return "connector";
+  }
+  return undefined;
+}
+
+function applyResolvedPinMatch(
+  pin: SchematicPin,
+  match: { resolvedPinName?: string; resolvedPinNumber?: string; confidence: number; reason: string }
+): SchematicPin {
+  const nextPin: SchematicPin = {
+    ...pin,
+    resolvedPinName: match.resolvedPinName ?? pin.resolvedPinName,
+    resolvedPinNumber: match.resolvedPinNumber ?? pin.resolvedPinNumber,
+    pinResolutionStatus: "resolved",
+    pinResolutionConfidence: match.confidence,
+    pinResolutionReason: match.reason,
+  };
+  if (
+    nextPin.resolvedPinName === pin.resolvedPinName &&
+    nextPin.resolvedPinNumber === pin.resolvedPinNumber &&
+    nextPin.pinResolutionStatus === pin.pinResolutionStatus &&
+    nextPin.pinResolutionConfidence === pin.pinResolutionConfidence &&
+    nextPin.pinResolutionReason === pin.pinResolutionReason
+  ) {
+    return pin;
+  }
+  return nextPin;
 }
 
 function hasAnyPlacementDevice(plan: DraftPlan): boolean {
@@ -228,22 +400,23 @@ function canApplyByTypedPlacement(plan: DraftPlan): boolean {
   });
 }
 
-async function applyTypedSchematicPlan(plan: DraftPlan): Promise<{ componentIds: string[]; wireIds: string[] }> {
+async function applyTypedSchematicPlan(plan: DraftPlan): Promise<TypedApplyResult> {
   const componentIds: string[] = [];
   const wireIds: string[] = [];
   const placedPins = new Map<string, { x: number; y: number; primitiveId: string }>();
-  const gridX = 140;
-  const gridY = 100;
+  const skippedConnections: SkippedConnection[] = [];
+  let connectedNetCount = 0;
+  const defaultPlacements = buildFunctionalPlacementMap(plan);
   try {
-    ensureResolvedDraftPinsForTypedPlacement(plan);
     for (const [index, component] of plan.components.entries()) {
       const deviceUuid = component.properties.device_uuid;
       const libraryUuid = component.properties.library_uuid;
       if (!deviceUuid || !libraryUuid) {
         continue;
       }
-      const x = parsePlacementNumber(component.properties.placement_x) ?? 200 + (index % 3) * gridX;
-      const y = parsePlacementNumber(component.properties.placement_y) ?? 200 + Math.floor(index / 3) * gridY;
+      const fallbackPlacement = defaultPlacements.get(component.id) ?? buildIndexedFallbackPlacement(index);
+      const x = parsePlacementNumber(component.properties.placement_x) ?? fallbackPlacement.x;
+      const y = parsePlacementNumber(component.properties.placement_y) ?? fallbackPlacement.y;
       const rotation = parsePlacementNumber(component.properties.placement_rotation) ?? 0;
       const created = await eda.sch_PrimitiveComponent.create(
         {
@@ -282,27 +455,143 @@ async function applyTypedSchematicPlan(plan: DraftPlan): Promise<{ componentIds:
       }
     }
 
-    validateMappedNets(plan, placedPins);
-    validateRequiredConnections(plan, placedPins);
-
     for (const net of plan.nets) {
+      const nodeIds = [...new Set(net.nodeIds)];
       const nodePoints = net.nodeIds
         .map((nodeId) => placedPins.get(nodeId))
         .filter((item): item is { x: number; y: number; primitiveId: string } => Boolean(item));
+      const missingNodeIds = nodeIds.filter((nodeId) => !placedPins.has(nodeId));
+      if (missingNodeIds.length > 0) {
+        skippedConnections.push(
+          ...buildSkippedConnectionsForNet(plan, net.name || net.id, missingNodeIds, "endpoint_unresolved")
+        );
+      }
+      if (nodePoints.length < 2) {
+        continue;
+      }
       const line = buildOrthogonalPolyline(nodePoints);
       const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
       if (!createdWire) {
         continue;
       }
       wireIds.push(createdWire.getState_PrimitiveId());
+      connectedNetCount += 1;
     }
 
-    return { componentIds, wireIds };
+    skippedConnections.push(...collectSkippedRequiredConnections(plan, placedPins));
+
+    return { componentIds, wireIds, connectedNetCount, skippedConnections };
   } catch (error) {
     await deleteTypedSchematicWires(wireIds);
     await deleteTypedSchematicComponents(componentIds);
     throw error;
   }
+}
+
+type FunctionalZone =
+  | "power"
+  | "control"
+  | "clock"
+  | "input"
+  | "processing"
+  | "audio"
+  | "output"
+  | "interface"
+  | "support";
+
+function buildFunctionalPlacementMap(plan: DraftPlan): Map<string, { x: number; y: number }> {
+  const zoneOrder: FunctionalZone[] = [
+    "power",
+    "control",
+    "clock",
+    "input",
+    "processing",
+    "audio",
+    "output",
+    "interface",
+    "support",
+  ];
+  const zoneAnchors: Record<FunctionalZone, { x: number; y: number }> = {
+    power: { x: 120, y: 180 },
+    control: { x: 300, y: 180 },
+    clock: { x: 460, y: 140 },
+    input: { x: 300, y: 340 },
+    processing: { x: 620, y: 260 },
+    audio: { x: 860, y: 220 },
+    output: { x: 1080, y: 260 },
+    interface: { x: 1080, y: 480 },
+    support: { x: 620, y: 520 },
+  };
+  const zoneBuckets = new Map<FunctionalZone, DraftPlan["components"]>();
+  for (const zone of zoneOrder) {
+    zoneBuckets.set(zone, []);
+  }
+  for (const component of plan.components) {
+    zoneBuckets.get(inferFunctionalZone(component))?.push(component);
+  }
+  const placements = new Map<string, { x: number; y: number }>();
+  const intraZoneX = 180;
+  const intraZoneY = 120;
+  const maxCols = 2;
+  for (const zone of zoneOrder) {
+    const anchor = zoneAnchors[zone];
+    const components = zoneBuckets.get(zone) ?? [];
+    components.forEach((component, index) => {
+      placements.set(component.id, {
+        x: anchor.x + (index % maxCols) * intraZoneX,
+        y: anchor.y + Math.floor(index / maxCols) * intraZoneY,
+      });
+    });
+  }
+  return placements;
+}
+
+function buildIndexedFallbackPlacement(index: number): { x: number; y: number } {
+  const gridX = 180;
+  const gridY = 120;
+  return {
+    x: 220 + (index % 4) * gridX,
+    y: 220 + Math.floor(index / 4) * gridY,
+  };
+}
+
+function inferFunctionalZone(component: DraftPlan["components"][number]): FunctionalZone {
+  const ref = String(component.ref || "").toUpperCase();
+  const name = String(component.name || "").toLowerCase();
+  const device = String(component.properties.device_name || component.properties.preferred_search_query || "").toLowerCase();
+  const text = `${ref} ${name} ${device}`;
+  if (
+    /^B\d+/u.test(ref) ||
+    /^BT\d+/u.test(ref) ||
+    /(battery|charger|charge|ldo|buck|boost|regulator|pmic|type-c|usb|vbus|power|tp4056|ip5306|dw01|fs8205)/iu.test(text)
+  ) {
+    return "power";
+  }
+  if (
+    /^U\d+/u.test(ref) &&
+    /(esp32|stm32|nrf|mcu|soc|controller|cpu|processor|rp2040|esp-|esp_)/iu.test(text)
+  ) {
+    return "processing";
+  }
+  if (/(crystal|oscillator|xtal|26mhz|32khz|clock)/iu.test(text) || /^X\d+/u.test(ref)) {
+    return "clock";
+  }
+  if (/(mic|microphone|mems|sensor|hall|button|key|switch|touch|input)/iu.test(text)) {
+    return "input";
+  }
+  if (/(codec|dac|i2s|audio)/iu.test(text)) {
+    return "audio";
+  }
+  if (/(amp|speaker|spk|buzzer|earphone|output)/iu.test(text)) {
+    return "output";
+  }
+  if (/^J\d+/u.test(ref) || /(connector|header|socket|antenna|uart|debug|download)/iu.test(text)) {
+    return "interface";
+  }
+  if (/(led|reset|boot|en|indicator|status)/iu.test(text)) {
+    return "control";
+  }
+  return "support";
 }
 
 function parsePlacementNumber(value: string | undefined): number | undefined {
@@ -337,14 +626,15 @@ function applyComponentDesignator(created: unknown, ref: string | undefined): vo
   }
 }
 
-function validateRequiredConnections(
+function collectSkippedRequiredConnections(
   plan: DraftPlan,
   placedPins: Map<string, { x: number; y: number; primitiveId: string }>
-): void {
+): SkippedConnection[] {
   const requiredConnections = plan.guidance?.requiredConnections;
   if (!requiredConnections || requiredConnections.length === 0) {
-    return;
+    return [];
   }
+  const skipped: SkippedConnection[] = [];
 
   const componentsByRef = new Map(
     plan.components
@@ -360,55 +650,87 @@ function validateRequiredConnections(
     const net = plan.nets.find((item) => item.name === connection.netName);
 
     if (!fromComponentId || !toComponentId || !fromPin || !toPin || !net) {
-      throw new Error(
-        `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
-      );
+      skipped.push({
+        fromComponentRef: connection.fromComponentRef,
+        fromPin: connection.fromPin,
+        toComponentRef: connection.toComponentRef,
+        toPin: connection.toPin,
+        netName: connection.netName,
+        reason: "required_connection_definition_unresolved",
+      });
+      continue;
     }
 
     if (!net.nodeIds.includes(fromPin.id) || !net.nodeIds.includes(toPin.id)) {
-      throw new Error(
-        `required connection net mismatch: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
-      );
+      skipped.push({
+        fromComponentRef: connection.fromComponentRef,
+        fromPin: connection.fromPin,
+        toComponentRef: connection.toComponentRef,
+        toPin: connection.toPin,
+        netName: connection.netName,
+        reason: "required_connection_net_mismatch",
+      });
+      continue;
     }
 
     if (!placedPins.has(fromPin.id) || !placedPins.has(toPin.id)) {
-      throw new Error(
-        `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
-      );
+      skipped.push({
+        fromComponentRef: connection.fromComponentRef,
+        fromPin: connection.fromPin,
+        toComponentRef: connection.toComponentRef,
+        toPin: connection.toPin,
+        netName: connection.netName,
+        reason: "required_connection_endpoint_unresolved",
+      });
     }
   }
+  return skipped;
 }
 
-function validateMappedNets(
+function buildSkippedConnectionsForNet(
   plan: DraftPlan,
-  placedPins: Map<string, { x: number; y: number; primitiveId: string }>
-): void {
-  for (const net of plan.nets) {
-    const nodePoints = net.nodeIds
-      .map((nodeId) => placedPins.get(nodeId))
-      .filter((item): item is { x: number; y: number; primitiveId: string } => Boolean(item));
-    if (nodePoints.length < 2) {
-      const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
-      throw new Error(
-        `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
-      );
-    }
-  }
+  netName: string,
+  missingNodeIds: string[],
+  reason: string
+): SkippedConnection[] {
+  const pinsById = new Map(plan.pins.map((pin) => [pin.id, pin]));
+  const componentsById = new Map(plan.components.map((component) => [component.id, component]));
+  return missingNodeIds.map((nodeId) => {
+    const pin = pinsById.get(nodeId);
+    const component = pin ? componentsById.get(pin.componentId) : undefined;
+    return {
+      fromComponentRef: component?.ref ?? component?.id,
+      fromPin: pin?.pinName ?? pin?.pinNumber ?? pin?.id,
+      netName,
+      reason,
+    };
+  });
 }
 
-function resolvePlanPin(
+function summarizeApply(
   plan: DraftPlan,
-  componentId: string | undefined,
-  pinLabel: string
-): DraftPlan["pins"][number] | undefined {
-  if (!componentId) {
-    return undefined;
+  transactionId: string,
+  applied: boolean,
+  rollbackSupported: boolean,
+  partialWiring?: {
+    connectedNetCount: number;
+    skippedConnections: SkippedConnection[];
   }
-  return plan.pins.find(
-    (pin) =>
-      pin.componentId === componentId &&
-      (String(pin.pinNumber || "").trim() === pinLabel || String(pin.pinName || "").trim() === pinLabel)
-  );
+): ApplyPlanResult {
+  return {
+    applied,
+    componentCount: plan.components.length,
+    netCount: plan.nets.length,
+    transactionId,
+    rollbackSupported,
+    partialWiring: partialWiring
+      ? {
+          connectedNetCount: partialWiring.connectedNetCount,
+          skippedConnectionCount: partialWiring.skippedConnections.length,
+          skippedConnections: partialWiring.skippedConnections,
+        }
+      : undefined,
+  };
 }
 
 function ensureResolvedDraftPinsForTypedPlacement(plan: DraftPlan): void {
@@ -429,6 +751,21 @@ function ensureResolvedDraftPinsForTypedPlacement(plan: DraftPlan): void {
     return `${ref}.${label}`;
   });
   throw new Error(`unresolved draft pin mappings: ${labels.join(", ")}`);
+}
+
+function resolvePlanPin(
+  plan: DraftPlan,
+  componentId: string | undefined,
+  pinLabel: string
+): DraftPlan["pins"][number] | undefined {
+  if (!componentId) {
+    return undefined;
+  }
+  return plan.pins.find(
+    (pin) =>
+      pin.componentId === componentId &&
+      (String(pin.pinNumber || "").trim() === pinLabel || String(pin.pinName || "").trim() === pinLabel)
+  );
 }
 
 function findBestMatchingPlanPin(
@@ -505,21 +842,6 @@ async function deleteTypedSchematicWires(wireIds: string[]): Promise<boolean> {
     return false;
   }
   return eda.sch_PrimitiveWire.delete(wireIds);
-}
-
-function summarizeApply(
-  plan: DraftPlan,
-  transactionId: string,
-  applied: boolean,
-  rollbackSupported: boolean
-): ApplyPlanResult {
-  return {
-    applied,
-    componentCount: plan.components.length,
-    netCount: plan.nets.length,
-    transactionId,
-    rollbackSupported,
-  };
 }
 
 function isSuccessfulMutationResult(value: unknown): boolean {

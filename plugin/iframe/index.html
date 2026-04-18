@@ -2804,6 +2804,52 @@
       cursor: pointer;
     }
 
+    .device-picker-action-row {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .device-picker-manual-toggle-btn {
+      border: 1px solid #d9e3ef;
+      background: #ffffff;
+      color: #334155;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .device-picker-manual-input-box {
+      margin-top: 10px;
+      border: 1px solid #dbe7f5;
+      border-radius: 12px;
+      background: #f8fbff;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .device-picker-manual-input {
+      width: 100%;
+      border: 1px solid #cfd8e3;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--text);
+      background: #ffffff;
+    }
+
+    .device-picker-manual-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
     .device-picker-candidates {
       margin-top: 12px;
       display: flex;
@@ -3190,6 +3236,10 @@
         const element = /** @type {HTMLButtonElement} */ (button);
         const keepCloseEnabled = element.id === "device-picker-close-btn";
         element.disabled = busy && !keepCloseEnabled;
+      });
+      panel.querySelectorAll(".device-picker-manual-input").forEach((input) => {
+        const element = /** @type {HTMLInputElement} */ (input);
+        element.disabled = busy;
       });
     }
 
@@ -5204,6 +5254,22 @@
       const body = document.getElementById("device-picker-body");
       const summary = document.getElementById("device-picker-summary");
       if (!overlay || !panel || !body) return;
+      let activeManualInputState = null;
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        activeElement.tagName === "INPUT" &&
+        activeElement.classList &&
+        activeElement.classList.contains("device-picker-manual-input")
+      ) {
+        const activeInput = /** @type {HTMLInputElement} */ (activeElement);
+        activeManualInputState = {
+          componentId: activeInput.dataset.componentId || "",
+          value: activeInput.value || "",
+          selectionStart: Number.isFinite(activeInput.selectionStart) ? activeInput.selectionStart : null,
+          selectionEnd: Number.isFinite(activeInput.selectionEnd) ? activeInput.selectionEnd : null,
+        };
+      }
       const picker = state && state.devicePicker;
       const open = Boolean(picker && picker.open);
       overlay.classList.toggle("show", open);
@@ -5265,6 +5331,8 @@
           card.appendChild(selected);
         }
 
+        const actionRow = document.createElement("div");
+        actionRow.className = "device-picker-action-row";
         const searchBtn = document.createElement("button");
         searchBtn.type = "button";
         searchBtn.className = "device-picker-search-btn";
@@ -5272,7 +5340,88 @@
         searchBtn.addEventListener("click", () => {
           void runDevicePickerAction("searchDraftDeviceCandidates", item.componentId);
         });
-        card.appendChild(searchBtn);
+        actionRow.appendChild(searchBtn);
+        card.appendChild(actionRow);
+
+        let manualFocusTarget = null;
+        if (item.status === "unresolved") {
+          const manualToggleBtn = document.createElement("button");
+          manualToggleBtn.type = "button";
+          manualToggleBtn.className = "device-picker-manual-toggle-btn";
+          manualToggleBtn.textContent = item.manualQueryExpanded ? "收起手动输入" : "手动输入";
+          manualToggleBtn.addEventListener("click", () => {
+            void runDevicePickerAction("setDraftDeviceManualQueryExpanded", {
+              componentId: item.componentId,
+              expanded: !item.manualQueryExpanded,
+            });
+          });
+          actionRow.appendChild(manualToggleBtn);
+
+          if (item.manualQueryExpanded) {
+            const manualBox = document.createElement("div");
+            manualBox.className = "device-picker-manual-input-box";
+
+            const manualInput = document.createElement("input");
+            manualInput.type = "text";
+            manualInput.className = "device-picker-manual-input";
+            manualInput.placeholder = "输入你想搜索的器件关键字";
+            manualInput.dataset.componentId = String(item.componentId || "");
+            const shouldRestoreActiveManualInput = Boolean(
+              activeManualInputState &&
+              String(activeManualInputState.componentId) === String(item.componentId || "")
+            );
+            manualInput.value = shouldRestoreActiveManualInput
+              ? activeManualInputState.value
+              : (item.manualQueryDraft || "");
+            manualInput.disabled = devicePickerBusy;
+            manualInput.addEventListener("input", (event) => {
+              const value = event && event.target ? event.target.value : "";
+              void invokeRuntimeAsync("setDraftDeviceManualQueryDraft", {
+                componentId: item.componentId,
+                draft: value,
+              });
+            });
+            manualBox.appendChild(manualInput);
+
+            const manualActions = document.createElement("div");
+            manualActions.className = "device-picker-manual-actions";
+
+            const manualSearchBtn = document.createElement("button");
+            manualSearchBtn.type = "button";
+            manualSearchBtn.className = "device-picker-search-btn";
+            manualSearchBtn.textContent = "用此关键词搜索";
+            manualSearchBtn.addEventListener("click", () => {
+              void runDevicePickerAction(
+                "searchDraftDeviceCandidates",
+                item.componentId,
+                manualInput.value || ""
+              );
+            });
+            manualActions.appendChild(manualSearchBtn);
+
+            const manualCancelBtn = document.createElement("button");
+            manualCancelBtn.type = "button";
+            manualCancelBtn.className = "device-picker-close-btn";
+            manualCancelBtn.textContent = "取消";
+            manualCancelBtn.addEventListener("click", () => {
+              void runDevicePickerAction("setDraftDeviceManualQueryExpanded", {
+                componentId: item.componentId,
+                expanded: false,
+              });
+            });
+            manualActions.appendChild(manualCancelBtn);
+
+            manualBox.appendChild(manualActions);
+            card.appendChild(manualBox);
+            if (shouldRestoreActiveManualInput) {
+              manualFocusTarget = {
+                input: manualInput,
+                selectionStart: activeManualInputState ? activeManualInputState.selectionStart : null,
+                selectionEnd: activeManualInputState ? activeManualInputState.selectionEnd : null,
+              };
+            }
+          }
+        }
 
         const candidates = Array.isArray(item.candidates) ? item.candidates : [];
         if (item.status === "unresolved" && candidates.length > 0) {
@@ -5384,6 +5533,19 @@
         }
 
         body.appendChild(card);
+        if (manualFocusTarget && !devicePickerBusy) {
+          manualFocusTarget.input.focus();
+          if (
+            typeof manualFocusTarget.input.setSelectionRange === "function" &&
+            manualFocusTarget.selectionStart !== null &&
+            manualFocusTarget.selectionEnd !== null
+          ) {
+            manualFocusTarget.input.setSelectionRange(
+              manualFocusTarget.selectionStart,
+              manualFocusTarget.selectionEnd
+            );
+          }
+        }
       });
       setDevicePickerBusy(devicePickerBusy);
     }
@@ -5524,7 +5686,6 @@
     document.getElementById("send-btn").addEventListener("click", () => {
       const input = document.getElementById("chat-input");
       const text = input.value.trim();
-      if (!text || isBusy) return;
       sendPrompt(text);
     });
 
@@ -7799,6 +7960,75 @@ var edaEsbuildExportName = (() => {
     return fallback;
   }
 
+  // src/editor/host/pinMatchEngine.ts
+  function matchDraftPinsToRealPins(input) {
+    const out = /* @__PURE__ */ new Map();
+    const used = /* @__PURE__ */ new Set();
+    for (const planPin of input.planPins) {
+      let best;
+      let bestScore = -1;
+      for (const realPin of input.realPins) {
+        const key = `${realPin.pinNumber || ""}:${realPin.pinName || ""}`;
+        if (used.has(key)) {
+          continue;
+        }
+        let score = 0;
+        const planPinNumberCandidate = inferPlanPinNumber(planPin);
+        if (planPinNumberCandidate && realPin.pinNumber && planPinNumberCandidate === realPin.pinNumber) {
+          score += 100;
+        }
+        if (planPin.pinName && realPin.pinName && planPin.pinName === realPin.pinName) {
+          score += 100;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          best = realPin;
+        }
+      }
+      if (best && bestScore > 0) {
+        used.add(`${best.pinNumber || ""}:${best.pinName || ""}`);
+        out.set(planPin.id, {
+          resolvedPinName: best.pinName,
+          resolvedPinNumber: best.pinNumber,
+          confidence: Math.min(1, bestScore / 100),
+          reason: bestScore >= 100 ? "matched_pin_number" : "matched_pin_name"
+        });
+      }
+    }
+    return out;
+  }
+  function inferPlanPinNumber(planPin) {
+    if (planPin.pinNumber) {
+      return planPin.pinNumber;
+    }
+    if (planPin.pinName && /^\d+$/.test(planPin.pinName)) {
+      return planPin.pinName;
+    }
+    return void 0;
+  }
+
+  // src/editor/host/transientPinResolver.ts
+  async function resolveTransientComponentPins(input, deps) {
+    const placed = [];
+    const componentPins = /* @__PURE__ */ new Map();
+    try {
+      for (const [index, component] of input.components.entries()) {
+        const created = await deps.createComponent({ ...component, index });
+        if (!created?.primitiveId) {
+          throw new Error(`transient placement failed: ${component.ref || component.componentId}`);
+        }
+        placed.push(created.primitiveId);
+        const pins = await deps.getPinsByPrimitiveId(created.primitiveId);
+        componentPins.set(component.componentId, pins);
+      }
+      return { componentPins };
+    } finally {
+      if (placed.length > 0) {
+        await deps.deleteComponents(placed);
+      }
+    }
+  }
+
   // src/editor/host/applyPlanByApi.ts
   var applyTransactions = /* @__PURE__ */ new Map();
   function createApiApplyPlanAdapter(invoker, options) {
@@ -7818,7 +8048,7 @@ var edaEsbuildExportName = (() => {
           }
         }
         if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
-          plan = await enrichResolvedPinsFromLibraryBeforeApply(plan);
+          plan = await enrichResolvedPinsForTypedPlacement(plan);
         }
         const transactionId = createTransactionId();
         if (options?.typedPlacementEnabled && canApplyByTypedPlacement(plan)) {
@@ -7829,7 +8059,10 @@ var edaEsbuildExportName = (() => {
             componentIds: placed.componentIds,
             wireIds: placed.wireIds
           });
-          return summarizeApply(plan, transactionId, applied, applied);
+          return summarizeApply(plan, transactionId, applied, applied, {
+            connectedNetCount: placed.connectedNetCount,
+            skippedConnections: placed.skippedConnections
+          });
         }
         if (!invoker) {
           return summarizeApply(plan, transactionId, false, false);
@@ -7929,7 +8162,8 @@ var edaEsbuildExportName = (() => {
       }
     };
   }
-  async function enrichResolvedPinsFromLibraryBeforeApply(plan) {
+  async function enrichResolvedPinsForTypedPlacement(plan) {
+    plan = await enrichResolvedPinsFromTransientPlacement(plan);
     const needsPinResolution = plan.pins.some(
       (pin) => pin.pinResolutionStatus === "unresolved" || !(pin.resolvedPinName || pin.resolvedPinNumber)
     );
@@ -7958,6 +8192,135 @@ var edaEsbuildExportName = (() => {
         scope: "system"
       })
     );
+  }
+  async function enrichResolvedPinsFromTransientPlacement(plan) {
+    if (typeof eda === "undefined") {
+      return plan;
+    }
+    if (typeof eda.sch_PrimitiveComponent?.create !== "function") {
+      return plan;
+    }
+    if (typeof eda.sch_PrimitiveComponent?.getAllPinsByPrimitiveId !== "function") {
+      return plan;
+    }
+    if (typeof eda.sch_PrimitiveComponent?.delete !== "function") {
+      return plan;
+    }
+    const components = plan.components.map((component) => {
+      const deviceUuid = component.properties.device_uuid;
+      const libraryUuid = component.properties.library_uuid;
+      if (!deviceUuid || !libraryUuid) {
+        return null;
+      }
+      return {
+        componentId: component.id,
+        ref: component.ref,
+        deviceUuid,
+        libraryUuid
+      };
+    }).filter(
+      (component) => Boolean(component)
+    );
+    if (components.length === 0) {
+      return plan;
+    }
+    const resolved = await resolveTransientComponentPins(
+      { components },
+      {
+        createComponent: async ({ deviceUuid, libraryUuid, index }) => {
+          const x = 12e3 + index % 6 * 240;
+          const y = 12e3 + Math.floor(index / 6) * 180;
+          const created = await eda.sch_PrimitiveComponent.create(
+            {
+              uuid: deviceUuid,
+              libraryUuid
+            },
+            x,
+            y,
+            void 0,
+            0,
+            false,
+            true,
+            true
+          );
+          if (!created) {
+            return null;
+          }
+          return { primitiveId: created.getState_PrimitiveId() };
+        },
+        getPinsByPrimitiveId: async (primitiveId) => readTransientPins(primitiveId),
+        deleteComponents: async (primitiveIds) => eda.sch_PrimitiveComponent.delete(primitiveIds)
+      }
+    );
+    const nextPins = plan.pins.map((pin) => ({ ...pin }));
+    let changed = false;
+    for (const component of plan.components) {
+      const realPins = resolved.componentPins.get(component.id);
+      if (!realPins || realPins.length === 0) {
+        continue;
+      }
+      const planPins = nextPins.filter((pin) => pin.componentId === component.id);
+      const matches = matchDraftPinsToRealPins({
+        role: inferTransientPinMatchRole(component.ref, component.name),
+        planPins,
+        realPins
+      });
+      for (const planPin of planPins) {
+        const match = matches.get(planPin.id);
+        if (!match) {
+          continue;
+        }
+        const changedPin = applyResolvedPinMatch(planPin, match);
+        if (changedPin !== planPin) {
+          const index = nextPins.findIndex((candidate) => candidate.id === changedPin.id);
+          nextPins[index] = changedPin;
+          changed = true;
+        }
+      }
+    }
+    return changed ? { ...plan, pins: nextPins } : plan;
+  }
+  function readTransientPins(primitiveId) {
+    return Promise.resolve(eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId)).then(
+      (pins) => (pins ?? []).map((pin) => ({
+        primitiveId: pin.getState_PrimitiveId(),
+        pinName: pin.getState_PinName(),
+        pinNumber: pin.getState_PinNumber(),
+        x: pin.getState_X(),
+        y: pin.getState_Y()
+      }))
+    );
+  }
+  function inferTransientPinMatchRole(ref, name) {
+    const upperRef = String(ref || "").toUpperCase();
+    const lowerName = String(name || "").toLowerCase();
+    if (upperRef.startsWith("D") || lowerName.includes("led")) {
+      return "led";
+    }
+    if (upperRef.startsWith("R") || lowerName.includes("resistor")) {
+      return "resistor";
+    }
+    if (upperRef.startsWith("C") || lowerName.includes("capacitor")) {
+      return "capacitor";
+    }
+    if (upperRef.startsWith("J") || lowerName.includes("connector") || lowerName.includes("header")) {
+      return "connector";
+    }
+    return void 0;
+  }
+  function applyResolvedPinMatch(pin, match) {
+    const nextPin = {
+      ...pin,
+      resolvedPinName: match.resolvedPinName ?? pin.resolvedPinName,
+      resolvedPinNumber: match.resolvedPinNumber ?? pin.resolvedPinNumber,
+      pinResolutionStatus: "resolved",
+      pinResolutionConfidence: match.confidence,
+      pinResolutionReason: match.reason
+    };
+    if (nextPin.resolvedPinName === pin.resolvedPinName && nextPin.resolvedPinNumber === pin.resolvedPinNumber && nextPin.pinResolutionStatus === pin.pinResolutionStatus && nextPin.pinResolutionConfidence === pin.pinResolutionConfidence && nextPin.pinResolutionReason === pin.pinResolutionReason) {
+      return pin;
+    }
+    return nextPin;
   }
   function hasAnyPlacementDevice(plan) {
     return plan.components.some((component) => {
@@ -7993,18 +8356,19 @@ var edaEsbuildExportName = (() => {
     const componentIds = [];
     const wireIds = [];
     const placedPins = /* @__PURE__ */ new Map();
-    const gridX = 140;
-    const gridY = 100;
+    const skippedConnections = [];
+    let connectedNetCount = 0;
+    const defaultPlacements = buildFunctionalPlacementMap(plan);
     try {
-      ensureResolvedDraftPinsForTypedPlacement(plan);
       for (const [index, component] of plan.components.entries()) {
         const deviceUuid = component.properties.device_uuid;
         const libraryUuid = component.properties.library_uuid;
         if (!deviceUuid || !libraryUuid) {
           continue;
         }
-        const x = parsePlacementNumber(component.properties.placement_x) ?? 200 + index % 3 * gridX;
-        const y = parsePlacementNumber(component.properties.placement_y) ?? 200 + Math.floor(index / 3) * gridY;
+        const fallbackPlacement = defaultPlacements.get(component.id) ?? buildIndexedFallbackPlacement(index);
+        const x = parsePlacementNumber(component.properties.placement_x) ?? fallbackPlacement.x;
+        const y = parsePlacementNumber(component.properties.placement_y) ?? fallbackPlacement.y;
         const rotation = parsePlacementNumber(component.properties.placement_rotation) ?? 0;
         const created = await eda.sch_PrimitiveComponent.create(
           {
@@ -8042,23 +8406,118 @@ var edaEsbuildExportName = (() => {
           }
         }
       }
-      validateMappedNets(plan, placedPins);
-      validateRequiredConnections(plan, placedPins);
       for (const net of plan.nets) {
+        const nodeIds = [...new Set(net.nodeIds)];
         const nodePoints = net.nodeIds.map((nodeId) => placedPins.get(nodeId)).filter((item) => Boolean(item));
+        const missingNodeIds = nodeIds.filter((nodeId) => !placedPins.has(nodeId));
+        if (missingNodeIds.length > 0) {
+          skippedConnections.push(
+            ...buildSkippedConnectionsForNet(plan, net.name || net.id, missingNodeIds, "endpoint_unresolved")
+          );
+        }
+        if (nodePoints.length < 2) {
+          continue;
+        }
         const line = buildOrthogonalPolyline(nodePoints);
         const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
         if (!createdWire) {
           continue;
         }
         wireIds.push(createdWire.getState_PrimitiveId());
+        connectedNetCount += 1;
       }
-      return { componentIds, wireIds };
+      skippedConnections.push(...collectSkippedRequiredConnections(plan, placedPins));
+      return { componentIds, wireIds, connectedNetCount, skippedConnections };
     } catch (error) {
       await deleteTypedSchematicWires(wireIds);
       await deleteTypedSchematicComponents(componentIds);
       throw error;
     }
+  }
+  function buildFunctionalPlacementMap(plan) {
+    const zoneOrder = [
+      "power",
+      "control",
+      "clock",
+      "input",
+      "processing",
+      "audio",
+      "output",
+      "interface",
+      "support"
+    ];
+    const zoneAnchors = {
+      power: { x: 120, y: 180 },
+      control: { x: 300, y: 180 },
+      clock: { x: 460, y: 140 },
+      input: { x: 300, y: 340 },
+      processing: { x: 620, y: 260 },
+      audio: { x: 860, y: 220 },
+      output: { x: 1080, y: 260 },
+      interface: { x: 1080, y: 480 },
+      support: { x: 620, y: 520 }
+    };
+    const zoneBuckets = /* @__PURE__ */ new Map();
+    for (const zone of zoneOrder) {
+      zoneBuckets.set(zone, []);
+    }
+    for (const component of plan.components) {
+      zoneBuckets.get(inferFunctionalZone(component))?.push(component);
+    }
+    const placements = /* @__PURE__ */ new Map();
+    const intraZoneX = 180;
+    const intraZoneY = 120;
+    const maxCols = 2;
+    for (const zone of zoneOrder) {
+      const anchor = zoneAnchors[zone];
+      const components = zoneBuckets.get(zone) ?? [];
+      components.forEach((component, index) => {
+        placements.set(component.id, {
+          x: anchor.x + index % maxCols * intraZoneX,
+          y: anchor.y + Math.floor(index / maxCols) * intraZoneY
+        });
+      });
+    }
+    return placements;
+  }
+  function buildIndexedFallbackPlacement(index) {
+    const gridX = 180;
+    const gridY = 120;
+    return {
+      x: 220 + index % 4 * gridX,
+      y: 220 + Math.floor(index / 4) * gridY
+    };
+  }
+  function inferFunctionalZone(component) {
+    const ref = String(component.ref || "").toUpperCase();
+    const name = String(component.name || "").toLowerCase();
+    const device = String(component.properties.device_name || component.properties.preferred_search_query || "").toLowerCase();
+    const text = `${ref} ${name} ${device}`;
+    if (/^B\d+/u.test(ref) || /^BT\d+/u.test(ref) || /(battery|charger|charge|ldo|buck|boost|regulator|pmic|type-c|usb|vbus|power|tp4056|ip5306|dw01|fs8205)/iu.test(text)) {
+      return "power";
+    }
+    if (/^U\d+/u.test(ref) && /(esp32|stm32|nrf|mcu|soc|controller|cpu|processor|rp2040|esp-|esp_)/iu.test(text)) {
+      return "processing";
+    }
+    if (/(crystal|oscillator|xtal|26mhz|32khz|clock)/iu.test(text) || /^X\d+/u.test(ref)) {
+      return "clock";
+    }
+    if (/(mic|microphone|mems|sensor|hall|button|key|switch|touch|input)/iu.test(text)) {
+      return "input";
+    }
+    if (/(codec|dac|i2s|audio)/iu.test(text)) {
+      return "audio";
+    }
+    if (/(amp|speaker|spk|buzzer|earphone|output)/iu.test(text)) {
+      return "output";
+    }
+    if (/^J\d+/u.test(ref) || /(connector|header|socket|antenna|uart|debug|download)/iu.test(text)) {
+      return "interface";
+    }
+    if (/(led|reset|boot|en|indicator|status)/iu.test(text)) {
+      return "control";
+    }
+    return "support";
   }
   function parsePlacementNumber(value) {
     if (!value) {
@@ -8089,11 +8548,12 @@ var edaEsbuildExportName = (() => {
       }
     }
   }
-  function validateRequiredConnections(plan, placedPins) {
+  function collectSkippedRequiredConnections(plan, placedPins) {
     const requiredConnections = plan.guidance?.requiredConnections;
     if (!requiredConnections || requiredConnections.length === 0) {
-      return;
+      return [];
     }
+    const skipped = [];
     const componentsByRef = new Map(
       plan.components.filter((component) => component.ref).map((component) => [String(component.ref), component.id])
     );
@@ -8104,32 +8564,67 @@ var edaEsbuildExportName = (() => {
       const toPin = resolvePlanPin(plan, toComponentId, connection.toPin);
       const net = plan.nets.find((item) => item.name === connection.netName);
       if (!fromComponentId || !toComponentId || !fromPin || !toPin || !net) {
-        throw new Error(
-          `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
-        );
+        skipped.push({
+          fromComponentRef: connection.fromComponentRef,
+          fromPin: connection.fromPin,
+          toComponentRef: connection.toComponentRef,
+          toPin: connection.toPin,
+          netName: connection.netName,
+          reason: "required_connection_definition_unresolved"
+        });
+        continue;
       }
       if (!net.nodeIds.includes(fromPin.id) || !net.nodeIds.includes(toPin.id)) {
-        throw new Error(
-          `required connection net mismatch: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
-        );
+        skipped.push({
+          fromComponentRef: connection.fromComponentRef,
+          fromPin: connection.fromPin,
+          toComponentRef: connection.toComponentRef,
+          toPin: connection.toPin,
+          netName: connection.netName,
+          reason: "required_connection_net_mismatch"
+        });
+        continue;
       }
       if (!placedPins.has(fromPin.id) || !placedPins.has(toPin.id)) {
-        throw new Error(
-          `required connection unresolved: ${connection.fromComponentRef}.${connection.fromPin} -> ${connection.toComponentRef}.${connection.toPin} (${connection.netName})`
-        );
+        skipped.push({
+          fromComponentRef: connection.fromComponentRef,
+          fromPin: connection.fromPin,
+          toComponentRef: connection.toComponentRef,
+          toPin: connection.toPin,
+          netName: connection.netName,
+          reason: "required_connection_endpoint_unresolved"
+        });
       }
     }
+    return skipped;
   }
-  function validateMappedNets(plan, placedPins) {
-    for (const net of plan.nets) {
-      const nodePoints = net.nodeIds.map((nodeId) => placedPins.get(nodeId)).filter((item) => Boolean(item));
-      if (nodePoints.length < 2) {
-        const missingNodeIds = net.nodeIds.filter((nodeId) => !placedPins.has(nodeId));
-        throw new Error(
-          `unmapped required nets: ${net.name || net.id} (${missingNodeIds.join(", ") || "missing endpoints"})`
-        );
-      }
-    }
+  function buildSkippedConnectionsForNet(plan, netName, missingNodeIds, reason) {
+    const pinsById = new Map(plan.pins.map((pin) => [pin.id, pin]));
+    const componentsById = new Map(plan.components.map((component) => [component.id, component]));
+    return missingNodeIds.map((nodeId) => {
+      const pin = pinsById.get(nodeId);
+      const component = pin ? componentsById.get(pin.componentId) : void 0;
+      return {
+        fromComponentRef: component?.ref ?? component?.id,
+        fromPin: pin?.pinName ?? pin?.pinNumber ?? pin?.id,
+        netName,
+        reason
+      };
+    });
+  }
+  function summarizeApply(plan, transactionId, applied, rollbackSupported, partialWiring) {
+    return {
+      applied,
+      componentCount: plan.components.length,
+      netCount: plan.nets.length,
+      transactionId,
+      rollbackSupported,
+      partialWiring: partialWiring ? {
+        connectedNetCount: partialWiring.connectedNetCount,
+        skippedConnectionCount: partialWiring.skippedConnections.length,
+        skippedConnections: partialWiring.skippedConnections
+      } : void 0
+    };
   }
   function resolvePlanPin(plan, componentId, pinLabel) {
     if (!componentId) {
@@ -8138,25 +8633,6 @@ var edaEsbuildExportName = (() => {
     return plan.pins.find(
       (pin) => pin.componentId === componentId && (String(pin.pinNumber || "").trim() === pinLabel || String(pin.pinName || "").trim() === pinLabel)
     );
-  }
-  function ensureResolvedDraftPinsForTypedPlacement(plan) {
-    const componentsById = new Map(plan.components.map((component) => [component.id, component]));
-    const unresolvedPins = plan.pins.filter((pin) => {
-      if (pin.pinResolutionStatus === "unresolved") {
-        return true;
-      }
-      return !(pin.resolvedPinName || pin.resolvedPinNumber);
-    });
-    if (unresolvedPins.length === 0) {
-      return;
-    }
-    const labels = unresolvedPins.map((pin) => {
-      const component = componentsById.get(pin.componentId);
-      const ref = component?.ref ?? component?.id ?? pin.componentId;
-      const label = pin.pinName || pin.pinNumber || pin.id;
-      return `${ref}.${label}`;
-    });
-    throw new Error(`unresolved draft pin mappings: ${labels.join(", ")}`);
   }
   function findBestMatchingPlanPin(pins, componentId, pinName, pinNumber) {
     const candidates = pins.filter(
@@ -8218,15 +8694,6 @@ var edaEsbuildExportName = (() => {
       return false;
     }
     return eda.sch_PrimitiveWire.delete(wireIds);
-  }
-  function summarizeApply(plan, transactionId, applied, rollbackSupported) {
-    return {
-      applied,
-      componentCount: plan.components.length,
-      netCount: plan.nets.length,
-      transactionId,
-      rollbackSupported
-    };
   }
   function isSuccessfulMutationResult(value) {
     if (value === void 0 || value === null || value === false) {
@@ -8441,7 +8908,7 @@ var edaEsbuildExportName = (() => {
       },
       applyPlan: {
         preview: fromNamespace?.applyPlan?.preview ? fromNamespace.applyPlan.preview : applyPlanAdapter.preview,
-        apply: fromNamespace?.applyPlan?.apply ? fromNamespace.applyPlan.apply : applyPlanAdapter.apply,
+        apply: hasTypedSchematicPlacementRuntime() ? applyPlanAdapter.apply : fromNamespace?.applyPlan?.apply ? fromNamespace.applyPlan.apply : applyPlanAdapter.apply,
         rollback: fromNamespace?.applyPlan?.rollback ? fromNamespace.applyPlan.rollback : applyPlanAdapter.rollback
       }
     };
@@ -16101,6 +16568,48 @@ ${content}`;
     const missingText = missing.length > 0 ? `\uFF1B\u7F3A\u5C11\u80FD\u529B\uFF1A${missing.join("\u3001")}` : "";
     return `\u5E94\u7528\u8349\u6848\u5931\u8D25\uFF1A\u5BBF\u4E3B\u672A\u771F\u6B63\u6267\u884C\u539F\u7406\u56FE\u5E94\u7528\u3002\u5F53\u524D\u9002\u914D\u5668\u6765\u6E90\uFF1A${input.adapterSource}${missingText}\u3002\u8BF7\u5148\u68C0\u67E5\u5BBF\u4E3B applyPlan \u80FD\u529B\u662F\u5426\u5DF2\u63A5\u901A\u3002`;
   }
+  function formatSkippedConnectionLabel(connection) {
+    const from = [connection.fromComponentRef, connection.fromPin].filter(Boolean).join(".");
+    const to = [connection.toComponentRef, connection.toPin].filter(Boolean).join(".");
+    if (from && to) {
+      return `${from} -> ${to}${connection.netName ? ` (${connection.netName})` : ""}`;
+    }
+    if (from) {
+      return `${from}${connection.netName ? ` (${connection.netName})` : ""}`;
+    }
+    return connection.netName || "\u672A\u89E3\u6790\u8FDE\u63A5";
+  }
+  function formatDraftApplySuccessSummary(result) {
+    const skippedCount = result.partialWiring?.skippedConnectionCount ?? 0;
+    const connectedCount = result.partialWiring?.connectedNetCount ?? result.netCount;
+    if (skippedCount <= 0) {
+      const summary2 = `\u8349\u6848\u5DF2\u5E94\u7528\uFF1A\u5668\u4EF6 ${result.componentCount}\uFF0C\u7F51\u7EDC ${result.netCount}\u3002`;
+      return {
+        title: "\u5DF2\u5E94\u7528\u8349\u6848",
+        summary: summary2,
+        content: `\u8349\u6848\u5DF2\u6210\u529F\u5E94\u7528\u5230\u753B\u5E03\u3002
+\u5668\u4EF6\u6570\uFF1A${result.componentCount}
+\u7F51\u7EDC\u6570\uFF1A${result.netCount}
+\u5982\u4E0D\u7B26\u5408\u9884\u671F\u53EF\u4EE5\u7ACB\u5373\u56DE\u6EDA\u3002`
+      };
+    }
+    const manualItems = (result.partialWiring?.skippedConnections ?? []).slice(0, 6).map((item) => `- ${formatSkippedConnectionLabel(item)}`);
+    const summary = `\u8349\u6848\u5DF2\u5E94\u7528\uFF0C\u4F46\u6709 ${skippedCount} \u5904\u8FDE\u63A5\u9700\u624B\u52A8\u5904\u7406\uFF1A\u5DF2\u653E\u7F6E ${result.componentCount} \u4E2A\u5668\u4EF6\uFF0C\u5DF2\u81EA\u52A8\u8FDE\u7EBF ${connectedCount} \u6761\u3002`;
+    return {
+      title: "\u5DF2\u5E94\u7528\uFF0C\u90E8\u5206\u8FDE\u63A5\u9700\u624B\u52A8\u5904\u7406",
+      summary,
+      content: [
+        "\u8349\u6848\u5DF2\u653E\u7F6E\u5230\u753B\u5E03\uFF0C\u672A\u80FD\u81EA\u52A8\u89E3\u6790\u7684\u8FDE\u63A5\u5DF2\u8DF3\u8FC7\u3002",
+        `\u5668\u4EF6\u6570\uFF1A${result.componentCount}`,
+        `\u539F\u59CB\u7F51\u7EDC\u6570\uFF1A${result.netCount}`,
+        `\u5DF2\u81EA\u52A8\u8FDE\u7EBF\uFF1A${connectedCount}`,
+        `\u9700\u624B\u52A8\u8FDE\u7EBF\uFF1A${skippedCount}`,
+        manualItems.length > 0 ? "\u5F85\u624B\u52A8\u5904\u7406\uFF1A" : "",
+        ...manualItems,
+        "\u5982\u4E0D\u7B26\u5408\u9884\u671F\u53EF\u4EE5\u7ACB\u5373\u56DE\u6EDA\u3002"
+      ].filter(Boolean).join("\n")
+    };
+  }
   async function enrichDraftPlanFromBridge(plan, bridge) {
     if (!plan || !bridge?.getLibraryDevice) {
       return plan;
@@ -16308,16 +16817,68 @@ ${content}`;
     if (/LED|指示灯|充电指示灯|电源指示灯/i.test(raw)) return "led";
     return "generic";
   }
-  function buildDevicePickerState(plan) {
+  function resolveDraftDeviceSearchQuery(input) {
+    const manualQuery = String(input.manualQuery ?? "").trim();
+    if (manualQuery) {
+      return manualQuery;
+    }
+    const defaultQuery = String(input.defaultQuery ?? "").trim();
+    if (defaultQuery) {
+      return defaultQuery;
+    }
+    return null;
+  }
+  function updateDevicePickerManualQueryState(picker, input) {
+    if (!picker) {
+      return picker;
+    }
+    let changed = false;
+    const nextItems = picker.items.map((item) => {
+      if (item.componentId !== input.componentId) {
+        return item;
+      }
+      const nextItem = { ...item };
+      if ("manualQueryExpanded" in input) {
+        nextItem.manualQueryExpanded = input.manualQueryExpanded;
+      }
+      if ("manualQueryDraft" in input) {
+        nextItem.manualQueryDraft = input.manualQueryDraft;
+      }
+      changed = true;
+      return nextItem;
+    });
+    if (!changed) {
+      return picker;
+    }
+    return {
+      ...picker,
+      items: nextItems
+    };
+  }
+  function resolveDevicePickerManualQueryStateForSearch(input) {
+    if (typeof input.manualQuery === "string") {
+      return {
+        manualQueryExpanded: true,
+        manualQueryDraft: input.manualQuery
+      };
+    }
+    return {
+      manualQueryExpanded: input.previousItem?.manualQueryExpanded ?? input.item.manualQueryExpanded,
+      manualQueryDraft: input.previousItem?.manualQueryDraft ?? input.item.manualQueryDraft
+    };
+  }
+  function buildDevicePickerState(plan, previousPicker) {
     if (!plan) {
       return void 0;
     }
+    const previousByComponentId = new Map((previousPicker?.items ?? []).map((item) => [item.componentId, item]));
     const selectedByComponentId = new Map(
       (plan.selectedDevices ?? []).filter((item) => item.componentId).map((item) => [item.componentId, item])
     );
     const items = plan.components.map((component) => {
       const ref = component.ref ?? component.id;
       const selected = selectedByComponentId.get(component.id);
+      const previousItem = previousByComponentId.get(component.id);
       const status = component.properties?.device_resolution_status === "unresolved" ? "unresolved" : "resolved";
       return {
         componentId: component.id,
@@ -16334,11 +16895,13 @@ ${content}`;
         }),
         usageHint: inferDraftComponentRole(ref) === "power_connector" ? "\u8FD9\u91CC\u9700\u8981\u7684\u662F\u5916\u90E8\u4F9B\u7535\u63A5\u53E3\uFF0C\u4F18\u5148\u770B\u5B83\u662F\u4E0D\u662F\u9002\u5408\u4F5C\u4E3A\u7535\u6E90\u8F93\u5165\u53E3\u3002" : void 0,
         selectedDeviceLabel: selected ? `${selected.name}${selected.footprintName ? ` [${selected.footprintName}]` : ""}` : void 0,
+        manualQueryExpanded: previousItem?.manualQueryExpanded,
+        manualQueryDraft: previousItem?.manualQueryDraft,
         candidates: void 0
       };
     });
     return {
-      open: false,
+      open: previousPicker?.open ?? false,
       items
     };
   }
@@ -16361,7 +16924,7 @@ ${content}`;
       unresolvedDeviceDetails: preview.unresolvedDeviceDetails,
       guidanceSummary: preview.guidanceSummary
     };
-    state.devicePicker = buildDevicePickerState(plan);
+    state.devicePicker = buildDevicePickerState(plan, state.devicePicker);
   }
   function createSessionId() {
     return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -16872,7 +17435,7 @@ ${content}`;
         state.agentRunDetail = "\u8349\u6848\u4ECD\u6709\u5F85\u786E\u8BA4\u5668\u4EF6";
         state.summary = "\u8349\u6848\u4E2D\u4ECD\u6709\u5F85\u786E\u8BA4\u5668\u4EF6\uFF0C\u8BF7\u5148\u9009\u62E9\u5668\u4EF6\u540E\u518D\u5E94\u7528\u3002";
         state.devicePicker = {
-          ...buildDevicePickerState(draftPlan) ?? { open: true, items: [] },
+          ...buildDevicePickerState(draftPlan, state.devicePicker) ?? { open: true, items: [] },
           open: true
         };
         state.toast = {
@@ -16912,15 +17475,22 @@ ${content}`;
         internals.draftBlocked = false;
         state.agentRunState = "completed";
         state.agentRunRoute = "draft";
-        state.agentRunDetail = result.repaired ? "\u8349\u6848\u5DF2\u81EA\u52A8\u4FEE\u8865\u5E76\u5E94\u7528" : "\u8349\u6848\u5DF2\u5E94\u7528";
-        state.summary = result.repaired ? `\u8349\u6848\u5DF2\u81EA\u52A8\u4FEE\u8865 ${result.repairCount} \u6B21\u540E\u5E94\u7528\uFF1A\u5668\u4EF6 ${result.result.componentCount}\uFF0C\u7F51\u7EDC ${result.result.netCount}\u3002` : `\u8349\u6848\u5DF2\u5E94\u7528\uFF1A\u5668\u4EF6 ${result.result.componentCount}\uFF0C\u7F51\u7EDC ${result.result.netCount}\u3002`;
+        const applyPresentation = formatDraftApplySuccessSummary(result.result);
+        state.agentRunDetail = result.repaired ? `\u8349\u6848\u5DF2\u81EA\u52A8\u4FEE\u8865\u5E76\u5E94\u7528${result.result.partialWiring?.skippedConnectionCount ? "\uFF0C\u90E8\u5206\u8FDE\u63A5\u9700\u624B\u52A8\u5904\u7406" : ""}` : applyPresentation.title;
+        state.summary = result.repaired ? `\u8349\u6848\u5DF2\u81EA\u52A8\u4FEE\u8865 ${result.repairCount} \u6B21\u540E\u5E94\u7528\u3002${applyPresentation.summary}` : applyPresentation.summary;
         state.chatMessages = appendAssistantMessages(
           sanitizeChatMessages(state.chatMessages),
           result.repaired ? pluginAgent.buildStatusMessages({
-            title: "\u5DF2\u81EA\u52A8\u4FEE\u8865\u5E76\u5E94\u7528",
+            title: applyPresentation.title,
             content: state.summary,
             tone: "success"
-          }) : pluginAgent.buildDraftAppliedMessages(result.result.componentCount, result.result.netCount)
+          }) : [
+            {
+              ...pluginAgent.buildDraftAppliedMessages(result.result.componentCount, result.result.netCount)[0],
+              title: applyPresentation.title,
+              content: applyPresentation.content
+            }
+          ]
         );
       } catch (error) {
         state.agentRunState = "failed";
@@ -16943,7 +17513,7 @@ ${content}`;
       state.nextActions = buildNextActions(state);
       return commitState(internals, state, storage);
     }
-    async function searchDraftDeviceCandidatesInternal(state, componentId) {
+    async function searchDraftDeviceCandidatesInternal(state, componentId, manualQuery) {
       const plan = internals.draftPlan;
       const bridge = resolveHostEditorBridge();
       if (!plan || !bridge?.searchLibraryDevices) {
@@ -16952,9 +17522,13 @@ ${content}`;
         return { state, updated: false, candidateCount: 0 };
       }
       const component = plan.components.find((item) => item.id === componentId);
-      const query = component?.properties?.preferred_search_query;
+      const pickerItem = state.devicePicker?.items.find((item) => item.componentId === componentId);
+      const query = resolveDraftDeviceSearchQuery({
+        defaultQuery: component?.properties?.preferred_search_query,
+        manualQuery: manualQuery ?? pickerItem?.manualQueryDraft
+      });
       if (!component || !query) {
-        state.summary = "\u5F53\u524D\u5668\u4EF6\u7F3A\u5C11\u53EF\u7528\u641C\u7D22\u6761\u4EF6\u3002";
+        state.summary = "\u5F53\u524D\u5668\u4EF6\u7F3A\u5C11\u53EF\u7528\u641C\u7D22\u6761\u4EF6\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165\u641C\u7D22\u5173\u952E\u8BCD\u3002";
         state.toast = { id: Date.now(), message: state.summary };
         return { state, updated: false, candidateCount: 0 };
       }
@@ -16973,15 +17547,20 @@ ${content}`;
         )
       }));
       const previousPicker = state.devicePicker;
-      const picker = buildDevicePickerState(plan) ?? { open: true, items: [] };
+      const picker = buildDevicePickerState(plan, previousPicker) ?? { open: true, items: [] };
       picker.open = true;
       picker.items = picker.items.map((item) => {
+        const previousItem = previousPicker?.items.find((entry) => entry.componentId === item.componentId);
         if (item.componentId !== componentId) {
-          const previousItem = previousPicker?.items.find((entry) => entry.componentId === item.componentId);
           return previousItem?.candidates && previousItem.candidates.length > 0 ? { ...item, candidates: previousItem.candidates } : item;
         }
         return {
           ...item,
+          ...resolveDevicePickerManualQueryStateForSearch({
+            item,
+            previousItem,
+            manualQuery
+          }),
           candidates: presentedCandidates
         };
       });
@@ -17673,7 +18252,7 @@ ${content}`;
       openDevicePicker: async () => {
         const state = internals.currentState ?? await computeAnalysisState();
         state.devicePicker = {
-          ...buildDevicePickerState(internals.draftPlan) ?? { open: true, items: [] },
+          ...buildDevicePickerState(internals.draftPlan, state.devicePicker) ?? { open: true, items: [] },
           open: true
         };
         return commitState(internals, state, storage);
@@ -17685,9 +18264,32 @@ ${content}`;
         }
         return commitState(internals, state, storage);
       },
-      searchDraftDeviceCandidates: async (componentId) => {
+      setDraftDeviceManualQueryExpanded: async (input) => {
         const state = internals.currentState ?? await computeAnalysisState();
-        await searchDraftDeviceCandidatesInternal(state, componentId);
+        state.devicePicker = updateDevicePickerManualQueryState(state.devicePicker, {
+          componentId: input.componentId,
+          manualQueryExpanded: input.expanded
+        });
+        return commitState(internals, state, storage);
+      },
+      setDraftDeviceManualQueryDraft: async (input) => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        state.devicePicker = updateDevicePickerManualQueryState(state.devicePicker, {
+          componentId: input.componentId,
+          manualQueryDraft: input.draft
+        });
+        return commitState(internals, state, storage);
+      },
+      searchDraftDeviceCandidates: async (componentId, manualQuery) => {
+        const state = internals.currentState ?? await computeAnalysisState();
+        if (typeof manualQuery === "string") {
+          state.devicePicker = updateDevicePickerManualQueryState(state.devicePicker, {
+            componentId,
+            manualQueryExpanded: true,
+            manualQueryDraft: manualQuery
+          });
+        }
+        await searchDraftDeviceCandidatesInternal(state, componentId, manualQuery);
         return commitState(internals, state, storage);
       },
       searchAllUnresolvedDraftDeviceCandidates: async () => {

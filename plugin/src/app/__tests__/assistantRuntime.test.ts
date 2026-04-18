@@ -18,6 +18,7 @@ import {
   deriveSessionHistoryEntries,
   finalizeDraftTurnMessages,
   formatDraftApplyErrorMessage,
+  formatDraftApplySuccessSummary,
   enrichDraftPlanFromBridge,
   hasUnresolvedDraftDevices,
   inferDraftComponentRole,
@@ -27,12 +28,15 @@ import {
   buildStreamingProcessSignature,
   shouldApplyStreamingReactEvents,
   shouldMirrorStreamingTextToAssistantBody,
-  stripFinalControlLikeText,
+  shouldSendComposerPrompt,
   shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
   stripFinalControlLikeText,
   shouldIgnoreDuplicateSendWhileRunning,
   shouldUseDraftReplyLeadNarrative,
+  resolveDraftDeviceSearchQuery,
+  resolveDevicePickerManualQueryStateForSearch,
+  updateDevicePickerManualQueryState,
   upsertLlmReasoningStepItem,
 } from "../assistantRuntime";
 import { getAssistantCardLayout } from "../assistantCardLayout";
@@ -104,6 +108,26 @@ test("shouldStopRunningTurnFromComposer returns false when no turn is active", (
     shouldStopRunningTurnFromComposer({
       agentRunState: "idle",
       activeTurnId: undefined,
+    }),
+    false
+  );
+});
+
+test("shouldSendComposerPrompt returns true while busy so composer click can act as stop", () => {
+  assert.equal(
+    shouldSendComposerPrompt({
+      isBusy: true,
+      text: "",
+    }),
+    true
+  );
+});
+
+test("shouldSendComposerPrompt returns false when idle and input is blank", () => {
+  assert.equal(
+    shouldSendComposerPrompt({
+      isBusy: false,
+      text: "   ",
     }),
     false
   );
@@ -183,6 +207,51 @@ test("formatDraftApplyErrorMessage converts unresolved draft pin mappings into a
     ),
     "应用草案失败：D1 等器件的连接还没有自动校正完成。请先确认相关器件型号，再重新应用草案。"
   );
+});
+
+test("formatDraftApplySuccessSummary keeps full-success apply messaging concise", () => {
+  const message = formatDraftApplySuccessSummary({
+    componentCount: 3,
+    netCount: 2,
+  });
+
+  assert.equal(message.title, "已应用草案");
+  assert.equal(message.summary, "草案已应用：器件 3，网络 2。");
+  assert.match(message.content, /草案已成功应用到画布/);
+});
+
+test("formatDraftApplySuccessSummary reports manual follow-up when some connections are skipped", () => {
+  const message = formatDraftApplySuccessSummary({
+    componentCount: 5,
+    netCount: 4,
+    partialWiring: {
+      connectedNetCount: 2,
+      skippedConnectionCount: 2,
+      skippedConnections: [
+        {
+          fromComponentRef: "U1",
+          fromPin: "SDA",
+          toComponentRef: "U2",
+          toPin: "SDA",
+          netName: "I2C_SDA",
+          reason: "endpoint_unresolved",
+        },
+        {
+          fromComponentRef: "D1",
+          fromPin: "K",
+          netName: "GND",
+          reason: "endpoint_unresolved",
+        },
+      ],
+    },
+  });
+
+  assert.equal(message.title, "已应用，部分连接需手动处理");
+  assert.match(message.summary, /有 2 处连接需手动处理/);
+  assert.match(message.content, /已自动连线：2/);
+  assert.match(message.content, /需手动连线：2/);
+  assert.match(message.content, /U1\.SDA -> U2\.SDA \(I2C_SDA\)/);
+  assert.match(message.content, /D1\.K \(GND\)/);
 });
 
 test("enrichDraftPlanFromBridge resolves draft pins from host library detail", async () => {
@@ -1013,6 +1082,184 @@ test("draftPreview state shape preserves selected device and guidance details", 
 
   assert.equal(draftPreview.selectedDeviceDetails?.[0], "power_connector: CONN_1X2 [HDR-TH_1X2]");
   assert.equal(draftPreview.guidanceSummary?.templateId, "led_indicator_minimal");
+});
+
+test("device picker items can carry manual query ui state", () => {
+  const state: MainPanelState = {
+    loggedIn: true,
+    devicePicker: {
+      open: true,
+      items: [
+        {
+          componentId: "draft-u1",
+          componentRef: "U1",
+          role: "generic",
+          status: "unresolved",
+          manualQueryExpanded: true,
+          manualQueryDraft: "STM32F103C8T6",
+        },
+      ],
+    },
+  };
+
+  assert.equal(state.devicePicker?.items[0]?.manualQueryExpanded, true);
+  assert.equal(state.devicePicker?.items[0]?.manualQueryDraft, "STM32F103C8T6");
+});
+
+test("resolveDraftDeviceSearchQuery prefers manual query over default", () => {
+  assert.equal(
+    resolveDraftDeviceSearchQuery({
+      defaultQuery: "USB Type-C 16PIN",
+      manualQuery: "  TYPE-C 母座 ",
+    }),
+    "TYPE-C 母座"
+  );
+});
+
+test("resolveDraftDeviceSearchQuery falls back to default when manual query is blank", () => {
+  assert.equal(
+    resolveDraftDeviceSearchQuery({
+      defaultQuery: "  KT-0805R  ",
+      manualQuery: "   ",
+    }),
+    "KT-0805R"
+  );
+});
+
+test("resolveDraftDeviceSearchQuery returns null when both manual and default queries are unavailable", () => {
+  assert.equal(
+    resolveDraftDeviceSearchQuery({
+      defaultQuery: " ",
+      manualQuery: "",
+    }),
+    null
+  );
+});
+
+test("updateDevicePickerManualQueryState only updates manual query fields for target item", () => {
+  const picker: MainPanelState["devicePicker"] = {
+    open: true,
+    items: [
+      {
+        componentId: "draft-u1",
+        componentRef: "U1",
+        role: "ldo_regulator",
+        status: "unresolved",
+        query: "ME6211",
+        manualQueryExpanded: false,
+        manualQueryDraft: "",
+      },
+      {
+        componentId: "draft-j1",
+        componentRef: "J1",
+        role: "power_connector",
+        status: "unresolved",
+        query: "USB Type-C 16PIN",
+        manualQueryExpanded: true,
+        manualQueryDraft: "Type-C 16PIN",
+      },
+    ],
+  };
+
+  const next = updateDevicePickerManualQueryState(picker, {
+    componentId: "draft-u1",
+    manualQueryExpanded: true,
+    manualQueryDraft: "AMS1117-3.3",
+  });
+
+  assert.equal(next?.items[0]?.manualQueryExpanded, true);
+  assert.equal(next?.items[0]?.manualQueryDraft, "AMS1117-3.3");
+  assert.equal(next?.items[0]?.query, "ME6211");
+  assert.equal(next?.items[1]?.manualQueryExpanded, true);
+  assert.equal(next?.items[1]?.manualQueryDraft, "Type-C 16PIN");
+  assert.equal(next?.items[1]?.query, "USB Type-C 16PIN");
+});
+
+test("manual query override state update does not mutate default query source", () => {
+  const picker: MainPanelState["devicePicker"] = {
+    open: true,
+    items: [
+      {
+        componentId: "draft-d1",
+        componentRef: "D1",
+        role: "led",
+        status: "unresolved",
+        query: "KT-0805R",
+      },
+    ],
+  };
+
+  const next = updateDevicePickerManualQueryState(picker, {
+    componentId: "draft-d1",
+    manualQueryExpanded: true,
+    manualQueryDraft: "LED 0805 红色",
+  });
+
+  assert.equal(next?.items[0]?.manualQueryDraft, "LED 0805 红色");
+  assert.equal(next?.items[0]?.manualQueryExpanded, true);
+  assert.equal(next?.items[0]?.query, "KT-0805R");
+});
+
+test("manual query override flow does not mutate draftPlan preferred_search_query source field", () => {
+  const draftPlan = {
+    title: "manual-query-override",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-d1",
+        ref: "D1",
+        properties: {
+          preferred_search_query: "KT-0805R",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  } as DraftPlan;
+
+  const originalPreferredQuery = draftPlan.components[0]?.properties?.preferred_search_query;
+  const picker: MainPanelState["devicePicker"] = {
+    open: true,
+    items: [
+      {
+        componentId: "draft-d1",
+        componentRef: "D1",
+        role: "led",
+        status: "unresolved",
+        query: draftPlan.components[0]?.properties?.preferred_search_query,
+      },
+    ],
+  };
+
+  const nextPicker = updateDevicePickerManualQueryState(picker, {
+    componentId: "draft-d1",
+    manualQueryExpanded: true,
+    manualQueryDraft: "LED 0805 红色",
+  });
+  const resolvedQuery = resolveDraftDeviceSearchQuery({
+    defaultQuery: draftPlan.components[0]?.properties?.preferred_search_query,
+    manualQuery: nextPicker?.items[0]?.manualQueryDraft,
+  });
+
+  assert.equal(resolvedQuery, "LED 0805 红色");
+  assert.equal(draftPlan.components[0]?.properties?.preferred_search_query, originalPreferredQuery);
+  assert.equal(draftPlan.components[0]?.properties?.preferred_search_query, "KT-0805R");
+});
+
+test("resolveDevicePickerManualQueryStateForSearch keeps manual override when previous picker item is missing", () => {
+  const state = resolveDevicePickerManualQueryStateForSearch({
+    item: {
+      componentId: "draft-u1",
+      componentRef: "U1",
+      role: "ldo_regulator",
+      status: "unresolved",
+    },
+    previousItem: undefined,
+    manualQuery: "AMS1117-3.3",
+  });
+
+  assert.equal(state.manualQueryExpanded, true);
+  assert.equal(state.manualQueryDraft, "AMS1117-3.3");
 });
 
 test("hasUnresolvedDraftDevices returns true when draft contains unresolved components", () => {

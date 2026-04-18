@@ -13,6 +13,18 @@ export interface ApplyPlanResult {
   netCount: number;
   transactionId?: string;
   rollbackSupported?: boolean;
+  partialWiring?: {
+    connectedNetCount: number;
+    skippedConnectionCount: number;
+    skippedConnections?: Array<{
+      fromComponentRef?: string;
+      fromPin?: string;
+      toComponentRef?: string;
+      toPin?: string;
+      netName?: string;
+      reason: string;
+    }>;
+  };
 }
 
 export interface EditorAdapter {

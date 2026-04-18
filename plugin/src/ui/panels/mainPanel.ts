@@ -63,6 +63,8 @@ export interface MainPanelState {
       reason?: string;
       reasonLabel?: string;
       usageHint?: string;
+      manualQueryExpanded?: boolean;
+      manualQueryDraft?: string;
       selectedDeviceLabel?: string;
       candidates?: Array<{
         uuid: string;

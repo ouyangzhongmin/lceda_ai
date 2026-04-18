@@ -173,9 +173,11 @@ export function resolveProfessionalRawHostApi(): ProfessionalRawHostApi | undefi
       preview: fromNamespace?.applyPlan?.preview
         ? fromNamespace.applyPlan.preview
         : applyPlanAdapter.preview,
-      apply: fromNamespace?.applyPlan?.apply
-        ? fromNamespace.applyPlan.apply
-        : applyPlanAdapter.apply,
+      apply: hasTypedSchematicPlacementRuntime()
+        ? applyPlanAdapter.apply
+        : fromNamespace?.applyPlan?.apply
+          ? fromNamespace.applyPlan.apply
+          : applyPlanAdapter.apply,
       rollback: fromNamespace?.applyPlan?.rollback
         ? fromNamespace.applyPlan.rollback
         : applyPlanAdapter.rollback,
