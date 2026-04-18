@@ -254,6 +254,22 @@ test("formatDraftApplySuccessSummary reports manual follow-up when some connecti
   assert.match(message.content, /D1\.K \(GND\)/);
 });
 
+test("preview rationale exposes peripheral completion summary for near-production drafts", () => {
+  const preview = previewDraftPlan({
+    title: "voice system",
+    rationale: "test",
+    components: [
+      { id: "u1", ref: "U1", name: "ESP32-S3", properties: {} },
+      { id: "j1", ref: "J1", name: "USB-C", properties: {} },
+    ],
+    pins: [],
+    nets: [],
+  } as DraftPlan);
+
+  assert.equal((preview.completedPeripheralCount ?? 0) > 0, true);
+  assert.match(preview.rationale, /已自动补全外围器件/);
+});
+
 test("enrichDraftPlanFromBridge resolves draft pins from host library detail", async () => {
   const plan = {
     title: "led",

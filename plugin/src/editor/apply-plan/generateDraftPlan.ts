@@ -1,4 +1,5 @@
 import type { DraftPlan, DraftPlanGuidance, DraftPlanSelectedDevice } from "./draftPlan";
+import { completeDraftPlanPeripherals } from "./draftPeripheralCompletion";
 
 interface GenerateDraftPlanOptions {
   selectedDevices?: DraftPlanSelectedDevice[];
@@ -122,7 +123,7 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
   const hasPins = Array.isArray(candidate.pins) && candidate.pins.length > 0;
   const hasNets = Array.isArray(candidate.nets);
   if (hasPins && hasNets) {
-    return {
+    return completeDraftPlanPeripherals({
       title: String(candidate.title || "Draft Plan"),
       rationale: String(candidate.rationale || ""),
       components,
@@ -157,7 +158,7 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
       })),
       selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
       guidance: normalizeGuidance(candidate.guidance),
-    };
+    });
   }
 
   const pinMap = new Map<string, DraftPlan["pins"][number]>();
@@ -202,15 +203,15 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
     }
   }
 
-  return {
+  return completeDraftPlanPeripherals({
     title: String(candidate.title || "Draft Plan"),
     rationale: String(candidate.rationale || ""),
     components,
     pins: Array.from(pinMap.values()),
     nets: Array.from(netsByName.values()),
     selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
-      guidance: normalizeGuidance(candidate.guidance),
-  };
+    guidance: normalizeGuidance(candidate.guidance),
+  });
 }
 
 function withPlacement(
@@ -516,6 +517,70 @@ export function generateDraftPlanFromPrompt(
           nodeIds: ["draft-u1-gnd", "draft-c1-neg", "draft-c2-neg"],
           isPower: true,
         },
+      ],
+      selectedDevices,
+      guidance,
+    };
+  }
+
+  const looksLikeVoiceDevice =
+    /(esp32-s3|esp32 s3|esp32s3)/u.test(normalized) &&
+    /(voice|语音|mic|microphone|inmp441|max98357|speaker|音频|audio)/u.test(normalized);
+
+  if (looksLikeVoiceDevice) {
+    return {
+      title: "ESP32-S3 Voice Device Draft",
+      rationale:
+        "Generated a core voice-device draft with controller, USB power entry, microphone, and audio amplifier." +
+        (selectedDevices.length > 0
+          ? ` Matched ${selectedDevices.length} integrated-library device candidate(s) for later placement.`
+          : ""),
+      components: [
+        {
+          id: "draft-u1",
+          ref: "U1",
+          name: "ESP32-S3",
+          packageName: "QFN-56",
+          properties: {
+            ...withPlacement(560, 260, 0),
+          },
+        },
+        {
+          id: "draft-j1",
+          ref: "J1",
+          name: "USB-C",
+          packageName: "TYPE-C-SMD",
+          properties: {
+            ...withPlacement(140, 240, 0),
+          },
+        },
+        {
+          id: "draft-u2",
+          ref: "U2",
+          name: "INMP441",
+          packageName: "MIC-SMD",
+          properties: {
+            ...withPlacement(320, 380, 0),
+          },
+        },
+        {
+          id: "draft-u3",
+          ref: "U3",
+          name: "MAX98357A",
+          packageName: "QFN",
+          properties: {
+            ...withPlacement(860, 260, 0),
+          },
+        },
+      ],
+      pins: [],
+      nets: [
+        { id: "draft-net-vbus", name: "VBUS", nodeIds: [], isPower: true },
+        { id: "draft-net-3v3", name: "3V3", nodeIds: [], isPower: true },
+        { id: "draft-net-gnd", name: "GND", nodeIds: [], isPower: true },
+        { id: "draft-net-i2s-sck", name: "I2S_SCK", nodeIds: [] },
+        { id: "draft-net-i2s-ws", name: "I2S_WS", nodeIds: [] },
+        { id: "draft-net-i2s-sd", name: "I2S_SD", nodeIds: [] },
       ],
       selectedDevices,
       guidance,

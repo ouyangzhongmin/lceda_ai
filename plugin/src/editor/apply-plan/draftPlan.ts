@@ -81,6 +81,11 @@ export interface DraftPlan {
   nets: SchematicNet[];
   selectedDevices?: DraftPlanSelectedDevice[];
   guidance?: DraftPlanGuidance;
+  completionSummary?: {
+    addedComponentCount: number;
+    templateIds: string[];
+    addedRefs?: string[];
+  };
 }
 
 export interface DraftPreview {
@@ -101,4 +106,6 @@ export interface DraftPreview {
     requiredConnections?: string[];
     evidence?: string[];
   };
+  completedPeripheralCount?: number;
+  completedPeripheralTemplates?: string[];
 }

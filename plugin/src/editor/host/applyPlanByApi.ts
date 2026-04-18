@@ -373,9 +373,16 @@ function hasAnyPlacementDevice(plan: DraftPlan): boolean {
   });
 }
 
+function requiresResolvedPlacementDevice(component: DraftPlan["components"][number]): boolean {
+  return component.properties.generated_by !== "rule_completion";
+}
+
 function listUnresolvedPlacementComponents(plan: DraftPlan): string[] {
   return plan.components
     .filter((component) => {
+      if (!requiresResolvedPlacementDevice(component)) {
+        return false;
+      }
       const deviceUuid = component.properties.device_uuid;
       const libraryUuid = component.properties.library_uuid;
       return !(typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid);
@@ -393,7 +400,8 @@ function canApplyByTypedPlacement(plan: DraftPlan): boolean {
   if (typeof eda.sch_PrimitiveWire?.create !== "function") {
     return false;
   }
-  return plan.components.length > 0 && plan.components.every((component) => {
+  const requiredComponents = plan.components.filter(requiresResolvedPlacementDevice);
+  return requiredComponents.length > 0 && requiredComponents.every((component) => {
     const deviceUuid = component.properties.device_uuid;
     const libraryUuid = component.properties.library_uuid;
     return typeof deviceUuid === "string" && deviceUuid && typeof libraryUuid === "string" && libraryUuid;
@@ -465,6 +473,7 @@ async function applyTypedSchematicPlan(plan: DraftPlan): Promise<TypedApplyResul
         skippedConnections.push(
           ...buildSkippedConnectionsForNet(plan, net.name || net.id, missingNodeIds, "endpoint_unresolved")
         );
+        continue;
       }
       if (nodePoints.length < 2) {
         continue;
@@ -559,7 +568,8 @@ function inferFunctionalZone(component: DraftPlan["components"][number]): Functi
   const ref = String(component.ref || "").toUpperCase();
   const name = String(component.name || "").toLowerCase();
   const device = String(component.properties.device_name || component.properties.preferred_search_query || "").toLowerCase();
-  const text = `${ref} ${name} ${device}`;
+  const completionRole = String(component.properties.completion_role || "").toLowerCase();
+  const text = `${ref} ${name} ${device} ${completionRole}`;
   if (
     /^B\d+/u.test(ref) ||
     /^BT\d+/u.test(ref) ||
@@ -584,6 +594,9 @@ function inferFunctionalZone(component: DraftPlan["components"][number]): Functi
   }
   if (/(amp|speaker|spk|buzzer|earphone|output)/iu.test(text)) {
     return "output";
+  }
+  if (/(pullup|pulldown|decoupling|bulk_cap|load_cap|gain_config|esd|clock)/iu.test(completionRole)) {
+    return "support";
   }
   if (/^J\d+/u.test(ref) || /(connector|header|socket|antenna|uart|debug|download)/iu.test(text)) {
     return "interface";

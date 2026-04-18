@@ -47,22 +47,29 @@ function formatSourceRefForDisplay(sourceRef?: string): string {
 export function previewDraftPlan(plan: DraftPlan): DraftPreview {
   const normalized = normalizeDraftPlan(plan);
   const guidance = normalized.guidance;
+  const completionSummary = normalized.completionSummary;
   const rationaleWithGuidance = normalized.guidance?.rationale
     ? `${normalized.rationale} ${normalized.guidance.rationale}`
     : normalized.rationale;
+  const rationaleWithCompletion =
+    completionSummary && completionSummary.addedComponentCount > 0
+      ? `${rationaleWithGuidance} 已自动补全外围器件 ${completionSummary.addedComponentCount} 个，覆盖 ${completionSummary.templateIds.join("、")} 。`
+      : rationaleWithGuidance;
   const componentsById = new Map(normalized.components.map((component) => [component.id, component]));
   return {
     title: normalized.title,
     rationale:
       normalized.selectedDevices && normalized.selectedDevices.length > 0
-        ? `${rationaleWithGuidance} 已选器件: ${normalized.selectedDevices
+        ? `${rationaleWithCompletion} 已选器件: ${normalized.selectedDevices
             .map((item) => `${item.role}=${item.name}`)
             .join(", ")}`
-        : rationaleWithGuidance,
+        : rationaleWithCompletion,
     componentRefs: normalized.components.map((component) => component.ref ?? component.id),
     netNames: normalized.nets.map((net) => net.name ?? net.id),
     componentCount: normalized.components.length,
     netCount: normalized.nets.length,
+    completedPeripheralCount: completionSummary?.addedComponentCount,
+    completedPeripheralTemplates: completionSummary?.templateIds,
     selectedDeviceDetails: normalized.selectedDevices?.map((item) => {
       const parts = [`${item.role}: ${item.name}`];
       if (item.footprintName) {
