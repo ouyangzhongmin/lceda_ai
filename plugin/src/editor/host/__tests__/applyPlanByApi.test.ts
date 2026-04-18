@@ -479,6 +479,582 @@ test("createApiApplyPlanAdapter places power on the left, controller in the midd
   (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
 });
 
+test("createApiApplyPlanAdapter prefers net labels for long-distance nets when host label api is available", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const createdWires: Array<{ line: number[]; name?: string }> = [];
+  const createdLabels: Array<{ x: number; y: number; name?: string }> = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (payload: { uuid?: string }) => ({
+        getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+      }),
+      getAllPinsByPrimitiveId: async (primitiveId: string) => {
+        if (primitiveId.includes("mcu-device")) {
+          return [
+            {
+              getState_PinName: () => "BCLK",
+              getState_PinNumber: () => "1",
+              getState_X: () => 620,
+              getState_Y: () => 260,
+              getState_PrimitiveId: () => "pin-u1-bclk",
+            },
+          ];
+        }
+        return [
+          {
+            getState_PinName: () => "BCLK",
+            getState_PinNumber: () => "1",
+            getState_X: () => 1120,
+            getState_Y: () => 260,
+            getState_PrimitiveId: () => "pin-u2-bclk",
+          },
+        ];
+      },
+    },
+    sch_PrimitiveWire: {
+      create: async (line: number[], name?: string) => {
+        createdWires.push({ line, name });
+        return {
+          getState_PrimitiveId: () => `wire-${createdWires.length}`,
+        };
+      },
+    },
+    sch_PrimitiveNetLabel: {
+      create: async (x: number, y: number, name?: string) => {
+        createdLabels.push({ x, y, name });
+        return {
+          getState_PrimitiveId: () => `label-${createdLabels.length}`,
+        };
+      },
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = {
+    title: "long net label",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-u1",
+        ref: "U1",
+        properties: {
+          device_uuid: "mcu-device",
+          library_uuid: "mcu-lib",
+        },
+      },
+      {
+        id: "draft-u2",
+        ref: "U2",
+        properties: {
+          device_uuid: "codec-device",
+          library_uuid: "codec-lib",
+        },
+      },
+    ],
+    pins: [
+      {
+        id: "draft-u1-bclk",
+        componentId: "draft-u1",
+        pinName: "I2S_BCLK",
+        resolvedPinName: "BCLK",
+        resolvedPinNumber: "1",
+        pinResolutionStatus: "resolved",
+      },
+      {
+        id: "draft-u2-bclk",
+        componentId: "draft-u2",
+        pinName: "I2S_BCLK",
+        resolvedPinName: "BCLK",
+        resolvedPinNumber: "1",
+        pinResolutionStatus: "resolved",
+      },
+    ],
+    nets: [
+      {
+        id: "net-bclk",
+        name: "I2S_BCLK",
+        nodeIds: ["draft-u1-bclk", "draft-u2-bclk"],
+      },
+    ],
+  } as any;
+
+  const result = await adapter.apply(draft);
+
+  assert.equal(result.applied, true);
+  assert.equal(createdLabels.length, 2);
+  assert.equal(createdWires.length, 2);
+  assert.equal(createdLabels.every((item) => item.name === "I2S_BCLK"), true);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
+test("createApiApplyPlanAdapter labelizes long-distance multi-endpoint nets with short stubs instead of one long wire", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const createdWires: Array<{ line: number[]; name?: string }> = [];
+  const createdLabels: Array<{ x: number; y: number; name?: string }> = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (payload: { uuid?: string }) => ({
+        getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+      }),
+      getAllPinsByPrimitiveId: async (primitiveId: string) => {
+        if (primitiveId.includes("mcu-device")) {
+          return [
+            {
+              getState_PinName: () => "SCL",
+              getState_PinNumber: () => "1",
+              getState_X: () => 260,
+              getState_Y: () => 220,
+              getState_PrimitiveId: () => "pin-u1-scl",
+            },
+          ];
+        }
+        if (primitiveId.includes("sensor-device")) {
+          return [
+            {
+              getState_PinName: () => "SCL",
+              getState_PinNumber: () => "1",
+              getState_X: () => 700,
+              getState_Y: () => 220,
+              getState_PrimitiveId: () => "pin-u2-scl",
+            },
+          ];
+        }
+        return [
+          {
+            getState_PinName: () => "SCL",
+            getState_PinNumber: () => "1",
+            getState_X: () => 1040,
+            getState_Y: () => 220,
+            getState_PrimitiveId: () => "pin-u3-scl",
+          },
+        ];
+      },
+    },
+    sch_PrimitiveWire: {
+      create: async (line: number[], name?: string) => {
+        createdWires.push({ line, name });
+        return {
+          getState_PrimitiveId: () => `wire-${createdWires.length}`,
+        };
+      },
+      delete: async () => true,
+    },
+    sch_PrimitiveNetLabel: {
+      create: async (x: number, y: number, name?: string) => {
+        createdLabels.push({ x, y, name });
+        return {
+          getState_PrimitiveId: () => `label-${createdLabels.length}`,
+        };
+      },
+      delete: async () => true,
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = {
+    title: "multi endpoint label",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-u1",
+        ref: "U1",
+        name: "ESP32-S3",
+        properties: {
+          device_uuid: "mcu-device",
+          library_uuid: "mcu-lib",
+        },
+      },
+      {
+        id: "draft-u2",
+        ref: "U2",
+        name: "sensor-a",
+        properties: {
+          device_uuid: "sensor-device",
+          library_uuid: "sensor-lib",
+        },
+      },
+      {
+        id: "draft-u3",
+        ref: "U3",
+        name: "sensor-b",
+        properties: {
+          device_uuid: "sensor2-device",
+          library_uuid: "sensor-lib",
+        },
+      },
+    ],
+    pins: [
+      { id: "draft-u1-scl", componentId: "draft-u1", pinName: "I2C_SCL", resolvedPinName: "SCL", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u2-scl", componentId: "draft-u2", pinName: "I2C_SCL", resolvedPinName: "SCL", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u3-scl", componentId: "draft-u3", pinName: "I2C_SCL", resolvedPinName: "SCL", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+    ],
+    nets: [
+      {
+        id: "net-scl",
+        name: "I2C_SCL",
+        nodeIds: ["draft-u1-scl", "draft-u2-scl", "draft-u3-scl"],
+      },
+    ],
+  } as any;
+
+  const result = await adapter.apply(draft);
+
+  assert.equal(result.applied, true);
+  assert.equal(createdLabels.length, 3);
+  assert.equal(createdWires.length, 3);
+  assert.equal(createdLabels.every((item) => item.name === "I2C_SCL"), true);
+  assert.equal(createdWires.every((item) => item.name === undefined), true);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
+test("createApiApplyPlanAdapter keeps standard bus names but rewrites business signal labels to role-aware names", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const createdLabels: string[] = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (payload: { uuid?: string }) => ({
+        getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+      }),
+      getAllPinsByPrimitiveId: async (primitiveId: string) => {
+        if (primitiveId.includes("mcu-device")) {
+          return [
+            {
+              getState_PinName: () => "BCLK",
+              getState_PinNumber: () => "1",
+              getState_X: () => 620,
+              getState_Y: () => 240,
+              getState_PrimitiveId: () => "pin-u1-bclk",
+            },
+            {
+              getState_PinName: () => "EN",
+              getState_PinNumber: () => "2",
+              getState_X: () => 620,
+              getState_Y: () => 320,
+              getState_PrimitiveId: () => "pin-u1-en",
+            },
+          ];
+        }
+        return [
+          {
+            getState_PinName: () => "BCLK",
+            getState_PinNumber: () => "1",
+            getState_X: () => 1120,
+            getState_Y: () => 240,
+            getState_PrimitiveId: () => "pin-u2-bclk",
+          },
+          {
+            getState_PinName: () => "EN",
+            getState_PinNumber: () => "2",
+            getState_X: () => 1120,
+            getState_Y: () => 320,
+            getState_PrimitiveId: () => "pin-u2-en",
+          },
+        ];
+      },
+    },
+    sch_PrimitiveWire: {
+      create: async () => ({
+        getState_PrimitiveId: () => "wire-1",
+      }),
+    },
+    sch_PrimitiveNetLabel: {
+      create: async (_x: number, _y: number, name?: string) => {
+        createdLabels.push(String(name || ""));
+        return {
+          getState_PrimitiveId: () => `label-${createdLabels.length}`,
+        };
+      },
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = {
+    title: "role aware names",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-u1",
+        ref: "U1",
+        name: "ESP32-S3",
+        properties: {
+          device_uuid: "mcu-device",
+          library_uuid: "mcu-lib",
+        },
+      },
+      {
+        id: "draft-u2",
+        ref: "U2",
+        name: "MAX98357A",
+        properties: {
+          device_uuid: "codec-device",
+          library_uuid: "codec-lib",
+        },
+      },
+    ],
+    pins: [
+      {
+        id: "draft-u1-bclk",
+        componentId: "draft-u1",
+        pinName: "I2S_BCLK",
+        resolvedPinName: "BCLK",
+        resolvedPinNumber: "1",
+        pinResolutionStatus: "resolved",
+      },
+      {
+        id: "draft-u2-bclk",
+        componentId: "draft-u2",
+        pinName: "I2S_BCLK",
+        resolvedPinName: "BCLK",
+        resolvedPinNumber: "1",
+        pinResolutionStatus: "resolved",
+      },
+      {
+        id: "draft-u1-en",
+        componentId: "draft-u1",
+        pinName: "ESP_EN",
+        resolvedPinName: "EN",
+        resolvedPinNumber: "2",
+        pinResolutionStatus: "resolved",
+      },
+      {
+        id: "draft-u2-en",
+        componentId: "draft-u2",
+        pinName: "ESP_EN",
+        resolvedPinName: "EN",
+        resolvedPinNumber: "2",
+        pinResolutionStatus: "resolved",
+      },
+    ],
+    nets: [
+      {
+        id: "net-bclk",
+        name: "I2S_BCLK",
+        nodeIds: ["draft-u1-bclk", "draft-u2-bclk"],
+      },
+      {
+        id: "net-en",
+        name: "ESP_EN",
+        nodeIds: ["draft-u1-en", "draft-u2-en"],
+      },
+    ],
+  } as any;
+
+  const result = await adapter.apply(draft);
+
+  assert.equal(result.applied, true);
+  assert.equal(createdLabels.includes("I2S_BCLK"), true);
+  assert.equal(createdLabels.includes("MCU_EN"), true);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
+test("createApiApplyPlanAdapter rewrites microphone amplifier usb and button business nets to readable role labels", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const createdLabels: string[] = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (payload: { uuid?: string }) => ({
+        getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+      }),
+      getAllPinsByPrimitiveId: async (primitiveId: string) => {
+        if (primitiveId.includes("mcu-device")) {
+          return [
+            { getState_PinName: () => "SD", getState_PinNumber: () => "1", getState_X: () => 620, getState_Y: () => 180, getState_PrimitiveId: () => "pin-u1-sd" },
+            { getState_PinName: () => "DIN", getState_PinNumber: () => "2", getState_X: () => 620, getState_Y: () => 260, getState_PrimitiveId: () => "pin-u1-din" },
+            { getState_PinName: () => "VBUS", getState_PinNumber: () => "3", getState_X: () => 620, getState_Y: () => 340, getState_PrimitiveId: () => "pin-u1-vbus" },
+            { getState_PinName: () => "BOOT", getState_PinNumber: () => "4", getState_X: () => 620, getState_Y: () => 420, getState_PrimitiveId: () => "pin-u1-boot" },
+          ];
+        }
+        if (primitiveId.includes("mic-device")) {
+          return [
+            { getState_PinName: () => "SD", getState_PinNumber: () => "1", getState_X: () => 1120, getState_Y: () => 180, getState_PrimitiveId: () => "pin-u2-sd" },
+          ];
+        }
+        if (primitiveId.includes("amp-device")) {
+          return [
+            { getState_PinName: () => "DIN", getState_PinNumber: () => "1", getState_X: () => 1120, getState_Y: () => 260, getState_PrimitiveId: () => "pin-u3-din" },
+          ];
+        }
+        if (primitiveId.includes("usb-device")) {
+          return [
+            { getState_PinName: () => "VBUS", getState_PinNumber: () => "1", getState_X: () => 1120, getState_Y: () => 340, getState_PrimitiveId: () => "pin-j1-vbus" },
+          ];
+        }
+        return [
+          { getState_PinName: () => "BOOT", getState_PinNumber: () => "1", getState_X: () => 1120, getState_Y: () => 420, getState_PrimitiveId: () => "pin-s1-boot" },
+        ];
+      },
+    },
+    sch_PrimitiveWire: {
+      create: async () => ({
+        getState_PrimitiveId: () => "wire-1",
+      }),
+    },
+    sch_PrimitiveNetLabel: {
+      create: async (_x: number, _y: number, name?: string) => {
+        createdLabels.push(String(name || ""));
+        return {
+          getState_PrimitiveId: () => `label-${createdLabels.length}`,
+        };
+      },
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = {
+    title: "business role names",
+    rationale: "test",
+    components: [
+      { id: "draft-u1", ref: "U1", name: "ESP32-S3", properties: { device_uuid: "mcu-device", library_uuid: "mcu-lib" } },
+      { id: "draft-u2", ref: "U2", name: "INMP441", properties: { device_uuid: "mic-device", library_uuid: "mic-lib" } },
+      { id: "draft-u3", ref: "U3", name: "MAX98357A", properties: { device_uuid: "amp-device", library_uuid: "amp-lib" } },
+      { id: "draft-j1", ref: "J1", name: "USB-C", properties: { device_uuid: "usb-device", library_uuid: "usb-lib" } },
+      { id: "draft-s1", ref: "S1", name: "Button", properties: { device_uuid: "button-device", library_uuid: "button-lib" } },
+    ],
+    pins: [
+      { id: "draft-u1-sd", componentId: "draft-u1", pinName: "MIC_DATA", resolvedPinName: "SD", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u2-sd", componentId: "draft-u2", pinName: "MIC_DATA", resolvedPinName: "SD", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u1-din", componentId: "draft-u1", pinName: "AMP_AUDIO", resolvedPinName: "DIN", resolvedPinNumber: "2", pinResolutionStatus: "resolved" },
+      { id: "draft-u3-din", componentId: "draft-u3", pinName: "AMP_AUDIO", resolvedPinName: "DIN", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u1-vbus", componentId: "draft-u1", pinName: "USB_POWER", resolvedPinName: "VBUS", resolvedPinNumber: "3", pinResolutionStatus: "resolved" },
+      { id: "draft-j1-vbus", componentId: "draft-j1", pinName: "USB_POWER", resolvedPinName: "VBUS", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u1-boot", componentId: "draft-u1", pinName: "BUTTON_BOOT", resolvedPinName: "BOOT", resolvedPinNumber: "4", pinResolutionStatus: "resolved" },
+      { id: "draft-s1-boot", componentId: "draft-s1", pinName: "BUTTON_BOOT", resolvedPinName: "BOOT", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+    ],
+    nets: [
+      { id: "net-mic", name: "MIC_DATA", nodeIds: ["draft-u1-sd", "draft-u2-sd"] },
+      { id: "net-amp", name: "AMP_AUDIO", nodeIds: ["draft-u1-din", "draft-u3-din"] },
+      { id: "net-usb", name: "USB_POWER", nodeIds: ["draft-u1-vbus", "draft-j1-vbus"] },
+      { id: "net-btn", name: "BUTTON_BOOT", nodeIds: ["draft-u1-boot", "draft-s1-boot"] },
+    ],
+  } as any;
+
+  const result = await adapter.apply(draft);
+
+  assert.equal(result.applied, true);
+  assert.equal(createdLabels.includes("MIC_SD"), true);
+  assert.equal(createdLabels.includes("AMP_DIN"), true);
+  assert.equal(createdLabels.includes("USB_5V_IN"), true);
+  assert.equal(createdLabels.includes("BTN_BOOT"), true);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
+test("createApiApplyPlanAdapter infers readable labels from pin semantics when raw net names are low-signal", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const createdLabels: string[] = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (payload: { uuid?: string }) => ({
+        getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+      }),
+      getAllPinsByPrimitiveId: async (primitiveId: string) => {
+        if (primitiveId.includes("mcu-device")) {
+          return [
+            { getState_PinName: () => "DOUT", getState_PinNumber: () => "1", getState_X: () => 620, getState_Y: () => 180, getState_PrimitiveId: () => "pin-u1-dout" },
+            { getState_PinName: () => "WS", getState_PinNumber: () => "2", getState_X: () => 620, getState_Y: () => 260, getState_PrimitiveId: () => "pin-u1-ws" },
+          ];
+        }
+        return [
+          { getState_PinName: () => "DIN", getState_PinNumber: () => "1", getState_X: () => 1120, getState_Y: () => 180, getState_PrimitiveId: () => "pin-u2-din" },
+          { getState_PinName: () => "L/R", getState_PinNumber: () => "2", getState_X: () => 1120, getState_Y: () => 260, getState_PrimitiveId: () => "pin-u3-ws" },
+        ];
+      },
+    },
+    sch_PrimitiveWire: {
+      create: async () => ({
+        getState_PrimitiveId: () => "wire-1",
+      }),
+    },
+    sch_PrimitiveNetLabel: {
+      create: async (_x: number, _y: number, name?: string) => {
+        createdLabels.push(String(name || ""));
+        return {
+          getState_PrimitiveId: () => `label-${createdLabels.length}`,
+        };
+      },
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = {
+    title: "semantic pin names",
+    rationale: "test",
+    components: [
+      { id: "draft-u1", ref: "U1", name: "ESP32-S3", properties: { device_uuid: "mcu-device", library_uuid: "mcu-lib" } },
+      { id: "draft-u2", ref: "U2", name: "MAX98357A", properties: { device_uuid: "amp-device", library_uuid: "amp-lib" } },
+      { id: "draft-u3", ref: "U3", name: "INMP441", properties: { device_uuid: "mic-device", library_uuid: "mic-lib" } },
+    ],
+    pins: [
+      { id: "draft-u1-dout", componentId: "draft-u1", pinName: "GPIO42", resolvedPinName: "DOUT", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u2-din", componentId: "draft-u2", pinName: "PIN7", resolvedPinName: "DIN", resolvedPinNumber: "1", pinResolutionStatus: "resolved" },
+      { id: "draft-u1-ws", componentId: "draft-u1", pinName: "GPIO41", resolvedPinName: "WS", resolvedPinNumber: "2", pinResolutionStatus: "resolved" },
+      { id: "draft-u3-ws", componentId: "draft-u3", pinName: "PIN2", resolvedPinName: "L/R", resolvedPinNumber: "2", pinResolutionStatus: "resolved" },
+    ],
+    nets: [
+      { id: "net-23", name: "NET_23", nodeIds: ["draft-u1-dout", "draft-u2-din"] },
+      { id: "net-24", name: "N$17", nodeIds: ["draft-u1-ws", "draft-u3-ws"] },
+    ],
+  } as any;
+
+  const result = await adapter.apply(draft);
+
+  assert.equal(result.applied, true);
+  assert.equal(createdLabels.includes("AMP_DIN"), true);
+  assert.equal(createdLabels.includes("MIC_WS"), true);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
+test("createApiApplyPlanAdapter keeps fallback placements inside the drawing frame", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const createdComponents: Array<{ uuid?: string; x: number; y: number }> = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (payload: { uuid?: string }, x: number, y: number) => {
+        createdComponents.push({ uuid: payload.uuid, x, y });
+        return {
+          getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+        };
+      },
+      getAllPinsByPrimitiveId: async () => [],
+    },
+    sch_PrimitiveWire: {
+      create: async () => ({
+        getState_PrimitiveId: () => "wire-1",
+      }),
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = {
+    title: "bounded placements",
+    rationale: "test",
+    components: Array.from({ length: 12 }, (_, index) => ({
+      id: `draft-u${index + 1}`,
+      ref: `U${index + 1}`,
+      name: index === 0 ? "USB-C" : index === 1 ? "ESP32-S3" : index === 2 ? "MAX98357A" : "Capacitor",
+      properties: {
+        device_uuid: `device-${index + 1}`,
+        library_uuid: `lib-${index + 1}`,
+      },
+    })),
+    pins: [],
+    nets: [],
+  } as any;
+
+  const result = await adapter.apply(draft);
+
+  assert.equal(result.applied, true);
+  assert.equal(createdComponents.length, 12);
+  assert.equal(createdComponents.every((item) => item.x >= 80 && item.x <= 1080), true);
+  assert.equal(createdComponents.every((item) => item.y >= 100 && item.y <= 720), true);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
 test("createApiApplyPlanAdapter writes back designators when typed placement succeeds", async () => {
   const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
   const assignedDesignators: string[] = [];

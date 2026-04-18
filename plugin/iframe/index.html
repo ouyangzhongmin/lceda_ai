@@ -8616,6 +8616,7 @@ var edaEsbuildExportName = (() => {
   async function applyTypedSchematicPlan(plan) {
     const componentIds = [];
     const wireIds = [];
+    const labelIds = [];
     const placedPins = /* @__PURE__ */ new Map();
     const skippedConnections = [];
     let connectedNetCount = 0;
@@ -8628,8 +8629,8 @@ var edaEsbuildExportName = (() => {
           continue;
         }
         const fallbackPlacement = defaultPlacements.get(component.id) ?? buildIndexedFallbackPlacement(index);
-        const x = parsePlacementNumber(component.properties.placement_x) ?? fallbackPlacement.x;
-        const y = parsePlacementNumber(component.properties.placement_y) ?? fallbackPlacement.y;
+        const x = clampToDrawingBoundsX(parsePlacementNumber(component.properties.placement_x) ?? fallbackPlacement.x);
+        const y = clampToDrawingBoundsY(parsePlacementNumber(component.properties.placement_y) ?? fallbackPlacement.y);
         const rotation = parsePlacementNumber(component.properties.placement_rotation) ?? 0;
         const created = await eda.sch_PrimitiveComponent.create(
           {
@@ -8668,20 +8669,30 @@ var edaEsbuildExportName = (() => {
         }
       }
       for (const net of plan.nets) {
+        const displayNetName = resolveDisplayNetName(plan, net);
         const nodeIds = [...new Set(net.nodeIds)];
         const nodePoints = net.nodeIds.map((nodeId) => placedPins.get(nodeId)).filter((item) => Boolean(item));
         const missingNodeIds = nodeIds.filter((nodeId) => !placedPins.has(nodeId));
         if (missingNodeIds.length > 0) {
           skippedConnections.push(
-            ...buildSkippedConnectionsForNet(plan, net.name || net.id, missingNodeIds, "endpoint_unresolved")
+            ...buildSkippedConnectionsForNet(plan, displayNetName, missingNodeIds, "endpoint_unresolved")
           );
           continue;
         }
         if (nodePoints.length < 2) {
           continue;
         }
+        if (shouldUseNetLabelsForNet(displayNetName, nodePoints)) {
+          const createdLabeledNet = await createNetLabelsForNet(nodePoints, displayNetName);
+          if (createdLabeledNet.labelIds.length > 0) {
+            wireIds.push(...createdLabeledNet.wireIds);
+            labelIds.push(...createdLabeledNet.labelIds);
+            connectedNetCount += 1;
+            continue;
+          }
+        }
         const line = buildOrthogonalPolyline(nodePoints);
-        const createdWire = await eda.sch_PrimitiveWire.create(line, net.name);
+        const createdWire = await eda.sch_PrimitiveWire.create(line, displayNetName);
         if (!createdWire) {
           continue;
         }
@@ -8689,13 +8700,21 @@ var edaEsbuildExportName = (() => {
         connectedNetCount += 1;
       }
       skippedConnections.push(...collectSkippedRequiredConnections(plan, placedPins));
-      return { componentIds, wireIds, connectedNetCount, skippedConnections };
+      return { componentIds, wireIds, labelIds, connectedNetCount, skippedConnections };
     } catch (error) {
+      await deleteTypedSchematicLabels(labelIds);
       await deleteTypedSchematicWires(wireIds);
       await deleteTypedSchematicComponents(componentIds);
       throw error;
     }
   }
+  var DRAWING_BOUNDS = {
+    minX: 80,
+    minY: 100,
+    maxX: 1080,
+    maxY: 720
+  };
+  var NET_LABEL_DISTANCE_THRESHOLD = 260;
   function buildFunctionalPlacementMap(plan) {
     const zoneOrder = [
       "power",
@@ -8709,15 +8728,15 @@ var edaEsbuildExportName = (() => {
       "support"
     ];
     const zoneAnchors = {
-      power: { x: 120, y: 180 },
+      power: { x: 140, y: 180 },
       control: { x: 300, y: 180 },
-      clock: { x: 460, y: 140 },
+      clock: { x: 460, y: 160 },
       input: { x: 300, y: 340 },
-      processing: { x: 620, y: 260 },
-      audio: { x: 860, y: 220 },
-      output: { x: 1080, y: 260 },
-      interface: { x: 1080, y: 480 },
-      support: { x: 620, y: 520 }
+      processing: { x: 560, y: 300 },
+      audio: { x: 800, y: 240 },
+      output: { x: 920, y: 300 },
+      interface: { x: 920, y: 500 },
+      support: { x: 560, y: 560 }
     };
     const zoneBuckets = /* @__PURE__ */ new Map();
     for (const zone of zoneOrder) {
@@ -8735,8 +8754,8 @@ var edaEsbuildExportName = (() => {
       const components = zoneBuckets.get(zone) ?? [];
       components.forEach((component, index) => {
         placements.set(component.id, {
-          x: anchor.x + index % maxCols * intraZoneX,
-          y: anchor.y + Math.floor(index / maxCols) * intraZoneY
+          x: clampToDrawingBoundsX(anchor.x + index % maxCols * intraZoneX),
+          y: clampToDrawingBoundsY(anchor.y + Math.floor(index / maxCols) * intraZoneY)
         });
       });
     }
@@ -8746,8 +8765,8 @@ var edaEsbuildExportName = (() => {
     const gridX = 180;
     const gridY = 120;
     return {
-      x: 220 + index % 4 * gridX,
-      y: 220 + Math.floor(index / 4) * gridY
+      x: clampToDrawingBoundsX(220 + index % 4 * gridX),
+      y: clampToDrawingBoundsY(220 + Math.floor(index / 4) * gridY)
     };
   }
   function inferFunctionalZone(component) {
@@ -8878,6 +8897,123 @@ var edaEsbuildExportName = (() => {
       };
     });
   }
+  function resolveDisplayNetName(plan, net) {
+    const rawName = String(net.name || net.id || "").trim();
+    if (!rawName) {
+      return net.id;
+    }
+    const normalized = rawName.toUpperCase();
+    if (isStandardNetName(normalized)) {
+      return normalized;
+    }
+    const componentsById = new Map(plan.components.map((component) => [component.id, component]));
+    const pinsById = new Map(plan.pins.map((pin) => [pin.id, pin]));
+    const endpointPins = net.nodeIds.map((nodeId) => pinsById.get(nodeId)).filter((pin) => Boolean(pin));
+    const endpointComponents = endpointPins.map((pin) => componentsById.get(pin.componentId)).filter((component) => Boolean(component));
+    const primaryRole = inferNetPrimaryRole(endpointComponents);
+    const normalizedTokens = normalized.replace(/[^A-Z0-9]+/g, "_");
+    if (isLowSignalNetName(normalized)) {
+      const semanticName = inferSemanticNetNameFromPins(endpointPins, endpointComponents);
+      if (semanticName) {
+        return semanticName;
+      }
+    }
+    if (/ESP_EN|CHIP_EN|ENABLE|^EN$/iu.test(normalized)) {
+      return `${primaryRole}_EN`;
+    }
+    if (/STATUS_LED|LED_STATUS/iu.test(normalized)) {
+      return "LED_STATUS";
+    }
+    if (/BOOT_IO0|GPIO0_BOOT|BOOT0/iu.test(normalized)) {
+      return `${primaryRole}_BOOT0`;
+    }
+    if (/MIC|MICROPHONE/.test(normalizedTokens)) {
+      if (/DATA|SD|DOUT/.test(normalizedTokens)) {
+        return "MIC_SD";
+      }
+      if (/WS|LRCK/.test(normalizedTokens)) {
+        return "MIC_WS";
+      }
+      if (/CLK|BCLK/.test(normalizedTokens)) {
+        return "MIC_CLK";
+      }
+    }
+    if (/AMP|SPEAKER/.test(normalizedTokens)) {
+      if (/DIN|DATA|AUDIO/.test(normalizedTokens)) {
+        return "AMP_DIN";
+      }
+      if (/GAIN/.test(normalizedTokens)) {
+        return "AMP_GAIN";
+      }
+    }
+    if (/USB/.test(normalizedTokens)) {
+      if (/POWER|VBUS|5V/.test(normalizedTokens)) {
+        return "USB_5V_IN";
+      }
+    }
+    if (/BUTTON|BTN|KEY/.test(normalizedTokens)) {
+      if (/BOOT/.test(normalizedTokens)) {
+        return "BTN_BOOT";
+      }
+      if (/RESET|RST/.test(normalizedTokens)) {
+        return "BTN_RESET";
+      }
+    }
+    return normalized;
+  }
+  function isStandardNetName(name) {
+    return /^(VBUS|VBAT|5V|3V3|GND|I2C_SCL|I2C_SDA|I2S_BCLK|I2S_LRCK|I2S_DOUT|UART_TX|UART_RX)$/iu.test(name);
+  }
+  function isLowSignalNetName(name) {
+    return /^(NET[_-]?\d+|N\$\d+|UNNAMED.*|SIG\d*)$/iu.test(name);
+  }
+  function inferNetPrimaryRole(components) {
+    for (const component of components) {
+      const text = `${component.ref || ""} ${component.name || ""} ${component.properties.completion_role || ""}`.toUpperCase();
+      if (/(ESP32|STM32|NRF|RP2040|MCU|SOC)/iu.test(text)) {
+        return "MCU";
+      }
+      if (/(MIC|INMP441|MICROPHONE)/iu.test(text)) {
+        return "MIC";
+      }
+      if (/(MAX98357|AMP|SPEAKER)/iu.test(text)) {
+        return "AMP";
+      }
+      if (/(USB|TYPE-C|VBUS)/iu.test(text)) {
+        return "USB";
+      }
+      if (/(LED|STATUS)/iu.test(text)) {
+        return "LED";
+      }
+    }
+    return "MCU";
+  }
+  function inferSemanticNetNameFromPins(pins, components) {
+    const pinTokens = pins.flatMap((pin) => [pin.pinName, pin.resolvedPinName, pin.pinNumber]).filter((value) => Boolean(value)).map((value) => value.toUpperCase());
+    const primaryRole = inferNetPrimaryRole(components);
+    const joined = pinTokens.join(" ");
+    if (/\b(BCLK|CLK)\b/.test(joined) && components.some((component) => /MIC|INMP441/iu.test(`${component.name || ""}`))) {
+      return "MIC_CLK";
+    }
+    if (/\b(WS|LRCK|L\/R)\b/.test(joined) && components.some((component) => /MIC|INMP441/iu.test(`${component.name || ""}`))) {
+      return "MIC_WS";
+    }
+    if (/\b(DIN|DOUT|SD|DATA)\b/.test(joined)) {
+      if (components.some((component) => /MAX98357|AMP|SPEAKER/iu.test(`${component.name || ""}`))) {
+        return "AMP_DIN";
+      }
+      if (components.some((component) => /MIC|INMP441/iu.test(`${component.name || ""}`))) {
+        return "MIC_SD";
+      }
+    }
+    if (/\b(VBUS|5V)\b/.test(joined) && primaryRole === "USB") {
+      return "USB_5V_IN";
+    }
+    if (/\b(BOOT|IO0|GPIO0)\b/.test(joined)) {
+      return "BTN_BOOT";
+    }
+    return void 0;
+  }
   function summarizeApply(plan, transactionId, applied, rollbackSupported, partialWiring) {
     return {
       applied,
@@ -8943,6 +9079,53 @@ var edaEsbuildExportName = (() => {
     }
     return line;
   }
+  function clampToDrawingBoundsX(value) {
+    return Math.min(DRAWING_BOUNDS.maxX, Math.max(DRAWING_BOUNDS.minX, value));
+  }
+  function clampToDrawingBoundsY(value) {
+    return Math.min(DRAWING_BOUNDS.maxY, Math.max(DRAWING_BOUNDS.minY, value));
+  }
+  function shouldUseNetLabelsForNet(netName, points) {
+    if (!netName || points.length < 2) {
+      return false;
+    }
+    if (typeof eda === "undefined" || typeof eda.sch_PrimitiveNetLabel?.create !== "function") {
+      return false;
+    }
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const span = Math.max(...xs) - Math.min(...xs) + (Math.max(...ys) - Math.min(...ys));
+    return span >= NET_LABEL_DISTANCE_THRESHOLD;
+  }
+  async function createNetLabelsForNet(points, netName) {
+    if (typeof eda === "undefined") {
+      return { wireIds: [], labelIds: [] };
+    }
+    const labelApi = eda.sch_PrimitiveNetLabel;
+    if (!labelApi || typeof labelApi.create !== "function") {
+      return { wireIds: [], labelIds: [] };
+    }
+    const wireIds = [];
+    const labelIds = [];
+    for (const point of points) {
+      const direction = point.x <= (DRAWING_BOUNDS.minX + DRAWING_BOUNDS.maxX) / 2 ? 1 : -1;
+      const stubEndX = clampToDrawingBoundsX(point.x + direction * 40);
+      const stub = buildOrthogonalPolyline([
+        { x: point.x, y: point.y },
+        { x: stubEndX, y: point.y }
+      ]);
+      const createdWire = await eda.sch_PrimitiveWire.create(stub, void 0);
+      if (createdWire?.getState_PrimitiveId) {
+        wireIds.push(createdWire.getState_PrimitiveId());
+      }
+      const labelX = clampToDrawingBoundsX(stubEndX + direction * 18);
+      const createdLabel = await labelApi.create(labelX, point.y, netName);
+      if (createdLabel?.getState_PrimitiveId) {
+        labelIds.push(createdLabel.getState_PrimitiveId());
+      }
+    }
+    return { wireIds, labelIds };
+  }
   async function deleteTypedSchematicComponents(componentIds) {
     if (typeof eda === "undefined" || typeof eda.sch_PrimitiveComponent?.delete !== "function") {
       return false;
@@ -8960,6 +9143,19 @@ var edaEsbuildExportName = (() => {
       return false;
     }
     return eda.sch_PrimitiveWire.delete(wireIds);
+  }
+  async function deleteTypedSchematicLabels(labelIds) {
+    if (typeof eda === "undefined") {
+      return false;
+    }
+    const labelApi = eda.sch_PrimitiveNetLabel;
+    if (!labelApi || typeof labelApi.delete !== "function") {
+      return false;
+    }
+    if (labelIds.length === 0) {
+      return false;
+    }
+    return labelApi.delete(labelIds);
   }
   function isSuccessfulMutationResult(value) {
     if (value === void 0 || value === null || value === false) {
