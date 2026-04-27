@@ -26,11 +26,13 @@ import {
   normalizeDevicePickerCandidates,
   isPerfDebugEnabled,
   buildStreamingProcessSignature,
+  limitStreamProcessItems,
   shouldApplyStreamingReactEvents,
   shouldMirrorStreamingTextToAssistantBody,
   shouldSendComposerPrompt,
   shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
+  shouldCountStreamEventAsTurnActivity,
   stripFinalControlLikeText,
   shouldIgnoreDuplicateSendWhileRunning,
   shouldUseDraftReplyLeadNarrative,
@@ -38,11 +40,13 @@ import {
   resolveDevicePickerManualQueryStateForSearch,
   updateDevicePickerManualQueryState,
   upsertLlmReasoningStepItem,
+  getAssistantRuntime,
 } from "../assistantRuntime";
 import { getAssistantCardLayout } from "../assistantCardLayout";
 import type { MainPanelState } from "../../ui/panels/mainPanel";
 import { previewDraftPlan } from "../../editor/apply-plan/previewDraftPlan";
 import type { DraftPlan } from "../../editor/apply-plan/draftPlan";
+import type { HostEditorBridge } from "../../editor/host/runtime";
 
 test("shouldIgnoreDuplicateSendWhileRunning returns true for the same pending prompt in an active turn", () => {
   assert.equal(
@@ -110,6 +114,25 @@ test("shouldStopRunningTurnFromComposer returns false when no turn is active", (
       activeTurnId: undefined,
     }),
     false
+  );
+});
+
+test("shouldCountStreamEventAsTurnActivity ignores sanitized no-op stream events", () => {
+  assert.equal(
+    shouldCountStreamEventAsTurnActivity({
+      contentChanged: false,
+      processChanged: false,
+      detailChanged: false,
+    }),
+    false
+  );
+  assert.equal(
+    shouldCountStreamEventAsTurnActivity({
+      contentChanged: false,
+      processChanged: true,
+      detailChanged: false,
+    }),
+    true
   );
 });
 
@@ -457,6 +480,1588 @@ test("applyDraftPlanWithRepair stops once repair budget is exhausted", async () 
 
   assert.equal(applyCount, 2);
   assert.equal(repairCount, 1);
+});
+
+test("closeDevicePicker syncs state without dispatching a global DOM event", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    __LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__?: (state: MainPanelState) => void;
+    dispatchEvent?: (event: Event) => boolean;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousSync = runtimeGlobals.__LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__;
+  const previousDispatchEvent = runtimeGlobals.dispatchEvent;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  let syncCount = 0;
+  let dispatchCount = 0;
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+  runtimeGlobals.__LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__ = () => {
+    syncCount += 1;
+  };
+  runtimeGlobals.dispatchEvent = (() => {
+    dispatchCount += 1;
+    return true;
+  }) as typeof globalThis.dispatchEvent;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "professional",
+    getCapabilityReport: () => ({
+      channel: "professional",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: { projectId: "p1", projectName: "demo", pageId: "page-1", pageName: "P1" },
+      components: [],
+      pins: [],
+      nets: [],
+      selection: { objectIds: [] },
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    await runtime.openDevicePicker();
+    const closed = await runtime.closeDevicePicker();
+
+    assert.equal(closed.devicePicker?.open, false);
+    assert.equal(dispatchCount, 0);
+    assert.equal(syncCount > 0, true);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__ = previousSync;
+    runtimeGlobals.dispatchEvent = previousDispatchEvent;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("applyDraftPlan persists applied snapshot and initializes empty bindings after successful full apply", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const draftPlan: DraftPlan = {
+    title: "LED Driver",
+    rationale: "test rationale",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "1k",
+        properties: {},
+      },
+    ],
+    pins: [],
+    nets: [
+      {
+        id: "draft-net-vcc",
+        name: "VCC",
+        nodes: [],
+      },
+    ],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan,
+      draftPreview: {
+        title: draftPlan.title,
+        rationale: draftPlan.rationale,
+        componentRefs: ["R1"],
+        netNames: ["VCC"],
+        componentCount: 1,
+        netCount: 1,
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-42",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    applyPlan: async () => ({
+      applied: true,
+      componentCount: 1,
+      netCount: 1,
+      transactionId: "tx-42",
+    }),
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    const state = await runtime.openPanel();
+    assert.equal(state.agentRunState, "awaiting_confirmation");
+    assert.equal(state.draftPlan?.title, "LED Driver");
+
+    const applied = await runtime.applyDraftPlan();
+
+    assert.equal(applied.agentRunState, "completed");
+    assert.equal(applied.appliedDraftSnapshot?.title, "LED Driver");
+    assert.equal(applied.appliedDraftSnapshot?.rationale, "test rationale");
+    assert.equal(applied.appliedDraftSnapshot?.applyTransactionId, "tx-42");
+    assert.notEqual(applied.appliedDraftSnapshot?.draftVersionId, "tx-42");
+    assert.match(applied.appliedDraftSnapshot?.draftVersionId ?? "", /^draft_/);
+    assert.equal(applied.appliedDraftSnapshot?.pageId, "page-42");
+    assert.deepEqual(applied.appliedDraftSnapshot?.components, draftPlan.components);
+    assert.deepEqual(applied.appliedDraftSnapshot?.pins, draftPlan.pins);
+    assert.deepEqual(applied.appliedDraftSnapshot?.nets, draftPlan.nets);
+    assert.equal(typeof applied.appliedDraftSnapshot?.appliedAt, "string");
+    assert.equal(applied.draftObjectBindings?.pageId, "page-42");
+    assert.equal(applied.draftObjectBindings?.authoritative, false);
+    assert.deepEqual(applied.draftObjectBindings?.componentBindings, []);
+    assert.deepEqual(applied.draftObjectBindings?.wireBindings, []);
+
+    const persistedStateRaw = storageMap.get("lceda_ai.panel.last_state");
+    assert.ok(persistedStateRaw);
+    const persistedState = JSON.parse(persistedStateRaw) as MainPanelState;
+    assert.equal(persistedState.appliedDraftSnapshot?.applyTransactionId, "tx-42");
+    assert.equal(persistedState.draftObjectBindings?.authoritative, false);
+
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = undefined;
+    const rehydratedRuntime = getAssistantRuntime();
+    const rehydrated = await rehydratedRuntime.openPanel();
+    assert.equal(rehydrated.appliedDraftSnapshot?.applyTransactionId, "tx-42");
+    assert.equal(rehydrated.appliedDraftSnapshot?.draftVersionId, applied.appliedDraftSnapshot?.draftVersionId);
+    assert.equal(rehydrated.draftObjectBindings?.authoritative, false);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("rollbackLastApply clears persisted applied snapshot bindings and patch state after successful rollback", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const draftPlan: DraftPlan = {
+    title: "Regulator",
+    rationale: "rollback test",
+    components: [],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan,
+      draftPreview: {
+        title: draftPlan.title,
+        rationale: draftPlan.rationale,
+        componentRefs: [],
+        netNames: [],
+        componentCount: 0,
+        netCount: 0,
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-rollback",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    applyPlan: async () => ({
+      applied: true,
+      componentCount: 0,
+      netCount: 0,
+      transactionId: "tx-rollback",
+    }),
+    rollbackApplyPlan: async () => ({
+      rolledBack: true,
+      transactionId: "tx-rollback",
+    }),
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    const applied = await runtime.applyDraftPlan();
+    assert.equal(applied.appliedDraftSnapshot?.applyTransactionId, "tx-rollback");
+
+    const lastStateBeforeRollback = runtime.getLastState();
+    assert.ok(lastStateBeforeRollback);
+    lastStateBeforeRollback.draftPatchPlan = {
+      baseDraftVersionId: applied.appliedDraftSnapshot?.draftVersionId ?? "base",
+      nextDraftVersionId: "next",
+      summary: {
+        addComponentCount: 0,
+        removeComponentCount: 0,
+        replaceDeviceCount: 0,
+        updatePropCount: 0,
+        addWireCount: 0,
+        removeWireCount: 0,
+        conflictCount: 0,
+      },
+      operations: [],
+      conflicts: [],
+    };
+
+    const rolledBack = await runtime.rollbackLastApply();
+    assert.equal(rolledBack.agentRunState, "completed");
+    assert.equal(rolledBack.appliedDraftSnapshot, undefined);
+    assert.equal(rolledBack.draftObjectBindings, undefined);
+    assert.equal(rolledBack.draftPatchPlan, undefined);
+
+    const persistedStateRaw = storageMap.get("lceda_ai.panel.last_state");
+    assert.ok(persistedStateRaw);
+    const persistedState = JSON.parse(persistedStateRaw) as MainPanelState;
+    assert.equal(persistedState.appliedDraftSnapshot, undefined);
+    assert.equal(persistedState.draftObjectBindings, undefined);
+    assert.equal(persistedState.draftPatchPlan, undefined);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("re-applying a draft with applied snapshot and bindings builds a patch preview instead of full apply", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const draftPlan: DraftPlan = {
+    title: "LED Driver v2",
+    rationale: "patch preview test",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "2k",
+        properties: {
+          device_uuid: "dev-rx-2k",
+          library_uuid: "lib-r",
+          completion_role: "resistor",
+        },
+      },
+      {
+        id: "draft-c1",
+        kind: "capacitor",
+        ref: "C1",
+        value: "100nF",
+        properties: {
+          device_uuid: "dev-c-100n",
+          library_uuid: "lib-c",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan,
+      draftPreview: {
+        title: draftPlan.title,
+        rationale: draftPlan.rationale,
+        componentRefs: ["R1", "C1"],
+        netNames: [],
+        componentCount: 2,
+        netCount: 0,
+      },
+      appliedDraftSnapshot: {
+        draftVersionId: "draft_prev",
+        applyTransactionId: "tx-prev",
+        title: "LED Driver v1",
+        rationale: "previous",
+        appliedAt: new Date().toISOString(),
+        pageId: "page-42",
+        components: [
+          {
+            id: "draft-r1",
+            kind: "resistor",
+            ref: "R1",
+            value: "1k",
+            properties: {
+              device_uuid: "dev-r-1k",
+              library_uuid: "lib-r",
+              completion_role: "regulator",
+            },
+          },
+        ],
+        pins: [],
+        nets: [],
+      },
+      draftObjectBindings: {
+        pageId: "page-42",
+        authoritative: true,
+        componentBindings: [
+          {
+            draftComponentId: "draft-r1",
+            ref: "R1",
+            primitiveId: "prim-r1",
+            deviceUuid: "dev-r-1k",
+            libraryUuid: "lib-r",
+          },
+        ],
+        wireBindings: [],
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  let applyPlanCalls = 0;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-42",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    applyPlan: async () => {
+      applyPlanCalls += 1;
+      return {
+        applied: true,
+        componentCount: 2,
+        netCount: 0,
+        transactionId: "tx-new",
+      };
+    },
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+
+    const previewed = await runtime.applyDraftPlan();
+
+    assert.equal(applyPlanCalls, 0);
+    assert.equal(previewed.agentRunState, "awaiting_confirmation");
+    assert.equal(previewed.agentRunRoute, "draft");
+    assert.match(previewed.agentRunDetail ?? "", /patch|补丁|预览/i);
+    assert.match(previewed.summary ?? "", /新增器件 1/);
+    assert.match(previewed.summary ?? "", /替换器件 1/);
+    assert.ok(previewed.draftPatchPlan);
+    assert.equal(previewed.draftPatchPlan?.baseDraftVersionId, "draft_prev");
+    assert.equal(previewed.draftPatchPlan?.summary.addComponentCount, 1);
+    assert.equal(previewed.draftPatchPlan?.summary.replaceDeviceCount, 1);
+    assert.equal(previewed.draftPatchPlan?.summary.removeComponentCount, 0);
+
+    const lastMessage = previewed.chatMessages?.[previewed.chatMessages.length - 1];
+    assert.ok(lastMessage);
+    assert.match(lastMessage?.content ?? "", /新增器件 1/);
+    assert.match(lastMessage?.content ?? "", /待处理冲突 1/);
+    assert.deepEqual(lastMessage?.actions, [
+      {
+        label: "应用补丁草案",
+        action: "apply_patch_draft",
+      },
+    ]);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("applyPatchDraftPlan executes apply_patch_draft and refreshes snapshot bindings and summary", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const previousPlan: DraftPlan = {
+    title: "LED Driver",
+    rationale: "previous",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "1k",
+        properties: {
+          device_uuid: "dev-r-1k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  const nextPlan: DraftPlan = {
+    title: "LED Driver v2",
+    rationale: "patched",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "2k",
+        properties: {
+          device_uuid: "dev-r-2k",
+          library_uuid: "lib-r",
+        },
+      },
+      {
+        id: "draft-c1",
+        kind: "capacitor",
+        ref: "C1",
+        value: "100nF",
+        properties: {
+          device_uuid: "dev-c-100nf",
+          library_uuid: "lib-c",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan: nextPlan,
+      draftPreview: {
+        title: nextPlan.title,
+        rationale: nextPlan.rationale,
+        componentRefs: ["R1", "C1"],
+        netNames: [],
+        componentCount: 2,
+        netCount: 0,
+      },
+      appliedDraftSnapshot: {
+        draftVersionId: "draft_prev",
+        applyTransactionId: "tx-prev",
+        title: previousPlan.title,
+        rationale: previousPlan.rationale,
+        appliedAt: "2026-04-25T00:00:00.000Z",
+        pageId: "page-42",
+        components: previousPlan.components,
+        pins: previousPlan.pins,
+        nets: previousPlan.nets,
+      },
+      draftObjectBindings: {
+        pageId: "page-42",
+        authoritative: true,
+        componentBindings: [
+          {
+            draftComponentId: "draft-r1",
+            ref: "R1",
+            primitiveId: "sch-r1",
+            deviceUuid: "dev-r-1k",
+            libraryUuid: "lib-r",
+          },
+        ],
+        wireBindings: [],
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  let patchDraftPlanCalls = 0;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-42",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    patchDraftPlan: async () => {
+      patchDraftPlanCalls += 1;
+      return {
+        applied: true,
+        transactionId: "tx-patch-1",
+        bindings: {
+          pageId: "page-42",
+          authoritative: true,
+          componentBindings: [
+            {
+              draftComponentId: "draft-r1",
+              ref: "R1",
+              primitiveId: "sch-r1",
+              deviceUuid: "dev-r-2k",
+              libraryUuid: "lib-r",
+            },
+            {
+              draftComponentId: "draft-c1",
+              ref: "C1",
+              primitiveId: "sch-c1",
+              deviceUuid: "dev-c-100nf",
+              libraryUuid: "lib-c",
+            },
+          ],
+          wireBindings: [],
+        },
+      };
+    },
+  } as HostEditorBridge & {
+    patchDraftPlan: NonNullable<HostEditorBridge["patchDraftPlan"]>;
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+
+    const previewed = await runtime.applyDraftPlan();
+    assert.ok(previewed.draftPatchPlan);
+
+    const applied = await (runtime as typeof runtime & {
+      applyPatchDraftPlan: () => Promise<MainPanelState>;
+    }).applyPatchDraftPlan();
+
+    assert.equal(patchDraftPlanCalls, 1);
+    assert.equal(applied.agentRunState, "completed");
+    assert.equal(applied.draftPatchPlan, undefined);
+    assert.equal(applied.appliedDraftSnapshot?.title, "LED Driver v2");
+    assert.equal(applied.appliedDraftSnapshot?.rationale, "patched");
+    assert.equal(applied.appliedDraftSnapshot?.applyTransactionId, "tx-patch-1");
+    assert.equal(applied.appliedDraftSnapshot?.pageId, "page-42");
+    assert.deepEqual(applied.appliedDraftSnapshot?.components, nextPlan.components);
+    assert.deepEqual(applied.draftObjectBindings, {
+      pageId: "page-42",
+      authoritative: true,
+      componentBindings: [
+        {
+          draftComponentId: "draft-r1",
+          ref: "R1",
+          primitiveId: "sch-r1",
+          deviceUuid: "dev-r-2k",
+          libraryUuid: "lib-r",
+        },
+        {
+          draftComponentId: "draft-c1",
+          ref: "C1",
+          primitiveId: "sch-c1",
+          deviceUuid: "dev-c-100nf",
+          libraryUuid: "lib-c",
+        },
+      ],
+      wireBindings: [],
+    });
+    assert.match(applied.summary ?? "", /补丁|patch/i);
+
+    const persistedStateRaw = storageMap.get("lceda_ai.panel.last_state");
+    assert.ok(persistedStateRaw);
+    const persistedState = JSON.parse(persistedStateRaw) as MainPanelState;
+    assert.equal(persistedState.draftPatchPlan, undefined);
+    assert.equal(persistedState.appliedDraftSnapshot?.applyTransactionId, "tx-patch-1");
+    assert.equal(persistedState.draftObjectBindings?.authoritative, true);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("applyPatchDraftPlan fails closed when current draft no longer matches the previewed patch", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const previousPlan: DraftPlan = {
+    title: "LED Driver",
+    rationale: "previous",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "1k",
+        properties: {
+          device_uuid: "dev-r-1k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  const nextPlan: DraftPlan = {
+    title: "LED Driver v2",
+    rationale: "patched",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "2k",
+        properties: {
+          device_uuid: "dev-r-2k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan: nextPlan,
+      draftPreview: {
+        title: nextPlan.title,
+        rationale: nextPlan.rationale,
+        componentRefs: ["R1"],
+        netNames: [],
+        componentCount: 1,
+        netCount: 0,
+      },
+      appliedDraftSnapshot: {
+        draftVersionId: "draft_prev",
+        applyTransactionId: "tx-prev",
+        title: previousPlan.title,
+        rationale: previousPlan.rationale,
+        appliedAt: "2026-04-25T00:00:00.000Z",
+        pageId: "page-42",
+        components: previousPlan.components,
+        pins: previousPlan.pins,
+        nets: previousPlan.nets,
+      },
+      draftObjectBindings: {
+        pageId: "page-42",
+        authoritative: true,
+        componentBindings: [
+          {
+            draftComponentId: "draft-r1",
+            ref: "R1",
+            primitiveId: "sch-r1",
+            deviceUuid: "dev-r-1k",
+            libraryUuid: "lib-r",
+          },
+        ],
+        wireBindings: [],
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  let patchDraftPlanCalls = 0;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-42",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    patchDraftPlan: async () => {
+      patchDraftPlanCalls += 1;
+      return {
+        applied: true,
+        transactionId: "tx-patch-1",
+      };
+    },
+  } as HostEditorBridge & {
+    patchDraftPlan: NonNullable<HostEditorBridge["patchDraftPlan"]>;
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    const previewed = await runtime.applyDraftPlan();
+    assert.ok(previewed.draftPatchPlan);
+
+    const mutableState = runtime.getLastState();
+    assert.ok(mutableState?.draftPlan);
+    mutableState!.draftPlan!.components[0]!.value = "4.7k";
+
+    const result = await runtime.applyPatchDraftPlan();
+
+    assert.equal(patchDraftPlanCalls, 0);
+    assert.equal(result.agentRunState, "failed");
+    assert.match(result.summary ?? "", /补丁预览已过期|重新生成补丁预览/);
+    assert.equal(result.draftPatchPlan?.nextDraftVersionId, previewed.draftPatchPlan?.nextDraftVersionId);
+    assert.equal(result.appliedDraftSnapshot?.title, "LED Driver");
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("applyPatchDraftPlan preserves previous rollback transaction and marks fallback bindings non-authoritative when patch result omits both", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const previousPlan: DraftPlan = {
+    title: "LED Driver",
+    rationale: "previous",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "1k",
+        properties: {
+          device_uuid: "dev-r-1k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  const nextPlan: DraftPlan = {
+    title: "LED Driver v2",
+    rationale: "patched",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "2k",
+        properties: {
+          device_uuid: "dev-r-2k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan: nextPlan,
+      draftPreview: {
+        title: nextPlan.title,
+        rationale: nextPlan.rationale,
+        componentRefs: ["R1"],
+        netNames: [],
+        componentCount: 1,
+        netCount: 0,
+      },
+      appliedDraftSnapshot: {
+        draftVersionId: "draft_prev",
+        applyTransactionId: "tx-prev",
+        title: previousPlan.title,
+        rationale: previousPlan.rationale,
+        appliedAt: "2026-04-25T00:00:00.000Z",
+        pageId: "page-42",
+        components: previousPlan.components,
+        pins: previousPlan.pins,
+        nets: previousPlan.nets,
+      },
+      draftObjectBindings: {
+        pageId: "page-42",
+        authoritative: true,
+        componentBindings: [
+          {
+            draftComponentId: "draft-r1",
+            ref: "R1",
+            primitiveId: "sch-r1",
+            deviceUuid: "dev-r-1k",
+            libraryUuid: "lib-r",
+          },
+        ],
+        wireBindings: [],
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  let rollbackCalledWith: string | undefined;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-42",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    patchDraftPlan: async () => ({
+      applied: true,
+    }),
+    rollbackApplyPlan: async (transactionId: string) => {
+      rollbackCalledWith = transactionId;
+      return { rolledBack: true, transactionId };
+    },
+  } as HostEditorBridge & {
+    patchDraftPlan: NonNullable<HostEditorBridge["patchDraftPlan"]>;
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    await runtime.applyDraftPlan();
+
+    const applied = await runtime.applyPatchDraftPlan();
+    assert.equal(applied.agentRunState, "completed");
+    assert.equal(applied.appliedDraftSnapshot?.applyTransactionId, "tx-prev");
+    assert.equal(applied.draftObjectBindings?.authoritative, false);
+    assert.match(applied.summary ?? "", /未返回新的对象绑定|回退为非权威绑定/);
+    assert.doesNotMatch(applied.summary ?? "", /对象绑定已刷新/);
+
+    const rolledBack = await runtime.rollbackLastApply();
+    assert.equal(rollbackCalledWith, "tx-prev");
+    assert.equal(rolledBack.agentRunState, "completed");
+
+    const persistedStateRaw = storageMap.get("lceda_ai.panel.last_state");
+    assert.ok(persistedStateRaw);
+    const persistedState = JSON.parse(persistedStateRaw) as MainPanelState;
+    assert.equal(persistedState.appliedDraftSnapshot, undefined);
+    assert.equal(persistedState.draftObjectBindings, undefined);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("applyPatchDraftPlan preserves previous rollback transaction when patch result omits transactionId but returns bindings", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const previousPlan: DraftPlan = {
+    title: "LED Driver",
+    rationale: "previous",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "1k",
+        properties: {
+          device_uuid: "dev-r-1k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  const nextPlan: DraftPlan = {
+    title: "LED Driver v2",
+    rationale: "patched",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "2k",
+        properties: {
+          device_uuid: "dev-r-2k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan: nextPlan,
+      draftPreview: {
+        title: nextPlan.title,
+        rationale: nextPlan.rationale,
+        componentRefs: ["R1"],
+        netNames: [],
+        componentCount: 1,
+        netCount: 0,
+      },
+      appliedDraftSnapshot: {
+        draftVersionId: "draft_prev",
+        applyTransactionId: "tx-prev",
+        title: previousPlan.title,
+        rationale: previousPlan.rationale,
+        appliedAt: "2026-04-25T00:00:00.000Z",
+        pageId: "page-42",
+        components: previousPlan.components,
+        pins: previousPlan.pins,
+        nets: previousPlan.nets,
+      },
+      draftObjectBindings: {
+        pageId: "page-42",
+        authoritative: true,
+        componentBindings: [
+          {
+            draftComponentId: "draft-r1",
+            ref: "R1",
+            primitiveId: "sch-r1",
+            deviceUuid: "dev-r-1k",
+            libraryUuid: "lib-r",
+          },
+        ],
+        wireBindings: [],
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  let patchDraftPlanCalls = 0;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-42",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    patchDraftPlan: async () => {
+      patchDraftPlanCalls += 1;
+      return {
+        applied: true,
+        bindings: {
+          pageId: "page-42",
+          authoritative: true,
+          componentBindings: [
+            {
+              draftComponentId: "draft-r1",
+              ref: "R1",
+              primitiveId: "sch-r1",
+              deviceUuid: "dev-r-2k",
+              libraryUuid: "lib-r",
+            },
+          ],
+          wireBindings: [],
+        },
+      };
+    },
+  } as HostEditorBridge & {
+    patchDraftPlan: NonNullable<HostEditorBridge["patchDraftPlan"]>;
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    await runtime.applyDraftPlan();
+    const applied = await runtime.applyPatchDraftPlan();
+
+    assert.equal(patchDraftPlanCalls, 1);
+    assert.equal(applied.agentRunState, "completed");
+    assert.equal(applied.appliedDraftSnapshot?.applyTransactionId, "tx-prev");
+    assert.equal(applied.appliedDraftSnapshot?.title, "LED Driver v2");
+    assert.equal(applied.draftObjectBindings?.authoritative, true);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("re-applying after a full apply with non-authoritative bindings should keep using full apply", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const initialDraftPlan: DraftPlan = {
+    title: "LED Driver",
+    rationale: "initial",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "1k",
+        properties: {
+          device_uuid: "dev-r-1k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan: initialDraftPlan,
+      draftPreview: {
+        title: initialDraftPlan.title,
+        rationale: initialDraftPlan.rationale,
+        componentRefs: ["R1"],
+        netNames: [],
+        componentCount: 1,
+        netCount: 0,
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  let applyPlanCalls = 0;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-42",
+        pageName: "Sheet 1",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    applyPlan: async () => {
+      applyPlanCalls += 1;
+      return {
+        applied: true,
+        componentCount: 1,
+        netCount: 0,
+        transactionId: `tx-${applyPlanCalls}`,
+      };
+    },
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    const opened = await runtime.openPanel();
+    assert.equal(opened.agentRunState, "awaiting_confirmation");
+
+    const firstApply = await runtime.applyDraftPlan();
+    assert.equal(firstApply.agentRunState, "completed");
+    assert.equal(firstApply.draftObjectBindings?.authoritative, false);
+    assert.equal(applyPlanCalls, 1);
+
+    const lastState = runtime.getLastState();
+    assert.ok(lastState?.draftPlan);
+    lastState.draftPlan = {
+      ...lastState.draftPlan,
+      title: "LED Driver v2",
+      components: [
+        {
+          id: "draft-r1",
+          kind: "resistor",
+          ref: "R1",
+          value: "2k",
+          properties: {
+            device_uuid: "dev-r-2k",
+            library_uuid: "lib-r",
+          },
+        },
+      ],
+    };
+
+    const reapplied = await runtime.applyDraftPlan();
+    assert.equal(applyPlanCalls, 2);
+    assert.equal(reapplied.agentRunState, "completed");
+    assert.equal(reapplied.draftPatchPlan, undefined);
+    assert.doesNotMatch(reapplied.summary ?? "", /patch|补丁|预览/i);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("stale page mismatch should not enter patch preview", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const draftPlan: DraftPlan = {
+    title: "LED Driver v2",
+    rationale: "page mismatch",
+    components: [
+      {
+        id: "draft-r1",
+        kind: "resistor",
+        ref: "R1",
+        value: "2k",
+        properties: {
+          device_uuid: "dev-r-2k",
+          library_uuid: "lib-r",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待应用",
+      chatMessages: [],
+      draftPlan,
+      draftPreview: {
+        title: draftPlan.title,
+        rationale: draftPlan.rationale,
+        componentRefs: ["R1"],
+        netNames: [],
+        componentCount: 1,
+        netCount: 0,
+      },
+      appliedDraftSnapshot: {
+        draftVersionId: "draft_prev",
+        applyTransactionId: "tx-prev",
+        title: "LED Driver v1",
+        rationale: "previous",
+        appliedAt: new Date().toISOString(),
+        pageId: "page-old",
+        components: [
+          {
+            id: "draft-r1",
+            kind: "resistor",
+            ref: "R1",
+            value: "1k",
+            properties: {
+              device_uuid: "dev-r-1k",
+              library_uuid: "lib-r",
+            },
+          },
+        ],
+        pins: [],
+        nets: [],
+      },
+      draftObjectBindings: {
+        pageId: "page-old",
+        authoritative: true,
+        componentBindings: [
+          {
+            draftComponentId: "draft-r1",
+            ref: "R1",
+            primitiveId: "prim-r1",
+            deviceUuid: "dev-r-1k",
+            libraryUuid: "lib-r",
+          },
+        ],
+        wireBindings: [],
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  let applyPlanCalls = 0;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: async () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: {
+        projectId: "p1",
+        projectName: "demo",
+        pageId: "page-current",
+        pageName: "Sheet 2",
+      },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    applyPlan: async () => {
+      applyPlanCalls += 1;
+      return {
+        applied: true,
+        componentCount: 1,
+        netCount: 0,
+        transactionId: "tx-new",
+      };
+    },
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+
+    const result = await runtime.applyDraftPlan();
+
+    assert.equal(applyPlanCalls, 1);
+    assert.equal(result.agentRunState, "completed");
+    assert.equal(result.draftPatchPlan, undefined);
+    assert.doesNotMatch(result.summary ?? "", /patch|补丁|预览/i);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
 });
 
 test("draft confirmation follow-up summary requests should not auto-apply", () => {
@@ -929,6 +2534,33 @@ test("buildStreamingProcessSignature is stable for identical tail state", () => 
       workingMemory: undefined,
     })
   );
+});
+
+test("limitStreamProcessItems trims old process events before streaming state commit", () => {
+  const oldStepItems = Array.from({ length: 90 }, (_, index) => ({
+    id: `old-${index}`,
+    phase: "llm" as const,
+    type: "thought" as const,
+    status: "done" as const,
+    title: `old-${index}`,
+    text: `old-${index}`,
+  }));
+  const newStepItems = [
+    ...oldStepItems,
+    {
+      id: "latest",
+      phase: "llm" as const,
+      type: "thought" as const,
+      status: "running" as const,
+      title: "latest",
+      text: "latest",
+    },
+  ];
+
+  const limited = limitStreamProcessItems({ stepItems: newStepItems });
+  assert.equal(limited.stepItems?.length, 80);
+  assert.equal(limited.stepItems?.[0]?.id, "old-11");
+  assert.equal(limited.stepItems?.[79]?.id, "latest");
 });
 
 test("clampStreamingAssistantContent keeps oversized streamed text unchanged", () => {

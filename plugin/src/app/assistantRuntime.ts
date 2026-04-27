@@ -27,9 +27,15 @@ import { shouldRepairDraftApplyError } from "../editor/apply-plan/repairDraftPla
 import { isCancelledError } from "../agent/core/cancelledError";
 import { resolveDraftPlanDevices } from "../editor/apply-plan/resolveDraftPlanDevices";
 import type { HostEditorBridge } from "../editor/host/runtime";
+import {
+  summarizeDraftPatchPlan,
+  type AppliedDraftSnapshot,
+  type DraftObjectBindings,
+} from "../editor/apply-plan/draftPatchPlan";
+import { buildDraftPatchPlan } from "../editor/apply-plan/buildDraftPatchPlan";
+import { executeDraftPatchPlan } from "../editor/apply-plan/executeDraftPatchPlan";
 
 const GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
-const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
 const PANEL_STATE_STORAGE_KEY = "lceda_ai.panel.last_state";
 const PERF_DEBUG_STORAGE_KEY = "lceda_ai.perf_debug";
 const PANEL_SESSION_INDEX_STORAGE_KEY = "lceda_ai.panel.session_index";
@@ -42,7 +48,10 @@ const ENABLE_STREAM_STEP_DEBUG =
   (typeof globalThis !== "undefined" &&
     Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_STREAM_DEBUG__));
 // Streaming can emit lots of deltas; committing/persisting on every delta makes the UI churn.
-const STREAM_COMMIT_MIN_INTERVAL_MS = 120;
+const STREAM_COMMIT_MIN_INTERVAL_MS = 250;
+const MAX_STREAM_STEP_ITEMS = 80;
+const MAX_STREAM_ITERATION_STEPS = 60;
+const MAX_STREAM_REACT_EVENTS = 120;
 const PERSIST_PANEL_STATE_THROTTLE_MS = 600;
 const CONTEXT_COMPACTION_TRIGGER_TURNS = 20;
 const CONTEXT_COMPACTION_KEEP_RECENT_TURNS = 3;
@@ -82,6 +91,46 @@ function logPerf(label: string, detail: Record<string, unknown>): void {
     return;
   }
   console.log(`${LOG_PREFIX} perf.${label}`, detail);
+}
+
+function canBuildPatchPreview(input: {
+  appliedDraftSnapshot?: AppliedDraftSnapshot;
+  draftObjectBindings?: DraftObjectBindings;
+  currentPageId?: string;
+}): boolean {
+  const snapshot = input.appliedDraftSnapshot;
+  const bindings = input.draftObjectBindings;
+  if (!snapshot || !bindings || bindings.authoritative !== true) {
+    return false;
+  }
+
+  if (snapshot.pageId && bindings.pageId && snapshot.pageId !== bindings.pageId) {
+    return false;
+  }
+
+  if (!input.currentPageId) {
+    return true;
+  }
+
+  if (snapshot.pageId && snapshot.pageId !== input.currentPageId) {
+    return false;
+  }
+
+  if (bindings.pageId && bindings.pageId !== input.currentPageId) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildDraftPlanFingerprint(plan: DraftPlan): string {
+  return JSON.stringify({
+    title: plan.title,
+    rationale: plan.rationale,
+    components: plan.components,
+    pins: plan.pins,
+    nets: plan.nets,
+  });
 }
 
 export function planContextCompaction(messages: MainPanelState["chatMessages"]): {
@@ -495,6 +544,45 @@ export function formatDraftApplySuccessSummary(result: {
     ]
       .filter(Boolean)
       .join("\n"),
+  };
+}
+
+function buildAppliedDraftSnapshot(input: {
+  plan: DraftPlan;
+  transactionId?: string;
+  pageId?: string;
+}): AppliedDraftSnapshot {
+  const stableDraftPayload = JSON.stringify({
+    title: input.plan.title,
+    rationale: input.plan.rationale,
+    components: input.plan.components,
+    pins: input.plan.pins,
+    nets: input.plan.nets,
+  });
+  let hash = 2166136261;
+  for (let index = 0; index < stableDraftPayload.length; index += 1) {
+    hash ^= stableDraftPayload.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return {
+    draftVersionId: `draft_${(hash >>> 0).toString(36)}`,
+    applyTransactionId: input.transactionId,
+    title: input.plan.title,
+    rationale: input.plan.rationale,
+    appliedAt: new Date().toISOString(),
+    pageId: input.pageId,
+    components: input.plan.components,
+    pins: input.plan.pins,
+    nets: input.plan.nets,
+  };
+}
+
+function buildInitialDraftObjectBindings(pageId?: string): DraftObjectBindings {
+  return {
+    pageId,
+    authoritative: false,
+    componentBindings: [],
+    wireBindings: [],
   };
 }
 
@@ -1111,7 +1199,7 @@ export function applyStreamingAssistantContentDelta(
 }
 
 export function shouldMirrorStreamingTextToAssistantBody(input: {
-  route: "chat" | "analysis" | "draft";
+  route: "chat" | "analysis" | "draft" | "modify";
   hasStepItems?: boolean;
   hasIterationSteps?: boolean;
   hasReactEvents?: boolean;
@@ -1190,6 +1278,35 @@ export function buildStreamingProcessSignature(input: {
   ].join("|");
 }
 
+export function shouldCountStreamEventAsTurnActivity(input: {
+  contentChanged?: boolean;
+  processChanged?: boolean;
+  detailChanged?: boolean;
+}): boolean {
+  return Boolean(input.contentChanged || input.processChanged || input.detailChanged);
+}
+
+function trimTail<T>(items: T[] | undefined, maxItems: number): T[] | undefined {
+  if (!Array.isArray(items)) return items;
+  return items.length > maxItems ? items.slice(-maxItems) : items;
+}
+
+export function limitStreamProcessItems(input: {
+  stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"];
+  iterationSteps?: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"];
+  reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"];
+}): {
+  stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"];
+  iterationSteps?: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"];
+  reactEvents?: NonNullable<MainPanelState["chatMessages"]>[number]["reactEvents"];
+} {
+  return {
+    stepItems: trimTail(input.stepItems, MAX_STREAM_STEP_ITEMS),
+    iterationSteps: trimTail(input.iterationSteps, MAX_STREAM_ITERATION_STEPS),
+    reactEvents: trimTail(input.reactEvents, MAX_STREAM_REACT_EVENTS),
+  };
+}
+
 export interface AssistantRuntime {
   openPanel(): Promise<MainPanelState>;
   rerunAnalysis(): Promise<MainPanelState>;
@@ -1200,6 +1317,7 @@ export interface AssistantRuntime {
   resetSession(): Promise<MainPanelState>;
   generateDraft(prompt: string): Promise<MainPanelState>;
   applyDraftPlan(): Promise<MainPanelState>;
+  applyPatchDraftPlan(): Promise<MainPanelState>;
   openDevicePicker(): Promise<MainPanelState>;
   closeDevicePicker(): Promise<MainPanelState>;
   setDraftDeviceManualQueryExpanded(input: { componentId: string; expanded: boolean }): Promise<MainPanelState>;
@@ -1228,6 +1346,7 @@ interface RuntimeInternals {
   stateVersion: number;
   issueItems: Array<{ objectId?: string; objectType?: IssueObjectType }>;
   draftPlan?: DraftPlan;
+  draftPatchPreviewFingerprint?: string;
   draftBlocked?: boolean;
   lastApplyTransactionId?: string;
   pendingChatInput?: string;
@@ -1325,6 +1444,7 @@ function createAssistantRuntime(): AssistantRuntime {
     if (restored) {
       internals.sessionId = String((restored as MainPanelState & { sessionId?: string }).sessionId || "").trim() || undefined;
       internals.draftPlan = restored.draftPlan;
+      internals.lastApplyTransactionId = restored.appliedDraftSnapshot?.applyTransactionId;
       internals.issueItems = (restored.issueItems ?? []).map((item) => ({
         objectId: item.objectId,
         objectType: item.objectType as IssueObjectType | undefined,
@@ -1652,12 +1772,61 @@ function createAssistantRuntime(): AssistantRuntime {
       return commitState(internals, state, storage);
     }
     const adapter = createEditorAdapter(resolveRuntimeChannel());
+    const currentContext = await adapter.getCurrentContext().catch(() => null);
+    const currentPageId = currentContext?.project?.pageId;
+    if (
+      canBuildPatchPreview({
+        appliedDraftSnapshot: state.appliedDraftSnapshot,
+        draftObjectBindings: state.draftObjectBindings,
+        currentPageId,
+      })
+    ) {
+      const patchPlan = buildDraftPatchPlan({
+        previous: state.appliedDraftSnapshot!,
+        next: draftPlan,
+        bindings: state.draftObjectBindings!,
+      });
+      const patchSummary = summarizeDraftPatchPlan(patchPlan);
+      internals.draftPatchPreviewFingerprint = buildDraftPlanFingerprint(draftPlan);
+      state.draftPatchPlan = patchPlan;
+      state.agentRunState = "awaiting_confirmation";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "草案 patch 预览已生成，等待确认";
+      state.summary = `已生成草案 patch 预览。${patchSummary}`;
+      state.chatMessages = appendAssistantMessages(
+        sanitizeChatMessages(state.chatMessages),
+        pluginAgent.buildStatusMessages({
+          title: "补丁预览",
+          content: `检测到当前草案将覆盖已应用版本，已生成 patch 预览。\n\n${patchSummary}`,
+          tone: "warning",
+          actions: [
+            {
+              label: "应用补丁草案",
+              action: "apply_patch_draft",
+            },
+          ],
+        })
+      );
+      state.nextActions = buildNextActions(state);
+      return commitState(internals, state, storage);
+    }
+    const replacingExistingDraft = Boolean(internals.lastApplyTransactionId);
+    state.agentRunState = "running_tools";
+    state.agentRunRoute = "draft";
+    state.agentRunDetail = replacingExistingDraft ? "正在替换当前草案" : "正在应用已确认草案";
+    state.summary = replacingExistingDraft
+      ? "正在回滚上一版草案并应用修改后的版本，请稍候。"
+      : "正在将草案写入原理图，请稍候。";
+    state.nextActions = buildNextActions(state);
+    commitState(internals, state, storage);
     try {
       const result = await applyDraftPlanWithRepair({
         initialPlan: draftPlan,
         maxRepairAttempts: MAX_DRAFT_REPAIR_ATTEMPTS,
         applyPlan: async (plan) => {
-          const applyResult = await adapter.applyPlan(plan);
+          const applyResult = await adapter.applyPlan(plan, {
+            replaceTransactionId: internals.lastApplyTransactionId,
+          });
           if (!applyResult.applied) {
             const capabilityReport = await adapter.getCapabilityReport().catch(() => null);
             throw new Error(
@@ -1683,6 +1852,16 @@ function createAssistantRuntime(): AssistantRuntime {
       }
       internals.lastApplyTransactionId = result.result.transactionId;
       internals.draftBlocked = false;
+      const appliedContext = await adapter.getCurrentContext().catch(() => null);
+      const appliedPageId = appliedContext?.project?.pageId;
+      state.appliedDraftSnapshot = buildAppliedDraftSnapshot({
+        plan: result.finalPlan,
+        transactionId: result.result.transactionId,
+        pageId: appliedPageId,
+      });
+      state.draftObjectBindings = buildInitialDraftObjectBindings(appliedPageId);
+      state.draftPatchPlan = undefined;
+      internals.draftPatchPreviewFingerprint = undefined;
       state.agentRunState = "completed";
       state.agentRunRoute = "draft";
       const applyPresentation = formatDraftApplySuccessSummary(result.result);
@@ -1726,6 +1905,109 @@ function createAssistantRuntime(): AssistantRuntime {
         message: state.summary,
       };
     }
+    state.nextActions = buildNextActions(state);
+    return commitState(internals, state, storage);
+  }
+
+  async function applyCurrentDraftPatchPlan(): Promise<MainPanelState> {
+    const state = internals.currentState ?? (await computeAnalysisState());
+    const draftPlan = internals.draftPlan;
+    const patchPlan = state.draftPatchPlan;
+    if (!draftPlan || !patchPlan) {
+      state.agentRunState = "failed";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "当前没有可应用的补丁草案";
+      state.summary = "当前没有可应用的补丁草案，请先生成补丁预览。";
+      state.toast = {
+        id: Date.now(),
+        message: state.summary,
+      };
+      return commitState(internals, state, storage);
+    }
+
+    const currentDraftFingerprint = buildDraftPlanFingerprint(draftPlan);
+    if (
+      !internals.draftPatchPreviewFingerprint ||
+      currentDraftFingerprint !== internals.draftPatchPreviewFingerprint
+    ) {
+      state.agentRunState = "failed";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "补丁预览已过期";
+      state.summary = "补丁预览已过期，请重新生成补丁预览后再应用。";
+      state.toast = {
+        id: Date.now(),
+        message: state.summary,
+      };
+      return commitState(internals, state, storage);
+    }
+
+    const adapter = createEditorAdapter(resolveRuntimeChannel());
+    state.agentRunState = "running_tools";
+    state.agentRunRoute = "draft";
+    state.agentRunDetail = "正在应用补丁草案";
+    state.summary = "正在将补丁草案写入原理图，请稍候。";
+    state.nextActions = buildNextActions(state);
+    commitState(internals, state, storage);
+
+    try {
+      const result = await executeDraftPatchPlan({
+        adapter,
+        plan: patchPlan,
+      });
+      if (!result.applied) {
+        throw new Error("patch draft apply reported no changes");
+      }
+
+      const transactionId = result.transactionId ?? internals.lastApplyTransactionId;
+      if (transactionId) {
+        internals.lastApplyTransactionId = transactionId;
+      }
+      const appliedPageId = result.bindings?.pageId ?? state.appliedDraftSnapshot?.pageId;
+      state.appliedDraftSnapshot = buildAppliedDraftSnapshot({
+        plan: draftPlan,
+        transactionId,
+        pageId: appliedPageId,
+      });
+      if (result.bindings) {
+        state.draftObjectBindings = result.bindings;
+      } else {
+        state.draftObjectBindings = buildInitialDraftObjectBindings(appliedPageId);
+      }
+      state.draftPatchPlan = undefined;
+      internals.draftPatchPreviewFingerprint = undefined;
+      state.agentRunState = "completed";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = "补丁草案已应用";
+      state.summary = result.bindings
+        ? "补丁草案已应用，草案快照与对象绑定已刷新。"
+        : "补丁草案已应用，但未返回新的对象绑定，已保留非权威绑定。";
+      state.chatMessages = appendAssistantMessages(
+        sanitizeChatMessages(state.chatMessages),
+        pluginAgent.buildStatusMessages({
+          title: "已应用补丁草案",
+          content: state.summary,
+          tone: "success",
+        })
+      );
+    } catch (error) {
+      state.agentRunState = "failed";
+      state.agentRunRoute = "draft";
+      state.agentRunDetail = error instanceof Error ? error.message : String(error);
+      state.summary = `应用补丁草案失败：${error instanceof Error ? error.message : String(error)}`;
+      state.chatMessages = appendAssistantMessages(
+        sanitizeChatMessages(state.chatMessages),
+        pluginAgent.buildStatusMessages({
+          title: "补丁应用失败",
+          content: state.summary,
+          tone: "warning",
+        })
+      );
+      state.toast = {
+        id: Date.now(),
+        message: state.summary,
+      };
+    }
+
     state.nextActions = buildNextActions(state);
     return commitState(internals, state, storage);
   }
@@ -2195,11 +2477,12 @@ function createAssistantRuntime(): AssistantRuntime {
         // This prevents long but healthy tool/LLM runs from being cut off by a fixed 90s timer.
         // Some schematic analyses + tool calls can be slow; allow long turns as long as we keep receiving progress.
         const TURN_MAX_TIMEOUT_MS = 25 * 60_000;
-        const TURN_IDLE_TIMEOUT_MS = 6 * 60_000;
+        const TURN_IDLE_TIMEOUT_MS = 2 * 60_000;
         const withActivityTimeout = async <T>(
           promise: Promise<T>,
           label: string,
-          onRegisterTouch: (touch: () => void) => void
+          onRegisterTouch: (touch: () => void) => void,
+          onTimeout?: () => void
         ): Promise<T> => {
           let hardTimer: ReturnType<typeof setTimeout> | undefined;
           let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -2218,12 +2501,16 @@ function createAssistantRuntime(): AssistantRuntime {
 
           const hardTimeout = new Promise<never>((_, reject) => {
             hardTimer = setTimeout(() => {
+              onTimeout?.();
               reject(new Error(`timeout: ${label} (max ${TURN_MAX_TIMEOUT_MS}ms)`));
             }, TURN_MAX_TIMEOUT_MS);
           });
 
           const idleTimeout = new Promise<never>((_, reject) => {
-            idleReject = (error) => reject(error);
+            idleReject = (error) => {
+              onTimeout?.();
+              reject(error);
+            };
             armIdle();
           });
 
@@ -2246,7 +2533,6 @@ function createAssistantRuntime(): AssistantRuntime {
             const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
             // Ignore late events from previous turns to prevent UI getting stuck.
             if (internals.activeTurnId !== turnId) return;
-            touchTurnActivity?.();
             const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
             const sanitizedText = stripFinalControlLikeText(event.text);
             const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
@@ -2291,7 +2577,14 @@ function createAssistantRuntime(): AssistantRuntime {
             }
             if (event.stage === "llm") {
               lastMessage.streaming = true;
-              lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "analysis" ? "分析中" : "处理中";
+              lastMessage.title =
+                event.route === "draft"
+                  ? "草案生成中"
+                  : event.route === "analysis"
+                    ? "分析中"
+                    : event.route === "modify"
+                      ? "修改当前原理图中"
+                      : "处理中";
               const shouldMirrorTextToBody = shouldMirrorStreamingTextToAssistantBody({
                 route: event.route,
                 hasStepItems: event.stepItems !== undefined && Boolean(event.stepItems?.length),
@@ -2334,7 +2627,7 @@ function createAssistantRuntime(): AssistantRuntime {
               }
             } else if (event.stage === "progress") {
               lastMessage.streaming = true;
-              lastMessage.title = event.route === "draft" ? "草案生成中" : "分析中";
+              lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "modify" ? "修改当前原理图中" : "分析中";
               // progress 阶段只更新 header/steps，不写入 message.content，避免污染最终流式报告。
               if (
                 event.stepItems !== undefined ||
@@ -2365,9 +2658,15 @@ function createAssistantRuntime(): AssistantRuntime {
             const contentChanged = previousContent !== String(lastMessage.content || "");
             const processChanged = previousProcessSignature !== nextProcessSignature;
             const detailChanged = previousDetail !== String(current.agentRunDetail || "");
-            if (!contentChanged && !processChanged && !detailChanged) {
+            const hasVisibleActivity = shouldCountStreamEventAsTurnActivity({
+              contentChanged,
+              processChanged,
+              detailChanged,
+            });
+            if (!hasVisibleActivity) {
               return;
             }
+            touchTurnActivity?.();
             if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
               console.log("[LCEDA-AI][stream-debug] onStreamEvent.after", {
                 stage: event.stage,
@@ -2403,6 +2702,8 @@ function createAssistantRuntime(): AssistantRuntime {
         const turn = await withActivityTimeout(turnPromise, "handleUserTurn", (touch) => {
           touchTurnActivity = touch;
           touch(); // start idle timer immediately
+        }, () => {
+          internals.activeTurnAbortController?.abort();
         });
         if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
           console.log(`${LOG_PREFIX} sendChat.route`, { route: turn.route });
@@ -2550,6 +2851,9 @@ function createAssistantRuntime(): AssistantRuntime {
     applyDraftPlan: async (): Promise<MainPanelState> => {
       return applyCurrentDraftPlan();
     },
+    applyPatchDraftPlan: async (): Promise<MainPanelState> => {
+      return applyCurrentDraftPatchPlan();
+    },
     openDevicePicker: async (): Promise<MainPanelState> => {
       const state = internals.currentState ?? (await computeAnalysisState());
       state.devicePicker = {
@@ -2683,6 +2987,13 @@ function createAssistantRuntime(): AssistantRuntime {
       const adapter = createEditorAdapter(resolveRuntimeChannel());
       try {
         const result = await adapter.rollbackApplyPlan(internals.lastApplyTransactionId);
+        if (result.rolledBack) {
+          internals.lastApplyTransactionId = undefined;
+      state.appliedDraftSnapshot = undefined;
+      state.draftObjectBindings = undefined;
+      state.draftPatchPlan = undefined;
+      internals.draftPatchPreviewFingerprint = undefined;
+        }
         state.agentRunState = "completed";
         state.agentRunDetail = result.rolledBack ? "已回滚最近一次草案应用" : "回滚未生效";
         state.summary = result.rolledBack ? "已回滚最近一次草案应用。" : "回滚未生效。";
@@ -2878,8 +3189,8 @@ async function generateDraftStateFromResult(
   async function applyTurnResultToState(input: {
     baseState: MainPanelState;
     userMessages: NonNullable<MainPanelState["chatMessages"]>;
-    requestedRoute: "chat" | "analysis" | "draft";
-    finalRoute: "chat" | "analysis" | "draft";
+    requestedRoute: "chat" | "analysis" | "draft" | "modify";
+    finalRoute: "chat" | "analysis" | "draft" | "modify";
     result: Awaited<ReturnType<typeof pluginAgent.run>>;
   }): Promise<MainPanelState> {
     if (input.finalRoute === "chat") {
@@ -2901,6 +3212,24 @@ async function generateDraftStateFromResult(
       drafted.chatMessages = finalizeDraftTurnMessages(input.userMessages, drafted.chatMessages ?? []);
       drafted.nextActions = buildNextActions(drafted);
       return drafted;
+    }
+
+    if (input.finalRoute === "modify") {
+      const modified = input.baseState;
+      modified.agentRunRoute = "modify";
+      modified.agentRunState = "completed";
+      modified.agentRunDetail = input.result.summary;
+      modified.summary = input.result.summary || "已完成当前原理图修改方案整理。";
+      modified.chatMessages = replaceTrailingPendingAssistant(
+        input.userMessages,
+        pluginAgent.buildStatusMessages({
+          title: "修改方案",
+          tone: "warning",
+          content: input.result.analysisMarkdown || input.result.summary || "已基于当前原理图整理修改建议。",
+        })
+      );
+      modified.nextActions = buildNextActions(modified);
+      return modified;
     }
 
     // Analysis route: 直接更新最后一条streaming消息，而不是删除重建
@@ -3132,7 +3461,11 @@ function commitState(
   try {
     (globalThis as typeof globalThis & {
       __LCEDA_AI_ASSISTANT_FRAME_STATE__?: MainPanelState;
+      __LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__?: (state: MainPanelState) => void;
     }).__LCEDA_AI_ASSISTANT_FRAME_STATE__ = nextState;
+    (globalThis as typeof globalThis & {
+      __LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__?: (state: MainPanelState) => void;
+    }).__LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__?.(nextState);
   } catch {
     // Ignore assignment failures in constrained runtimes.
   }
@@ -3142,17 +3475,6 @@ function commitState(
     if (!isRunning) {
       schedulePersistPanelState(storage, nextState, true);
     }
-  }
-  try {
-    const runtime = globalThis as typeof globalThis & {
-      dispatchEvent?: (event: Event) => boolean;
-      CustomEvent?: typeof CustomEvent;
-    };
-    if (typeof runtime.dispatchEvent === "function" && typeof CustomEvent === "function") {
-      runtime.dispatchEvent(new CustomEvent(FRAME_STATE_EVENT, { detail: nextState }));
-    }
-  } catch {
-    // Ignore frame broadcast failures; state is still committed locally.
   }
   if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
     const running =
@@ -3386,14 +3708,19 @@ function mergeStreamProcessFields(input: {
   text?: string;
 }): void {
   const { lastMessage, stepItems, iterationSteps, reactEvents, reasoningDelta, text } = input;
+  const limited = limitStreamProcessItems({
+    stepItems,
+    iterationSteps,
+    reactEvents: reactEvents !== undefined ? sanitizeReactEventsForUi(reactEvents) : undefined,
+  });
   if (stepItems !== undefined) {
-    lastMessage.stepItems = stepItems;
+    lastMessage.stepItems = limited.stepItems;
   }
   if (reactEvents !== undefined) {
-    lastMessage.reactEvents = sanitizeReactEventsForUi(reactEvents);
+    lastMessage.reactEvents = limited.reactEvents;
   }
   if (iterationSteps !== undefined) {
-    lastMessage.iterationSteps = iterationSteps;
+    lastMessage.iterationSteps = limited.iterationSteps;
   }
 
   const currentSteps = Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps : [];
@@ -3425,10 +3752,10 @@ function mergeStreamProcessFields(input: {
   }
 }
 
-function createPendingAssistantMessage(route: "chat" | "analysis" | "draft"): NonNullable<MainPanelState["chatMessages"]>[number] {
+function createPendingAssistantMessage(route: "chat" | "analysis" | "draft" | "modify"): NonNullable<MainPanelState["chatMessages"]>[number] {
   return {
     role: "assistant",
-    title: route === "chat" ? "助手" : route === "draft" ? "草案生成中" : "分析中",
+    title: route === "chat" ? "助手" : route === "draft" ? "草案生成中" : route === "modify" ? "修改当前原理图中" : "分析中",
     // content 只用于最终流式报告/回复，进度与步骤展示由 reactEvents/stepStates 承载，避免污染最终输出。
     content: "",
     iterationSteps: [],
@@ -3436,18 +3763,24 @@ function createPendingAssistantMessage(route: "chat" | "analysis" | "draft"): No
   };
 }
 
-function buildPendingAgentDetail(route: "chat" | "analysis" | "draft"): string {
+function buildPendingAgentDetail(route: "chat" | "analysis" | "draft" | "modify"): string {
   if (route === "chat") {
     return "正在规划对话并等待模型回复";
   }
-  return route === "draft" ? "正在规划草案与执行规则校验" : "正在收集上下文并执行分析";
+  if (route === "draft") {
+    return "正在规划草案与执行规则校验";
+  }
+  return route === "modify" ? "正在基于当前原理图整理修改方案" : "正在收集上下文并执行分析";
 }
 
-function buildPendingAgentSummary(route: "chat" | "analysis" | "draft"): string {
+function buildPendingAgentSummary(route: "chat" | "analysis" | "draft" | "modify"): string {
   if (route === "chat") {
     return "正在生成回复...";
   }
-  return route === "draft" ? "正在生成草案..." : "正在分析当前原理图...";
+  if (route === "draft") {
+    return "正在生成草案...";
+  }
+  return route === "modify" ? "正在修改当前原理图..." : "正在分析当前原理图...";
 }
 
 function replaceTrailingPendingAssistant(

@@ -13,6 +13,7 @@ import type { ToolRegistry } from "../tools/toolRegistry";
 type ConversationMessage = {
   role: "user" | "assistant";
   content: string;
+  reasoning_content?: string;
 };
 
 const MAX_HISTORY_MESSAGES = 20;
@@ -147,8 +148,9 @@ function isBannedHighRiskTool(toolName: string): boolean {
   return toolName === "editor_apply_plan" || toolName === "editor_rollback_apply_plan";
 }
 
-function inferRouteFromResult(result: AgentResult): "chat" | "analysis" | "draft" {
+function inferRouteFromResult(result: AgentResult): "chat" | "analysis" | "draft" | "modify" {
   if (result.naturalReply) return "chat";
+  if (result.selectedSkill === "modify_existing_schematic") return "modify";
   if (result.draftPlan || result.draftPreview || result.draftValidation || result.draftRisk) return "draft";
   if (result.analysisReport || result.checkResult || result.analysisMarkdown) return "analysis";
   return "chat";
@@ -170,9 +172,18 @@ function looksLikeAnalysisQuery(userQuery: string): boolean {
   return /(分析|检查|检查看看|看看|查看|排查|定位|问题|有什么问题|有啥问题|erc|审查|review|analy[sz]e|check|inspect)/iu.test(text);
 }
 
+function looksLikeExistingSchematicEditQuery(userQuery: string): boolean {
+  const text = String(userQuery || "").trim().toLowerCase();
+  if (!text) return false;
+  return /((当前|这个|现有|已有|原理图中|图中).*(网络标签|连线|补线|接线|未连接|没连上|连接缺失|连起来|接上|补齐)|(网络标签|连线|补线|接线).*(完成这个|补齐|连起来|接上|修好|完善))/iu.test(
+    text
+  );
+}
+
 function looksLikeDraftQuery(userQuery: string): boolean {
   const text = String(userQuery || "").trim().toLowerCase();
   if (!text) return false;
+  if (looksLikeExistingSchematicEditQuery(text)) return false;
   return /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(text);
 }
 
@@ -193,7 +204,9 @@ function looksLikeDraftFollowUpSummaryQuery(userQuery: string): boolean {
 function looksLikeDraftFollowUpRevisionQuery(userQuery: string): boolean {
   const text = String(userQuery || "").trim().toLowerCase();
   if (!text) return false;
-  return /(修改|调整|改成|换成|增加|新增|加入|补充|删掉|删除|替换|优化|重生成|重新生成|重做草案|重新设计|增加模块|新增模块)/iu.test(text);
+  return /(修改|调整|改成|换成|增加|新增|加入|补充|删掉|删除|替换|优化|重生成|重新生成|重做草案|重新设计|增加模块|新增模块|网络标签|连线|补线|接线|补齐连接|完成这个)/iu.test(
+    text
+  );
 }
 
 function looksLikeDraftRepairQuery(userQuery: string): boolean {
@@ -209,11 +222,11 @@ function looksLikeDraftRiskAnalysisQuery(userQuery: string): boolean {
 }
 
 function shouldTreatAsAnalysis(input: { taskType?: AgentTaskType; userQuery: string }): boolean {
-  return isAnalysisTaskType(input.taskType) || (!isDraftTaskType(input.taskType) && looksLikeAnalysisQuery(input.userQuery));
+  return isAnalysisTaskType(input.taskType);
 }
 
 function shouldTreatAsDraft(input: { taskType?: AgentTaskType; userQuery: string }): boolean {
-  return isDraftTaskType(input.taskType) || (!shouldTreatAsAnalysis(input) && looksLikeDraftQuery(input.userQuery));
+  return isDraftTaskType(input.taskType);
 }
 
 function requiresStructuredDraftSpec(input: { taskType?: AgentTaskType; userQuery: string }): boolean {
@@ -284,13 +297,36 @@ function buildDecisionToolNames(input: {
       "draft_generate_plan",
       "draft_preview_plan",
       "rules_validate_draft",
-      "editor_preview_apply_plan",
     ];
     const available = new Set(names);
     const narrowed = preferredOrder.filter((name) => available.has(name));
     return narrowed.length > 0 ? narrowed : names;
   }
-  return names;
+  const preferredOrder = [
+    "todo_list",
+    "editor_get_current_context",
+    "editor_get_selection",
+    "editor_describe_selection",
+    "editor_find_object",
+    "editor_describe_object",
+    "rules_run_schematic_checks",
+    "schematic_review",
+    "schematic_build_analysis_evidence",
+    "rag_search",
+    "rag_build_citations",
+    "library_search_devices",
+    "library_get_device",
+    "library_get_devices_by_lcsc_ids",
+    "draft_repair_plan",
+    "draft_generate_plan",
+    "draft_preview_plan",
+    "rules_validate_draft",
+    "issues_locate_first",
+    "editor_locate",
+  ];
+  const available = new Set(names);
+  const narrowed = preferredOrder.filter((name) => available.has(name));
+  return narrowed.length > 0 ? narrowed : names;
 }
 
 function buildConversationHistory(panelState: MainPanelState | undefined, currentUserQuery: string): ConversationMessage[] {
@@ -320,9 +356,22 @@ function buildConversationHistory(panelState: MainPanelState | undefined, curren
       if (message.role === "assistant" && !isMeaningfulAssistantHistory(content)) {
         return null;
       }
+      const reasoningContent =
+        message.role === "assistant"
+          ? message.reasoningContent ||
+            message.iterationSteps
+              ?.map((step) => String(step?.thoughtText || "").trim())
+              .filter(Boolean)
+              .join("\n\n") ||
+            undefined
+          : undefined;
       return {
         role: message.role,
         content: compressHistoryText(message.role, content),
+        reasoning_content:
+          reasoningContent && reasoningContent.length > MAX_HISTORY_MESSAGE_CHARS
+            ? `${reasoningContent.slice(0, MAX_HISTORY_MESSAGE_CHARS)}…`
+            : reasoningContent,
       };
     })
     .filter((item): item is ConversationMessage => Boolean(item));
@@ -348,7 +397,7 @@ export async function runUnifiedReactAgent(input: {
   allowedTools: string[];
   signal?: AbortSignal;
   onStreamEvent?: (event: {
-    route: "chat" | "analysis" | "draft";
+    route: "chat" | "analysis" | "draft" | "modify";
     stage: "llm" | "progress";
     textDelta?: string;
     text?: string;
@@ -373,11 +422,13 @@ export async function runUnifiedReactAgent(input: {
   let libraryInsights: AgentResult["libraryInsights"] | undefined;
   const resolvedTaskType = input.taskType ?? "natural_chat";
 
-  const hasExistingDraftPreview = Boolean(input.panelState.draftPreview || input.panelState.draftPlan);
+  const hasExistingDraftPreview = Boolean(
+    input.panelState.draftPreview || input.panelState.draftPlan || input.panelState.appliedDraftSnapshot
+  );
   const draftFollowUpIntent =
     resolvedTaskType === "natural_chat" &&
     hasExistingDraftPreview &&
-    input.panelState.agentRunState === "awaiting_confirmation" &&
+    (input.panelState.agentRunRoute === "draft" || input.panelState.agentRunState === "awaiting_confirmation") &&
     (looksLikeDraftFollowUpRevisionQuery(input.userQuery)
       ? "revise_existing_draft"
       : looksLikeDraftRepairQuery(input.userQuery)
@@ -393,12 +444,16 @@ export async function runUnifiedReactAgent(input: {
     draftFollowUpIntent,
     existingDraftSummary: draftFollowUpIntent
       ? {
-          title: input.panelState.draftPreview?.title,
-          rationale: input.panelState.draftPreview?.rationale,
-          componentRefs: input.panelState.draftPreview?.componentRefs,
-          netNames: input.panelState.draftPreview?.netNames,
-          componentCount: input.panelState.draftPreview?.componentCount,
-          netCount: input.panelState.draftPreview?.netCount,
+          title: input.panelState.draftPreview?.title ?? input.panelState.appliedDraftSnapshot?.title,
+          rationale: input.panelState.draftPreview?.rationale ?? input.panelState.appliedDraftSnapshot?.rationale,
+          componentRefs:
+            input.panelState.draftPreview?.componentRefs ??
+            input.panelState.appliedDraftSnapshot?.components?.map((item) => item.ref || item.id).filter(Boolean),
+          netNames:
+            input.panelState.draftPreview?.netNames ??
+            input.panelState.appliedDraftSnapshot?.nets?.map((item) => item.name).filter(Boolean),
+          componentCount: input.panelState.draftPreview?.componentCount ?? input.panelState.appliedDraftSnapshot?.components?.length,
+          netCount: input.panelState.draftPreview?.netCount ?? input.panelState.appliedDraftSnapshot?.nets?.length,
           selectedDeviceDetails: input.panelState.draftPreview?.selectedDeviceDetails,
         }
       : undefined,
@@ -442,8 +497,8 @@ export async function runUnifiedReactAgent(input: {
       ? !["draft_generate_plan", "draft_preview_plan", "rules_validate_draft", "editor_preview_apply_plan"].includes(tool.name) &&
         decisionToolNames.includes(tool.name)
       : draftFollowUpIntent === "repair_existing_draft"
-        ? !["draft_generate_plan"].includes(tool.name) && decisionToolNames.includes(tool.name)
-      : decisionToolNames.includes(tool.name)
+        ? !["draft_generate_plan", "editor_preview_apply_plan"].includes(tool.name) && decisionToolNames.includes(tool.name)
+      : tool.name !== "editor_preview_apply_plan" && decisionToolNames.includes(tool.name)
   );
 
   const system = buildSystemPrompt({
@@ -455,7 +510,8 @@ export async function runUnifiedReactAgent(input: {
     tools: toolList,
     skills: [
       { name: "analysis", description: "分析/检查原理图问题（建议用 rules_run_schematic_checks + schematic_review）" },
-      { name: "draft", description: "生成草案并预览（建议用 draft_generate_plan + draft_preview_plan + editor_preview_apply_plan）" },
+      { name: "draft", description: "生成草案并预览（建议用 draft_generate_plan + draft_preview_plan；真正应用由用户点击应用草案触发）" },
+      { name: "modify", description: "修改当前原理图或已应用草案（优先复用当前页面/已有草案，输出 route=modify 或 draft）" },
       { name: "chat", description: "自然问答/解释/澄清（需要事实时先调用 editor/rag/library 工具）" },
     ],
     contextHint: baseContextHint,
@@ -474,12 +530,18 @@ export async function runUnifiedReactAgent(input: {
           ? "这是基于现有草案的修复请求：优先使用 draft_repair_plan 处理结构化应用错误，并在修补后继续预览或验证；除非修补失败或用户明确要求重做，否则不要调用 draft_generate_plan。"
       : draftFollowUpIntent === "analyze_existing_draft_risk"
         ? "这是基于现有草案的风险复核请求：优先说明当前草案的问题、阻断项和待补充内容；可调用 rules_validate_draft，但不要无必要重生成草案。"
-      :
-    shouldTreatAsAnalysis({ taskType: resolvedTaskType, userQuery: input.userQuery })
+      : shouldTreatAsAnalysis({ taskType: resolvedTaskType, userQuery: input.userQuery })
       ? "这是分析类任务：先调用 editor_get_current_context，再调用 rules_run_schematic_checks；如需网表级证据，再调用 schematic_review。完成这些步骤前不要直接回答。"
       : shouldTreatAsDraft({ taskType: resolvedTaskType, userQuery: input.userQuery })
         ? "这是草案类任务：先补齐事实或证据，再由模型自行整理结构化 spec 并传给 draft_generate_plan；生成 plan 后必须调用 draft_preview_plan，完成这些步骤前不要直接输出 final。"
-        : "如需原理图事实，先调用 editor_get_current_context；规则检查用 rules_run_schematic_checks；需要网表证据用 schematic_review。",
+        : [
+            "请先根据用户意图自行选择 route，而不是按关键词硬分流：",
+            "- route=analysis：用户要检查、审查、解释问题或输出分析报告。",
+            "- route=draft：用户要从需求生成新草案，或修改已有草案并产出新的草案预览。",
+            "- route=modify：用户要在当前原理图页面或已应用草案上做局部修改、补线、换器件、修连接；应优先读取当前上下文，必要时复用已有草案并生成局部修改方案。",
+            "- route=chat：用户只是问答、解释、澄清。",
+            "如需原理图事实，先调用 editor_get_current_context；需要检查再调用 rules_run_schematic_checks 或 schematic_review；需要生成/修改草案时再调用 draft_* 工具。不要把预览工具当成实际应用；真正应用草案只能由用户点击应用动作触发。",
+          ].join("\n"),
   ].join("\n");
   const historyMessages = buildConversationHistory(input.panelState, input.userQuery);
 
@@ -588,16 +650,16 @@ export async function runUnifiedReactAgent(input: {
       const planningMode =
         typeof payload.planningMode === "string"
           ? (payload.planningMode as DraftPlanningMode)
-          : requiresStructuredDraftSpec({ taskType: resolvedTaskType, userQuery })
+          : requiresStructuredDraftSpec({ taskType: resolvedTaskType, userQuery }) || resolvedTaskType === "natural_chat"
             ? STRUCTURED_SPEC_REQUIRED
             : undefined;
       return { ...payload, userQuery, ...(planningMode ? { planningMode } : {}) };
     }
-    if (toolName === "draft_preview_plan") {
-      const payload = llmInput && typeof llmInput === "object" ? (llmInput as any) : {};
-      if (payload.plan) return payload;
-      if (!draftPlan) throw new Error("draftPlan missing: call draft_generate_plan first");
-      return { plan: draftPlan };
+      if (toolName === "draft_preview_plan") {
+        const payload = llmInput && typeof llmInput === "object" ? (llmInput as any) : {};
+        if (payload.plan) return payload;
+        if (!draftPlan) throw new Error("draftPlan missing: call draft_generate_plan first");
+        return { plan: draftPlan };
     }
     if (toolName === "draft_repair_plan") {
       const payload = llmInput && typeof llmInput === "object" ? (llmInput as any) : {};
@@ -1057,12 +1119,18 @@ export async function runUnifiedReactAgent(input: {
             : finalText,
   };
   const route = loopResult.finalRoute ?? inferRouteFromResult(inferredFinalResult);
+  const fallbackDraftPreview =
+    route === "draft" && base.draftPlan && !base.draftPreview && input.tools.get("draft_preview_plan")
+      ? (await input.tools.invoke("draft_preview_plan", { plan: base.draftPlan }, { signal: input.signal }) as AgentResult["draftPreview"])
+      : undefined;
 
   const result: AgentResult = {
     ...base,
+    draftPreview: base.draftPreview ?? fallbackDraftPreview,
     draftNarrative: route === "draft" ? finalText : undefined,
-    analysisMarkdown: route === "analysis" ? finalText : undefined,
+    analysisMarkdown: route === "analysis" || route === "modify" ? finalText : undefined,
     naturalReply: route === "chat" ? finalText : undefined,
+    selectedSkill: route === "modify" ? "modify_existing_schematic" : base.selectedSkill,
   };
 
   return { result, reactEvents: state.reactEvents, stepItems: state.stepItems };

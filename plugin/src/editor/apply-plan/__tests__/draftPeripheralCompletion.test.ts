@@ -67,3 +67,92 @@ test("previewDraftPlan reports automatically completed peripherals", () => {
   assert.equal((preview.completedPeripheralCount ?? 0) > 0, true);
   assert.equal((preview.completedPeripheralTemplates ?? []).length > 0, true);
 });
+
+test("completeDraftPlanPeripherals runs devboard rag completion after rule completion", () => {
+  const completed = completeDraftPlanPeripherals({
+    title: "devboard",
+    rationale: "test",
+    components: [{ id: "u1", ref: "U1", name: "ESP32-S3-WROOM-1", properties: {} }],
+    pins: [],
+    nets: [{ id: "n-3v3", name: "3V3", nodeIds: [], isPower: true }],
+  } as any);
+
+  assert.equal(
+    completed.components.some((item) => item.properties?.generated_by === "rag_template"),
+    true
+  );
+});
+
+test("completeDraftPlanPeripherals lets rag dedupe skip overlaps with real rule-completion roles", () => {
+  const completed = completeDraftPlanPeripherals({
+    title: "devboard",
+    rationale: "test",
+    components: [{ id: "u1", ref: "U1", name: "ESP32-S3-WROOM-1", properties: {} }],
+    pins: [],
+    nets: [{ id: "n-3v3", name: "3V3", nodeIds: [], isPower: true }],
+  } as any);
+
+  assert.equal(
+    completed.components.filter((item) =>
+      item.properties?.generated_by === "rag_template" &&
+      (item.properties?.completion_role === "mcu_bulk_decoupling" ||
+        item.properties?.completion_role === "mcu_en_pullup" ||
+        item.properties?.completion_role === "mcu_local_decoupling")
+    ).length,
+    0
+  );
+});
+
+test("generateDraftPlanFromPrompt can apply external rag template corpus during normalization", () => {
+  const normalized = normalizeDraftPlan({
+    title: "esp32c3 devboard",
+    rationale: "test",
+    components: [{ id: "u1", ref: "U1", name: "ESP32-C3-MINI-1", properties: {} }],
+    pins: [],
+    nets: [
+      { id: "n-3v3", name: "3V3", nodeIds: [], isPower: true },
+      { id: "n-gpio8", name: "GPIO8", nodeIds: [], isPower: false },
+    ],
+    externalRagTemplateCorpus: [
+      {
+        template_id: "external-esp32c3-status-indicator",
+        template_type: "status_indicator",
+        anchor_device_family: "ESP32",
+        anchor_device_model: "ESP32-C3",
+        scenario_tags: ["devboard", "status", "led"],
+        components: [
+          {
+            ref: "D_EXT_STAT",
+            name: "led",
+            value: "GREEN",
+            completion_role: "status_led",
+            attach_to_net: "GPIO8",
+          },
+          {
+            ref: "R_EXT_STAT",
+            name: "resistor",
+            value: "1k",
+            completion_role: "status_led_resistor",
+            attach_to_net: "GPIO8",
+          },
+        ],
+        source: {
+          kind: "lceda_open_source_extract",
+          project_id: "oshw-esp32c3-board",
+          sheet_ref: "sheet-1",
+          extraction_revision: "2026-04-19-a",
+        },
+        quality_score: 0.95,
+      },
+    ],
+  } as any);
+
+  assert.equal(
+    normalized.components.some(
+      (item) =>
+        item.properties?.generated_by === "rag_template" &&
+        item.properties?.template_id === "external-esp32c3-status-indicator"
+    ),
+    true
+  );
+});

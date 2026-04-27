@@ -7,6 +7,7 @@ import { classifyDraftApplyError, repairDraftPlanPowerConnectivity } from "../..
 import type { RagClient } from "../../services/rag/ragClient";
 import type { AgentTool } from "./toolRegistry";
 import type { DraftDesignSpec, DraftPlanGuidance, DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
+import type { DevboardRagTemplateCorpusEntry } from "../../editor/apply-plan/devboardRagTemplates";
 import type { LibraryDeviceDetail, LibrarySearchResultItem } from "../../editor/host/runtime";
 
 function mergeGuidanceEvidence(
@@ -85,6 +86,11 @@ export function createDraftTools(
             enum: ["auto", "structured_spec_required"],
             description: "可选。由宿主显式指定草案生成模式。",
           },
+          externalRagTemplateCorpus: {
+            type: "array",
+            items: { type: "object" },
+            description: "可选。服务端返回的外部 devboard RAG 子电路模板语料。",
+          },
         },
         required: ["userQuery"],
         additionalProperties: true,
@@ -106,6 +112,7 @@ export function createDraftTools(
         guidance?: ReturnType<typeof buildDraftGuidanceFromRag>;
         spec?: DraftDesignSpec;
         planningMode?: DraftPlanningMode;
+        externalRagTemplateCorpus?: DevboardRagTemplateCorpusEntry[];
       }) => {
         if (!input.spec && input.planningMode === "structured_spec_required") {
           throw new Error("planningMode=structured_spec_required requires llm-authored spec before draft_generate_plan");
@@ -116,7 +123,8 @@ export function createDraftTools(
           );
         }
         const query = `${input.userQuery} 电路模板 器件选择 连接约束`;
-        const ragResults = ragClient ? (await ragClient.search(query, 3)).results : [];
+        const ragResultsResponse = ragClient ? await ragClient.search(query, 3) : undefined;
+        const ragResults = ragResultsResponse?.results ?? [];
         const resolvedGuidance =
           input.guidance ??
           (ragClient ? buildDraftGuidanceFromRag(input.userQuery, ragResults) : undefined);
@@ -132,6 +140,7 @@ export function createDraftTools(
             : generateDraftPlanFromPrompt(input.userQuery, {
           selectedDevices: input.selectedDevices,
           guidance: mergedGuidance,
+          externalRagTemplateCorpus: input.externalRagTemplateCorpus ?? ragResultsResponse?.external_rag_template_corpus,
         });
         if (searchLibraryDevices) {
           plan = await resolveDraftPlanDevices(plan, async (query) =>

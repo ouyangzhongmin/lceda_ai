@@ -3,6 +3,7 @@ import * as assert from "node:assert/strict";
 
 import { createApiApplyPlanAdapter } from "../applyPlanByApi";
 import { generateDraftPlanFromPrompt } from "../../apply-plan/generateDraftPlan";
+import { applyDevboardRagCompletion } from "../../apply-plan/devboardRagCompletion";
 import { resolveHostEditorBridge } from "../runtime";
 
 function markAllPinsResolved<T extends { pins: Array<Record<string, any>> }>(draft: T): T {
@@ -13,6 +14,47 @@ function markAllPinsResolved<T extends { pins: Array<Record<string, any>> }>(dra
     pin.pinResolutionStatus = "resolved";
   }
   return draft;
+}
+
+function attachPlacementDeviceForRagTemplateParts<T extends { components: Array<Record<string, any>> }>(draft: T): T {
+  let ragIndex = 0;
+  for (const component of draft.components) {
+    const properties = component.properties as Record<string, any> | undefined;
+    if (!properties || properties.generated_by !== "rag_template") {
+      continue;
+    }
+    ragIndex += 1;
+    properties.device_uuid = properties.device_uuid || `rag-device-${ragIndex}`;
+    properties.library_uuid = properties.library_uuid || `rag-lib-${ragIndex}`;
+  }
+  return draft;
+}
+
+function seedRuleCompletionEnRcSupportPart<T extends { components: Array<Record<string, any>> }>(draft: T): T {
+  const exists = draft.components.some((component) => {
+    const properties = component.properties as Record<string, any> | undefined;
+    return properties?.generated_by === "rule_completion" && properties?.completion_role === "mcu_en_rc";
+  });
+  if (!exists) {
+    draft.components.push({
+      id: "rule-mcu-en-rc-existing",
+      ref: "C99",
+      name: "Capacitor",
+      value: "1uF",
+      properties: {
+        generated_by: "rule_completion",
+        completion_role: "mcu_en_rc",
+      },
+    });
+  }
+  return draft;
+}
+
+function enrichDraftWithResolvableRagSupportParts<T extends { components: Array<Record<string, any>> }>(draft: T): T {
+  const completed = applyDevboardRagCompletion(draft as any) as T;
+  seedRuleCompletionEnRcSupportPart(completed);
+  attachPlacementDeviceForRagTemplateParts(completed);
+  return completed;
 }
 
 test("createApiApplyPlanAdapter does not report apply success when no host invoker exists", async () => {
@@ -197,7 +239,7 @@ test("createApiApplyPlanAdapter applies components and skips unresolved connecti
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "partial wiring",
     rationale: "test",
     components: [
@@ -266,7 +308,7 @@ test("createApiApplyPlanAdapter applies components and skips unresolved connecti
         nodeIds: ["draft-r1-2", "draft-d1-k"],
       },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
@@ -317,7 +359,7 @@ test("createApiApplyPlanAdapter still succeeds when components are placed even i
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "all skipped",
     rationale: "test",
     components: [
@@ -361,7 +403,7 @@ test("createApiApplyPlanAdapter still succeeds when components are placed even i
         nodeIds: ["draft-u1-out", "draft-u2-in"],
       },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
@@ -403,7 +445,7 @@ test("createApiApplyPlanAdapter places power on the left, controller in the midd
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "functional layout",
     rationale: "test",
     components: [
@@ -466,7 +508,7 @@ test("createApiApplyPlanAdapter places power on the left, controller in the midd
       { id: "n3", name: "I2S", nodeIds: ["p3", "p4"] },
       { id: "n4", name: "SPK", nodeIds: ["p4", "p5"] },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
@@ -530,7 +572,7 @@ test("createApiApplyPlanAdapter prefers net labels for long-distance nets when h
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "long net label",
     rationale: "test",
     components: [
@@ -576,7 +618,7 @@ test("createApiApplyPlanAdapter prefers net labels for long-distance nets when h
         nodeIds: ["draft-u1-bclk", "draft-u2-bclk"],
       },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
@@ -652,7 +694,7 @@ test("createApiApplyPlanAdapter labelizes long-distance multi-endpoint nets with
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "multi endpoint label",
     rationale: "test",
     components: [
@@ -696,15 +738,24 @@ test("createApiApplyPlanAdapter labelizes long-distance multi-endpoint nets with
         nodeIds: ["draft-u1-scl", "draft-u2-scl", "draft-u3-scl"],
       },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
   assert.equal(result.applied, true);
-  assert.equal(createdLabels.length, 3);
-  assert.equal(createdWires.length, 3);
-  assert.equal(createdLabels.every((item) => item.name === "I2C_SCL"), true);
-  assert.equal(createdWires.every((item) => item.name === undefined), true);
+  const sclLabels = createdLabels.filter((item) => item.name === "I2C_SCL");
+  const sclStubWires = createdWires.filter((item) => {
+    const [x1, y1, x2, y2] = item.line;
+    return (
+      item.name === undefined &&
+      item.line.length === 4 &&
+      y1 === 220 &&
+      y2 === 220 &&
+      Math.abs((x2 ?? 0) - (x1 ?? 0)) === 40
+    );
+  });
+  assert.equal(sclLabels.length, 3);
+  assert.equal(sclStubWires.length, 3);
 
   (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
 });
@@ -770,7 +821,7 @@ test("createApiApplyPlanAdapter keeps standard bus names but rewrites business s
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "role aware names",
     rationale: "test",
     components: [
@@ -839,7 +890,7 @@ test("createApiApplyPlanAdapter keeps standard bus names but rewrites business s
         nodeIds: ["draft-u1-en", "draft-u2-en"],
       },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
@@ -903,7 +954,7 @@ test("createApiApplyPlanAdapter rewrites microphone amplifier usb and button bus
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "business role names",
     rationale: "test",
     components: [
@@ -929,7 +980,7 @@ test("createApiApplyPlanAdapter rewrites microphone amplifier usb and button bus
       { id: "net-usb", name: "USB_POWER", nodeIds: ["draft-u1-vbus", "draft-j1-vbus"] },
       { id: "net-btn", name: "BUTTON_BOOT", nodeIds: ["draft-u1-boot", "draft-s1-boot"] },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
@@ -979,7 +1030,7 @@ test("createApiApplyPlanAdapter infers readable labels from pin semantics when r
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "semantic pin names",
     rationale: "test",
     components: [
@@ -997,7 +1048,7 @@ test("createApiApplyPlanAdapter infers readable labels from pin semantics when r
       { id: "net-23", name: "NET_23", nodeIds: ["draft-u1-dout", "draft-u2-din"] },
       { id: "net-24", name: "N$17", nodeIds: ["draft-u1-ws", "draft-u3-ws"] },
     ],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
@@ -1029,7 +1080,7 @@ test("createApiApplyPlanAdapter keeps fallback placements inside the drawing fra
   };
 
   const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
-  const draft = {
+  const draft = enrichDraftWithResolvableRagSupportParts({
     title: "bounded placements",
     rationale: "test",
     components: Array.from({ length: 12 }, (_, index) => ({
@@ -1043,14 +1094,73 @@ test("createApiApplyPlanAdapter keeps fallback placements inside the drawing fra
     })),
     pins: [],
     nets: [],
-  } as any;
+  } as any);
 
   const result = await adapter.apply(draft);
 
   assert.equal(result.applied, true);
-  assert.equal(createdComponents.length, 12);
+  assert.equal(createdComponents.length >= 12, true);
   assert.equal(createdComponents.every((item) => item.x >= 80 && item.x <= 1080), true);
   assert.equal(createdComponents.every((item) => item.y >= 100 && item.y <= 720), true);
+
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
+});
+
+test("createApiApplyPlanAdapter places rag-template support parts inside the drawing frame", async () => {
+  const originalEda = (globalThis as typeof globalThis & { eda?: unknown }).eda;
+  const createdComponents: Array<{ uuid?: string; x: number; y: number }> = [];
+  (globalThis as typeof globalThis & { eda?: unknown }).eda = {
+    sch_PrimitiveComponent: {
+      create: async (payload: { uuid?: string }, x: number, y: number) => {
+        createdComponents.push({ uuid: payload.uuid, x, y });
+        return {
+          getState_PrimitiveId: () => `cmp-${payload.uuid}`,
+        };
+      },
+      getAllPinsByPrimitiveId: async () => [],
+    },
+    sch_PrimitiveWire: {
+      create: async () => ({
+        getState_PrimitiveId: () => "wire-1",
+      }),
+    },
+  };
+
+  const adapter = createApiApplyPlanAdapter(undefined, { typedPlacementEnabled: true });
+  const draft = applyDevboardRagCompletion({
+    title: "devboard rag placement",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-u1",
+        ref: "U1",
+        name: "ESP32-S3",
+        properties: {
+          device_uuid: "mcu-device",
+          library_uuid: "mcu-lib",
+        },
+      },
+    ],
+    pins: [],
+    nets: [{ id: "n-3v3", name: "3V3", nodeIds: [], isPower: true }],
+  } as any);
+  attachPlacementDeviceForRagTemplateParts(draft);
+
+  const ragParts = draft.components.filter((item) => item.properties?.generated_by === "rag_template");
+  assert.equal(ragParts.length > 0, true);
+  const ragDeviceUuids = ragParts
+    .map((item) => String(item.properties?.device_uuid || ""))
+    .filter((item) => item.length > 0);
+  assert.equal(ragDeviceUuids.length, ragParts.length);
+
+  const result = await adapter.apply(draft);
+  assert.equal(result.applied, true);
+  const createdRagPlacements = createdComponents.filter((item) => ragDeviceUuids.includes(String(item.uuid || "")));
+  assert.equal(createdRagPlacements.length, ragParts.length);
+  assert.equal(
+    createdComponents.every((item) => item.x >= 80 && item.x <= 1080 && item.y >= 100 && item.y <= 720),
+    true
+  );
 
   (globalThis as typeof globalThis & { eda?: unknown }).eda = originalEda;
 });

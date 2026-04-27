@@ -49,6 +49,7 @@ class CrawlConfig:
     allowed_domains: list[str]
     include_path_keywords: list[str] = field(default_factory=list)
     exclude_path_keywords: list[str] = field(default_factory=list)
+    follow_links: bool = True
     kb_type: str = "principle"
     source_type: str = "official_doc"
     lang: str = "zh-CN"
@@ -159,7 +160,60 @@ def extract_clean_text(html: str) -> tuple[str, str]:
             lines.append(text)
     content = "\n".join(lines)
     content = re.sub(r"\n{3,}", "\n\n", content).strip()
+    content = trim_known_noise_sections(content)
     return title, content
+
+
+def trim_known_noise_sections(content: str) -> str:
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    if not lines:
+        return ""
+
+    trimmed = [line for line in lines if line not in {"Show side navigation"}]
+
+    tool_tail_markers = [
+        "Resources and Products",
+        "SSPMG User Guide",
+        "User Guide",
+        "EliteSiC Family",
+    ]
+    for marker in tool_tail_markers:
+        if marker in trimmed:
+            idx = trimmed.index(marker)
+            if idx >= 4:
+                trimmed = trimmed[:idx]
+                break
+
+    # Drop repeated marketplace/cart fragments from the tail.
+    while trimmed and trimmed[-1] in {
+        "Cart",
+        "Checkout",
+        "Continue Shopping",
+        "Loading...",
+        "New message",
+        "Item Name",
+    }:
+        trimmed.pop()
+
+    tail_markers = [
+        "Browse videos",
+        "Products",
+        "Applications",
+        "You May Be Interested In",
+        "Support and Community",
+        "Product Recommendation Tools+",
+        "Technical Documentation & Models",
+        "Interactive Block",
+        "Item Name",
+    ]
+    for marker in tail_markers:
+        if marker in trimmed:
+            idx = trimmed.index(marker)
+            if idx > 0:
+                trimmed = trimmed[:idx]
+                break
+
+    return "\n".join(trimmed).strip()
 
 
 def _slugify(text: str) -> str:
@@ -207,7 +261,60 @@ def is_low_value_page(url: str, title: str, content: str) -> bool:
         "terms of use",
         "website feedback",
     ]
-    return any(k in target for k in keywords)
+    if any(k in target for k in keywords):
+        return True
+
+    lower_url = url.lower()
+    lower_title = title.lower()
+    lower_content = content.lower()
+    content_head = lower_content[:1500]
+
+    navigation_signals = [
+        "show side navigation",
+        "filters",
+        "quick reference",
+        "export",
+        "clear all",
+        "view all products",
+        "browse by category",
+        "parametric-filter",
+    ]
+    if sum(1 for signal in navigation_signals if signal in content_head) >= 2:
+        return True
+
+    if "interactive block diagrams" in content_head and any(
+        signal in content_head for signal in ("solution subgroup", "diagram subgroup", '"children"', '"path"')
+    ):
+        return True
+
+    if any(keyword in lower_title for keyword in ("seminar", "研讨会", "セミナー", "세미나")) and any(
+        signal in lower_content for signal in ("register", "registration", "check-in", "会场", "會場", "会議議程", "日時", "등록", "報名")
+    ):
+        return True
+
+    if ("technical documentation" in lower_title or "/technical-documentation" in lower_url) and any(
+        signal in content_head
+        for signal in ("document type", "application notes", "datasheet", "eval board", "drawing:", "reference manuals")
+    ):
+        return True
+
+    if ("power management" in lower_title or "/power-management/" in lower_url) and any(
+        signal in content_head for signal in ("view all products", "browse by category", "products", "power trends")
+    ):
+        return True
+
+    if any(keyword in lower_url for keyword in ("webinar", "resources")) or any(
+        keyword in lower_title for keyword in ("resources", "library", "webinars")
+    ) or any(
+        keyword in content_head for keyword in ("webinar details", "on-demand", "top resources")
+    ):
+        if any(
+            signal in content_head
+            for signal in ("top resources", "white paper", "presentation", "video", "download", "view", "re-watch now", "webinar details", "on-demand")
+        ):
+            return True
+
+    return False
 
 
 def is_auth_redirect_url(url: str) -> bool:
@@ -574,7 +681,7 @@ def crawl(cfg: CrawlConfig, verbose: bool = True, output_path: Path | None = Non
                 append_jsonl_row(output_file, rows[-1])
                 emit_log(verbose, f"[write-row] total={len(rows)} path={output_file}")
 
-            if content_type == "html":
+            if content_type == "html" and cfg.follow_links:
                 discovered = extract_links(payload, url, set(cfg.allowed_domains))
                 emit_log(verbose, f"[links] url={url} discovered={len(discovered)}")
                 for link in discovered:

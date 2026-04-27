@@ -100,6 +100,7 @@ function summarizeMessages(messages: LlmMessage[]): unknown[] {
       return {
         role: message.role,
         content: clipText(message.content),
+        reasoning_content: clipText(message.reasoning_content),
         tool_calls: (message.tool_calls ?? []).map((call) => ({
           id: call.id,
           type: call.type,
@@ -143,12 +144,25 @@ function debugLog(label: string, payload: unknown): void {
   console.log(`[LCEDA-AI][custom-llm] ${label}`, payload);
 }
 
-function mapMessages(messages: LlmMessage[]): Array<Record<string, unknown>> {
+function modelRequiresReasoningReplay(model: string | undefined): boolean {
+  const normalized = String(model || "").trim().toLowerCase();
+  return normalized.includes("deepseek");
+}
+
+function mapMessages(messages: LlmMessage[], model?: string): Array<Record<string, unknown>> {
+  const requiresReasoningReplay = modelRequiresReasoningReplay(model);
   return messages.map((m) => {
     if (m.role === "assistant") {
+      if (requiresReasoningReplay && !m.reasoning_content && !m.tool_calls?.length) {
+        return {
+          role: "user",
+          content: `上轮助手回复（供延续上下文，不需要逐字复述）：\n${m.content ?? ""}`,
+        };
+      }
       return {
         role: m.role,
         content: m.content,
+        reasoning_content: m.reasoning_content,
         tool_calls: m.tool_calls,
       };
     }
@@ -249,7 +263,7 @@ export class OpenAiCompatibleClient {
       headers: toHeaders(cfg.apiKey),
       body: JSON.stringify({
         model: cfg.model,
-        messages: mapMessages(input.messages),
+        messages: mapMessages(input.messages, cfg.model),
         tools: normalizedTools,
         tool_choice: input.tool_choice,
         stream: false,
@@ -277,7 +291,12 @@ export class OpenAiCompatibleClient {
     });
     // For reasoner models, reasoning may be provided out-of-band. Keep backward compatibility
     // by falling back to reasoning text only when final content is empty.
-    return { model: payload?.model ?? cfg.model, output_text: output || reasoning, tool_calls: toolCalls };
+    return {
+      model: payload?.model ?? cfg.model,
+      output_text: output || reasoning,
+      output_reasoning_text: reasoning || undefined,
+      tool_calls: toolCalls,
+    };
   }
 
   async generateStream(
@@ -324,7 +343,7 @@ export class OpenAiCompatibleClient {
       },
       body: JSON.stringify({
         model: cfg.model,
-        messages: mapMessages(input.messages),
+        messages: mapMessages(input.messages, cfg.model),
         tools: normalizedTools,
         tool_choice: input.tool_choice,
         stream: true,

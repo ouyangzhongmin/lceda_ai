@@ -111,6 +111,19 @@ test("generateDraftPlanFromPrompt builds LED draft instead of misrouting 5V LED 
   assert.equal(plan.pins.find((pin) => pin.id === "draft-d1-k")?.pinNumber, "2");
 });
 
+test("generateDraftPlanFromPrompt keeps ESP32-S3 voice device requests from falling back to LDO", () => {
+  const plan = generateDraftPlanFromPrompt(
+    "设计一个基于ESP32-S3的带锂电池及充电一体的小智AI语音聊天设备原理图。包含 USB 5V、3.3V 稳压、麦克风和功放。"
+  );
+
+  assert.equal(plan.title, "ESP32-S3 Voice Device Draft");
+  assert.equal(plan.components.some((component) => /ESP32-S3/i.test(component.name ?? "")), true);
+  assert.equal(plan.components.some((component) => /INMP441/i.test(component.name ?? "")), true);
+  assert.equal(plan.components.some((component) => /MAX98357A/i.test(component.name ?? "")), true);
+  assert.equal(plan.components.some((component) => /USB-C/i.test(component.name ?? "")), true);
+  assert.equal(plan.title === "5V to 3.3V LDO Draft", false);
+});
+
 test("normalizeDraftPlan converts legacy connections into pins and nets", () => {
   const normalized = normalizeDraftPlan({
     title: "5V LED Indicator Draft",
@@ -238,6 +251,87 @@ test("buildDraftMessages includes markdown detail report alongside structured su
   assert.equal(messages[0]?.reportMarkdown?.includes("## 下一步"), true);
 });
 
+test("buildDraftMessages keeps next-step narrative aligned with blocked rerun-only actions", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "U3"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+    draftRisk: {
+      level: "blocked",
+      issueCount: 2,
+      highSeverityCount: 1,
+      message: "存在阻断项，当前不能直接应用。",
+    },
+  });
+
+  assert.deepEqual(messages[0]?.actions?.map((item) => item.action), ["rerun"]);
+  assert.equal(messages[0]?.content?.includes("点击“应用草案”"), false);
+  assert.equal(messages[0]?.content?.includes("点击卡片底部的“重新分析”"), true);
+  assert.equal(messages[0]?.reportMarkdown?.includes("点击卡片底部的“重新分析”"), true);
+});
+
+test("buildDraftMessages keeps next-step narrative aligned with apply actions", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U2", "U3"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 3,
+      netCount: 4,
+    },
+  });
+
+  assert.deepEqual(messages[0]?.actions?.map((item) => item.action), ["apply_draft", "rollback"]);
+  assert.equal(messages[0]?.content?.includes("点击“应用草案”"), true);
+  assert.equal(messages[0]?.content?.includes("重新分析"), false);
+  assert.equal(messages[0]?.reportMarkdown?.includes("点击“应用草案”"), true);
+});
+
+test("buildDraftMessages prefers select devices over blocked rerun when devices are unresolved", () => {
+  const agent = createAgent();
+  const messages = agent.buildDraftMessages({
+    draftNarrative: [
+      "# 草案",
+      "",
+      "## 如何应用草案",
+      "1. 点击「应用草案」按钮",
+      "2. 系统将自动放置 26 个已匹配器件并完成网络标签连接",
+      "如果找不到应用按钮，请按 Ctrl+D。",
+    ].join("\n"),
+    draftPreview: {
+      title: "ESP32-S3 Voice Draft",
+      rationale: "Portable voice chat device draft.",
+      componentRefs: ["U1", "U5", "J1"],
+      netNames: ["5V", "VBAT", "3V3", "GND"],
+      componentCount: 31,
+      netCount: 12,
+      unresolvedDeviceDetails: [
+        "U5 / microphone: unresolved (no_search_results) query=INMP441",
+        "J1 / power_connector: unresolved (no_search_results) query=TYPE-C 16PIN",
+      ],
+    },
+    draftRisk: {
+      level: "blocked",
+      issueCount: 2,
+      highSeverityCount: 2,
+      message: "存在未确认器件，暂不允许直接应用。",
+    },
+  });
+
+  assert.deepEqual(messages[0]?.actions?.map((item) => item.action), ["select_devices"]);
+  assert.equal(messages[0]?.content?.includes("点击「应用草案」"), false);
+  assert.equal(messages[0]?.content?.includes("Ctrl+D"), false);
+  assert.equal(messages[0]?.content?.includes("点击“选择器件”"), true);
+});
+
 test("buildDraftMessages prefers draftNarrative as the lead answer when present", () => {
   const agent = createAgent();
   const messages = agent.buildDraftMessages({
@@ -303,7 +397,8 @@ test("buildDraftMessages prefers full markdown draft content over structured sum
     },
   });
 
-  assert.equal(messages[0]?.content, markdownDraft);
+  assert.equal(messages[0]?.content?.startsWith(markdownDraft), true);
+  assert.equal(messages[0]?.content?.includes("## 当前可用操作"), true);
   assert.equal(messages[0]?.structuredContent, undefined);
   assert.equal(messages[0]?.reportMarkdown, undefined);
 });
@@ -552,4 +647,15 @@ test("resolveTurnDisposition uses result fallback for natural_chat", () => {
   } as any);
 
   assert.equal(disposition.route, "draft");
+});
+
+test("resolveTurnDisposition uses modify fallback when result is an existing-schematic modification", () => {
+  const disposition = resolveTurnDisposition("natural_chat", {
+    summary: "ok",
+    toolTraceNames: [],
+    selectedSkill: "modify_existing_schematic",
+    analysisMarkdown: "已整理当前图修改方案",
+  } as any);
+
+  assert.equal(disposition.route, "modify");
 });

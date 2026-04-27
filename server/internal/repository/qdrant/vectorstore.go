@@ -35,6 +35,10 @@ type VectorStore interface {
 	Search(query SearchQuery) ([]SearchHit, error)
 }
 
+type ExternalRagTemplateCorpusProvider interface {
+	ExternalRagTemplateCorpus() any
+}
+
 type RetrieverAdapter struct {
 	store VectorStore
 }
@@ -65,6 +69,13 @@ func (a *RetrieverAdapter) Search(query domainrag.SearchQuery) ([]domainrag.Sear
 		})
 	}
 	return results, nil
+}
+
+func (a *RetrieverAdapter) ExternalRagTemplateCorpus() any {
+	if provider, ok := a.store.(ExternalRagTemplateCorpusProvider); ok {
+		return provider.ExternalRagTemplateCorpus()
+	}
+	return nil
 }
 
 type QdrantVectorStore struct {
@@ -244,4 +255,16 @@ func (s *FallbackVectorStore) Search(query SearchQuery) ([]SearchHit, error) {
 	}
 
 	return nil, errors.New("no available vector store")
+}
+
+func (s *FallbackVectorStore) ExternalRagTemplateCorpus() any {
+	if provider, ok := s.primary.(ExternalRagTemplateCorpusProvider); ok {
+		if corpus := provider.ExternalRagTemplateCorpus(); corpus != nil {
+			return corpus
+		}
+	}
+	if provider, ok := s.fallback.(ExternalRagTemplateCorpusProvider); ok {
+		return provider.ExternalRagTemplateCorpus()
+	}
+	return nil
 }

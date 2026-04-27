@@ -11,6 +11,10 @@ type RagHandler struct {
 	service ragService
 }
 
+type ragExternalTemplateCorpusProvider interface {
+	ExternalRagTemplateCorpus(query string, topK int) any
+}
+
 func NewRagHandler(service ragService) *RagHandler {
 	return &RagHandler{service: service}
 }
@@ -41,7 +45,13 @@ func (h *RagHandler) Search(c *gin.Context) {
 			trimForLog(r.Snippet, 220),
 		)
 	}
-	ginSuccess(c, map[string]any{"results": results})
+	data := map[string]any{"results": results}
+	if provider, ok := h.service.(ragExternalTemplateCorpusProvider); ok {
+		if corpus := provider.ExternalRagTemplateCorpus(req.Query, req.TopK); corpus != nil {
+			data["external_rag_template_corpus"] = corpus
+		}
+	}
+	ginSuccess(c, data)
 }
 
 func (h *RagHandler) BuildCitations(c *gin.Context) {

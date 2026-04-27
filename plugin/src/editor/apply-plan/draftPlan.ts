@@ -1,4 +1,5 @@
 import type { SchematicComponent, SchematicNet, SchematicPin } from "../../types/schematic";
+import type { DevboardRagTemplateCorpusEntry } from "./devboardRagTemplates";
 
 export type DraftPlanningMode = "auto" | "structured_spec_required";
 
@@ -81,6 +82,17 @@ export interface DraftPlan {
   nets: SchematicNet[];
   selectedDevices?: DraftPlanSelectedDevice[];
   guidance?: DraftPlanGuidance;
+  externalRagTemplateCorpus?: DevboardRagTemplateCorpusEntry[];
+  ragTemplateSummary?: {
+    appliedTemplateIds: string[];
+    suggestedTemplateIds: string[];
+    addedComponentCount: number;
+    suggestionReasons?: string[];
+    appliedSourceKinds?: Array<"local_seed" | "lceda_open_source_extract">;
+    suggestedSourceKinds?: Array<"local_seed" | "lceda_open_source_extract">;
+    appliedSourceRefs?: string[];
+    suggestedSourceRefs?: string[];
+  };
   completionSummary?: {
     addedComponentCount: number;
     templateIds: string[];
@@ -108,4 +120,14 @@ export interface DraftPreview {
   };
   completedPeripheralCount?: number;
   completedPeripheralTemplates?: string[];
+  ragTemplateSummary?: {
+    appliedTemplateIds?: string[];
+    suggestedTemplateIds?: string[];
+    addedComponentCount?: number;
+    suggestionReasons?: string[];
+    appliedSourceKinds?: Array<"local_seed" | "lceda_open_source_extract">;
+    suggestedSourceKinds?: Array<"local_seed" | "lceda_open_source_extract">;
+    appliedSourceRefs?: string[];
+    suggestedSourceRefs?: string[];
+  };
 }

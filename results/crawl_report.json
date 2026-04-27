@@ -1,67 +1,63 @@
 {
-  "crawled_rows_before_cleanup": 220,
-  "rows_after_cleanup": 249,
-  "pdf_source_count": 32,
-  "pdf_source_rate": 12.85,
+  "crawled_rows_before_cleanup": 10,
+  "rows_after_cleanup": 10,
+  "pdf_source_count": 2,
+  "pdf_source_rate": 20.0,
   "topic_distribution_top10": [
     [
-      "interactive-block-diagrams",
-      125
-    ],
-    [
-      "power-management",
-      35
-    ],
-    [
-      "download",
-      32
-    ],
-    [
-      "power-trees",
-      15
-    ],
-    [
-      "powersolutions",
-      5
-    ],
-    [
-      "about-ti",
-      5
-    ],
-    [
-      "video",
-      4
-    ],
-    [
-      "resources",
+      "lit",
       2
     ],
     [
-      "system-solution-guides",
-      2
+      "current-sense-design-tool",
+      1
     ],
     [
-      "tools-software",
-      2
+      "elite-power-simulator",
+      1
+    ],
+    [
+      "self-service-plecs-model-generator",
+      1
+    ],
+    [
+      "design-high-frequency-series-capacitor-buck-converter",
+      1
+    ],
+    [
+      "design-review-2-kw-parallelable-power-supply-module",
+      1
+    ],
+    [
+      "design-review-350-w-ccm-pfc-llc-module",
+      1
+    ],
+    [
+      "designing-high-power-bidirectional-acdc-power-supply-using-sic-fets",
+      1
+    ],
+    [
+      "designing-low-emi-power-converters-industrial-automotive-systems",
+      1
     ]
   ],
   "vendor_distribution": [
     [
+      "training.ti.com",
+      5
+    ],
+    [
       "onsemi.com",
-      193
+      3
     ],
     [
       "ti.com",
-      50
-    ],
-    [
-      "training.ti.com",
-      6
+      2
     ]
   ],
   "cleanup_summary": {
-    "removed_low_value_files": 1,
-    "removed_duplicate_rows": 185,
-    "removed_empty_files": 1
+    "removed_low_value_files": 0,
+    "removed_duplicate_rows": 0,
+    "removed_empty_files": 0
   }
 }

@@ -92,7 +92,7 @@ export interface AgentIterationStep {
   observationTexts: string[];
 }
 
-export type AgentRoute = "chat" | "analysis" | "draft";
+export type AgentRoute = "chat" | "analysis" | "draft" | "modify";
 
 export type AgentPlanStepKind = "context" | "mcp" | "rules" | "library" | "llm" | "draft";
 

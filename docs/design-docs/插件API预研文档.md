@@ -237,7 +237,7 @@
 
 ### 9.1 服务端登录闭环
 - 验证命令：
-  - `BASE_URL=http://127.0.0.1:18081 node scripts/dev/run-login-poc.mjs`
+  - `BASE_URL=http://127.0.0.1:18081 node scripts/download/run-login-poc.mjs`
 - 验证结果：
   - 已成功完成创建登录会话、查询状态、发送验证码、校验验证码、交换 token、刷新 token。
 - 结论：

@@ -1,5 +1,7 @@
 import type { SchematicComponent, SchematicNet } from "../../types/schematic";
 import type { DraftPlan } from "./draftPlan";
+import { applyDevboardRagCompletion } from "./devboardRagCompletion";
+import { importDevboardRagTemplateCorpus } from "./devboardRagTemplates";
 
 type CompletionTemplateId =
   | "esp32_s3_support"
@@ -177,6 +179,9 @@ const COMPLETION_TEMPLATES: CompletionTemplate[] = [
 ];
 
 export function completeDraftPlanPeripherals(plan: DraftPlan): DraftPlan {
+  const externalTemplates = plan.externalRagTemplateCorpus
+    ? importDevboardRagTemplateCorpus(plan.externalRagTemplateCorpus)
+    : undefined;
   const templateIds = inferTemplates(plan);
   if (templateIds.length === 0) {
     const existingRefs = plan.components
@@ -190,7 +195,7 @@ export function completeDraftPlanPeripherals(plan: DraftPlan): DraftPlan {
           .filter((item): item is string => Boolean(item))
       )
     );
-    return {
+    const completedByRules: DraftPlan = {
       ...plan,
       completionSummary: {
         addedComponentCount: existingRefs.length,
@@ -198,6 +203,7 @@ export function completeDraftPlanPeripherals(plan: DraftPlan): DraftPlan {
         addedRefs: existingRefs,
       },
     };
+    return applyDevboardRagCompletion(completedByRules, { externalTemplates });
   }
 
   const nextPlan: DraftPlan = {
@@ -251,7 +257,7 @@ export function completeDraftPlanPeripherals(plan: DraftPlan): DraftPlan {
           )
         );
 
-  return {
+  const completedByRules: DraftPlan = {
     ...nextPlan,
     completionSummary: {
       addedComponentCount: effectiveAddedRefs.length,
@@ -259,4 +265,6 @@ export function completeDraftPlanPeripherals(plan: DraftPlan): DraftPlan {
       addedRefs: effectiveAddedRefs,
     },
   };
+
+  return applyDevboardRagCompletion(completedByRules, { externalTemplates });
 }

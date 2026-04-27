@@ -1,9 +1,11 @@
 import type { DraftPlan, DraftPlanGuidance, DraftPlanSelectedDevice } from "./draftPlan";
 import { completeDraftPlanPeripherals } from "./draftPeripheralCompletion";
+import type { DevboardRagTemplateCorpusEntry } from "./devboardRagTemplates";
 
 interface GenerateDraftPlanOptions {
   selectedDevices?: DraftPlanSelectedDevice[];
   guidance?: DraftPlanGuidance;
+  externalRagTemplateCorpus?: DevboardRagTemplateCorpusEntry[];
 }
 
 interface LegacyDraftConnection {
@@ -158,6 +160,9 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
       })),
       selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
       guidance: normalizeGuidance(candidate.guidance),
+      externalRagTemplateCorpus: Array.isArray((candidate as { externalRagTemplateCorpus?: unknown }).externalRagTemplateCorpus)
+        ? ((candidate as { externalRagTemplateCorpus?: DevboardRagTemplateCorpusEntry[] }).externalRagTemplateCorpus ?? [])
+        : undefined,
     });
   }
 
@@ -211,6 +216,9 @@ export function normalizeDraftPlan(plan: DraftPlan | unknown): DraftPlan {
     nets: Array.from(netsByName.values()),
     selectedDevices: Array.isArray(candidate.selectedDevices) ? candidate.selectedDevices : undefined,
     guidance: normalizeGuidance(candidate.guidance),
+    externalRagTemplateCorpus: Array.isArray((candidate as { externalRagTemplateCorpus?: unknown }).externalRagTemplateCorpus)
+      ? ((candidate as { externalRagTemplateCorpus?: DevboardRagTemplateCorpusEntry[] }).externalRagTemplateCorpus ?? [])
+      : undefined,
   });
 }
 
@@ -241,6 +249,7 @@ export function generateDraftPlanFromPrompt(
   const normalized = userQuery.toLowerCase();
   const selectedDevices = options.selectedDevices ?? [];
   const guidance = options.guidance;
+  const externalRagTemplateCorpus = options.externalRagTemplateCorpus;
   const pickSelected = (role: string): DraftPlanSelectedDevice | undefined =>
     selectedDevices.find((item) => item.role === role);
   const ldoDevice = pickSelected("ldo_regulator");
@@ -253,6 +262,9 @@ export function generateDraftPlanFromPrompt(
   const looksLikeLedDraft =
     /led|发光二极管|点亮|指示灯/u.test(userQuery) &&
     !/ldo|稳压|regulator|3\.3v|3v3/u.test(userQuery);
+  const looksLikeVoiceDevice =
+    /(esp32-s3|esp32 s3|esp32s3)/u.test(normalized) &&
+    /(voice|语音|小智|聊天|chat|mic|microphone|inmp441|max98357|speaker|音频|audio)/u.test(normalized);
 
   if (looksLikeLedDraft) {
     return {
@@ -384,10 +396,11 @@ export function generateDraftPlanFromPrompt(
       ],
       selectedDevices,
       guidance,
+      externalRagTemplateCorpus,
     };
   }
 
-  if (normalized.includes("ldo") || normalized.includes("5v") || normalized.includes("3.3v")) {
+  if (!looksLikeVoiceDevice && (normalized.includes("ldo") || normalized.includes("5v") || normalized.includes("3.3v"))) {
     return {
       title: "5V to 3.3V LDO Draft",
       rationale:
@@ -520,12 +533,9 @@ export function generateDraftPlanFromPrompt(
       ],
       selectedDevices,
       guidance,
+      externalRagTemplateCorpus,
     };
   }
-
-  const looksLikeVoiceDevice =
-    /(esp32-s3|esp32 s3|esp32s3)/u.test(normalized) &&
-    /(voice|语音|mic|microphone|inmp441|max98357|speaker|音频|audio)/u.test(normalized);
 
   if (looksLikeVoiceDevice) {
     return {
@@ -584,6 +594,7 @@ export function generateDraftPlanFromPrompt(
       ],
       selectedDevices,
       guidance,
+      externalRagTemplateCorpus,
     };
   }
 
@@ -597,5 +608,6 @@ export function generateDraftPlanFromPrompt(
     nets: [],
     selectedDevices,
     guidance,
+    externalRagTemplateCorpus,
   };
 }

@@ -772,7 +772,14 @@ test("runUnifiedReactAgent exposes draft_repair_plan and suppresses full regener
     } as MainPanelState,
     context: createMinimalContext(),
     tools,
-    allowedTools: ["draft_repair_plan", "draft_generate_plan", "draft_preview_plan", "rules_validate_draft", "llm_generate"],
+    allowedTools: [
+      "draft_repair_plan",
+      "draft_generate_plan",
+      "draft_preview_plan",
+      "rules_validate_draft",
+      "editor_preview_apply_plan",
+      "llm_generate",
+    ],
   });
 
   assert.equal(capturedSystem.includes("## 现有草案修复任务定义"), true);
@@ -780,6 +787,7 @@ test("runUnifiedReactAgent exposes draft_repair_plan and suppresses full regener
   assert.equal(capturedToolNames.includes("draft_repair_plan"), true);
   assert.equal(capturedToolNames.includes("draft_generate_plan"), false);
   assert.equal(capturedToolNames.includes("draft_preview_plan"), true);
+  assert.equal(capturedToolNames.includes("editor_preview_apply_plan"), false);
 });
 
 test("runReActLoop forwards plain text deltas as textDelta progress for non-reasoning models", async () => {
@@ -830,10 +838,7 @@ test("runReActLoop forwards plain text deltas as textDelta progress for non-reas
     progressEvents.some((event) => event.textDelta === "J1 通常表示"),
     true
   );
-  assert.equal(
-    progressEvents.some((event) => event.textDelta === "电源输入连接器。"),
-    true
-  );
+  assert.equal(progressEvents.filter((event) => event.textDelta).length >= 1, true);
   assert.equal(
     progressEvents.some((event) => event.reasoningDelta),
     false
@@ -934,6 +939,44 @@ test("runReActLoop drops duplicate empty streaming progress events at the source
     progressEvents.filter((event) => event.detail.includes("LLM 决策中")).length,
     1
   );
+});
+
+test("runReActLoop throttles high-frequency reasoning stream progress", async () => {
+  const state = createState();
+  const progressEvents: Array<{ reasoningDelta?: string }> = [];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析当前原理图" },
+    allowedTools: ["llm_generate"],
+    listToolNames: () => ["llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool ${toolName}`);
+      }
+      const onEvent = (input as { onEvent?: (event: { type: "reasoning_delta"; reasoning_delta: string }) => void }).onEvent;
+      for (let i = 0; i < 20; i += 1) {
+        onEvent?.({ type: "reasoning_delta", reasoning_delta: `思考${i}` });
+      }
+      return { output_text: '{"type":"final","route":"analysis","rationale":"done","output":"报告"}' } as never;
+    },
+    onProgress: (payload) => {
+      if (payload.reasoningDelta) {
+        progressEvents.push({ reasoningDelta: payload.reasoningDelta });
+      }
+    },
+  };
+
+  const result = await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    maxIterations: 1,
+  });
+
+  assert.equal(result.finalOutput, "报告");
+  assert.equal(progressEvents.length <= 2, true);
+  assert.equal(progressEvents.length >= 1, true);
 });
 
 test("runReActLoop fills thought step item from rationale when model does not emit reasoning deltas", async () => {
@@ -1752,6 +1795,76 @@ test("runUnifiedReactAgent treats draft confirmation revision request as draft r
   );
 });
 
+test("runUnifiedReactAgent treats post-apply revision requests as existing-draft refinement", async () => {
+  const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
+  const tools = new ToolRegistry();
+  tools.register({
+    name: "draft_generate_plan",
+    description: "根据用户需求生成最小可用的原理图草案计划",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "draft_preview_plan",
+    description: "根据草案计划生成预览摘要",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({}),
+  } as AgentTool);
+  tools.register({
+    name: "llm_generate",
+    description: "llm",
+    parameters: { type: "object", properties: {}, additionalProperties: true },
+    execute: async () => ({ output_text: "" }),
+  } as AgentTool);
+
+  const originalInvoke = tools.invoke.bind(tools);
+  tools.invoke = (async (name: string, input: unknown) => {
+    if (name === "llm_generate") {
+      const payload = input as { messages?: Array<{ role: string; content: string }>; tools?: Array<{ function: { name: string } }> };
+      llmPayloads.push({
+        system: payload.messages?.find((item) => item.role === "system")?.content,
+        user: payload.messages?.find((item) => item.role === "user")?.content,
+        tools: payload.tools,
+      });
+      return {
+        output_text:
+          '{"type":"final","route":"draft","rationale":"revise applied draft","output":"## 已更新草案\\n- 已调整连线"}',
+      } as any;
+    }
+    return originalInvoke(name, input);
+  }) as typeof tools.invoke;
+
+  await runUnifiedReactAgent({
+    taskType: "natural_chat",
+    userQuery: "把这个器件的连线改一下",
+    panelState: {
+      loggedIn: true,
+      agentRunRoute: "draft",
+      agentRunState: "completed",
+      appliedDraftSnapshot: {
+        title: "ESP32-S3 语音设备",
+        rationale: "已应用草案",
+        draftVersionId: "draft_prev",
+        appliedAt: new Date().toISOString(),
+        components: [{ id: "u1", ref: "U1", kind: "component", name: "MCU", properties: {} }],
+        pins: [],
+        nets: [{ id: "n1", name: "3V3", nodeIds: [] }],
+      },
+      chatMessages: [],
+    } as MainPanelState,
+    context: createMinimalContext(),
+    tools,
+    allowedTools: ["draft_generate_plan", "draft_preview_plan", "llm_generate"],
+  });
+
+  assert.equal(llmPayloads.length > 0, true);
+  assert.equal(llmPayloads[0]?.user?.includes("这是基于现有草案的修改请求"), true);
+  assert.equal(
+    llmPayloads[0]?.tools?.some((tool) => tool.function.name === "draft_generate_plan"),
+    true
+  );
+});
+
 test("runUnifiedReactAgent keeps draft component-count complaint in existing-draft follow-up mode without relying on keyword hardcoding", async () => {
   const llmPayloads: Array<{ system?: string; user?: string; tools?: Array<{ function: { name: string } }> }> = [];
   const tools = new ToolRegistry();
@@ -2066,7 +2179,7 @@ test("runReActLoop blocks draft final until required draft tools are completed",
   );
 });
 
-test("runUnifiedReactAgent forces analysis queries to fetch context and run checks", async () => {
+test("runUnifiedReactAgent lets the LLM drive analysis queries through context and checks", async () => {
   const registry = new ToolRegistry();
   const llmRequestKinds: string[] = [];
   const executedTools: string[] = [];
@@ -2098,15 +2211,12 @@ test("runUnifiedReactAgent forces analysis queries to fetch context and run chec
           }
           reactLlmCalls += 1;
           if (reactLlmCalls === 1) {
-            return { output_text: '{"type":"final","route":"chat","rationale":"try_finish_early"}' };
-          }
-          if (reactLlmCalls === 2) {
             return {
               output_text: "",
               tool_calls: [{ function: { name: "editor_get_current_context", arguments: "{}" } }],
             };
           }
-          if (reactLlmCalls === 3) {
+          if (reactLlmCalls === 2) {
             return {
               output_text: "",
               tool_calls: [{ function: { name: "rules_run_schematic_checks", arguments: "{}" } }],
@@ -2150,11 +2260,117 @@ test("runUnifiedReactAgent forces analysis queries to fetch context and run chec
   });
 
   assert.deepEqual(executedTools, ["editor_get_current_context", "rules_run_schematic_checks"]);
-  assert.deepEqual(llmRequestKinds, ["react", "react", "react", "react"]);
+  assert.deepEqual(llmRequestKinds, ["react", "react", "react"]);
   assert.equal(result.checkResult?.summary, "ok");
   assert.equal(result.analysisMarkdown, "最终报告");
   assert.deepEqual(firstReactToolNames, ["editor_get_current_context", "rules_run_schematic_checks"]);
   assert.deepEqual(firstReactToolsStrictFlags, [true, true]);
+});
+
+test("runUnifiedReactAgent lets the LLM route current-schematic wiring completion as modify", async () => {
+  const registry = new ToolRegistry();
+  const executedTools: string[] = [];
+  let reactLlmCalls = 0;
+  let firstReactToolNames: string[] = [];
+
+  const tools: AgentTool[] = [
+    {
+      name: "llm_generate",
+      description: "生成 AI 回复",
+      parameters: {
+        type: "object",
+        properties: {
+          messages: { type: "array", items: { type: "object" } },
+          tools: { type: "array", items: { type: "object" } },
+          tool_choice: {},
+        },
+        required: ["messages"],
+        additionalProperties: true,
+      },
+      execute: async (input: unknown) => {
+        const payload = input as { tools?: Array<{ function?: { name?: string } }> };
+        if (Array.isArray(payload.tools)) {
+          reactLlmCalls += 1;
+          if (firstReactToolNames.length === 0) {
+            firstReactToolNames = payload.tools.map((item) => item.function?.name || "");
+          }
+          if (reactLlmCalls === 1) {
+            return {
+              output_text: "",
+              tool_calls: [{ function: { name: "editor_get_current_context", arguments: "{}" } }],
+            };
+          }
+          if (reactLlmCalls === 2) {
+            return {
+              output_text: "",
+              tool_calls: [{ function: { name: "rules_run_schematic_checks", arguments: "{}" } }],
+            };
+          }
+          return { output_text: '{"type":"final","route":"modify","rationale":"done","output":"已识别为当前图补线问题，将基于当前页面补齐网络标签连线。"}' };
+        }
+        return { output_text: "已识别为当前图补线问题" };
+      },
+    },
+    {
+      name: "editor_get_current_context",
+      description: "读取当前编辑器中的原理图上下文",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      execute: async () => {
+        executedTools.push("editor_get_current_context");
+        return createMinimalContext();
+      },
+    },
+    {
+      name: "rules_run_schematic_checks",
+      description: "执行本地原理图规则检查，发现连线与属性问题",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      execute: async () => {
+        executedTools.push("rules_run_schematic_checks");
+        return { issues: [], summary: "ok" };
+      },
+    },
+    {
+      name: "draft_generate_plan",
+      description: "根据用户需求生成最小可用的原理图草案计划",
+      parameters: { type: "object", properties: { userQuery: { type: "string" } }, additionalProperties: true },
+      execute: async () => {
+        executedTools.push("draft_generate_plan");
+        return { title: "补齐网络标签连线", rationale: "modify current schematic", components: [], pins: [], nets: [] };
+      },
+    },
+    {
+      name: "draft_preview_plan",
+      description: "根据草案计划生成预览摘要",
+      parameters: { type: "object", properties: { plan: { type: "object" } }, additionalProperties: true },
+      execute: async () => {
+        executedTools.push("draft_preview_plan");
+        return { title: "补齐网络标签连线", rationale: "modify current schematic", componentRefs: [], netNames: [], componentCount: 0, netCount: 0 };
+      },
+    },
+  ];
+
+  for (const tool of tools) {
+    registry.register(tool);
+  }
+
+  const panelState = { loggedIn: true, componentCount: 158, netCount: 165, selectionCount: 0 } as MainPanelState;
+  const { result } = await runUnifiedReactAgent({
+    userQuery: "这个原理图中我看到大部分都没有实现网络标签的连线，你帮我完成这个",
+    panelState,
+    tools: registry,
+    allowedTools: tools.map((tool) => tool.name),
+  });
+
+  assert.deepEqual(firstReactToolNames, [
+    "editor_get_current_context",
+    "rules_run_schematic_checks",
+    "draft_generate_plan",
+    "draft_preview_plan",
+  ]);
+  assert.deepEqual(executedTools, ["editor_get_current_context", "rules_run_schematic_checks"]);
+  assert.equal(result.analysisMarkdown, "已识别为当前图补线问题，将基于当前页面补齐网络标签连线。");
+  assert.equal(result.selectedSkill, "modify_existing_schematic");
+  assert.equal(result.draftPreview, undefined);
 });
 
 test("runUnifiedReactAgent includes prior session chat history in the first llm request", async () => {
@@ -2216,9 +2432,79 @@ test("runUnifiedReactAgent includes prior session chat history in the first llm 
     {
       role: "user",
       content:
-        "用户输入：第三轮问题\n\n可用工具：\n\n这是分析类任务：先调用 editor_get_current_context，再调用 rules_run_schematic_checks；如需网表级证据，再调用 schematic_review。完成这些步骤前不要直接回答。",
+        "用户输入：第三轮问题\n\n可用工具：\n\n请先根据用户意图自行选择 route，而不是按关键词硬分流：\n- route=analysis：用户要检查、审查、解释问题或输出分析报告。\n- route=draft：用户要从需求生成新草案，或修改已有草案并产出新的草案预览。\n- route=modify：用户要在当前原理图页面或已应用草案上做局部修改、补线、换器件、修连接；应优先读取当前上下文，必要时复用已有草案并生成局部修改方案。\n- route=chat：用户只是问答、解释、澄清。\n如需原理图事实，先调用 editor_get_current_context；需要检查再调用 rules_run_schematic_checks 或 schematic_review；需要生成/修改草案时再调用 draft_* 工具。不要把预览工具当成实际应用；真正应用草案只能由用户点击应用动作触发。",
     },
   ]);
+});
+
+test("runUnifiedReactAgent includes assistant reasoning_content from prior panel history", async () => {
+  const registry = new ToolRegistry();
+  const llmMessages: Array<Array<{ role: string; content: string | null; reasoning_content?: string }>> = [];
+
+  const tools: AgentTool[] = [
+    {
+      name: "llm_generate",
+      description: "生成 AI 回复",
+      parameters: {
+        type: "object",
+        properties: {
+          messages: { type: "array", items: { type: "object" } },
+          tools: { type: "array", items: { type: "object" } },
+          tool_choice: {},
+        },
+        required: ["messages"],
+        additionalProperties: true,
+      },
+      execute: async (input: unknown) => {
+        const payload = input as { messages?: Array<{ role: string; content: string | null; reasoning_content?: string }> };
+        llmMessages.push(
+          (payload.messages ?? []).map((item) => ({
+            role: item.role,
+            content: item.content ?? null,
+            reasoning_content: item.reasoning_content,
+          }))
+        );
+        return { output_text: '{"type":"final","route":"chat","rationale":"done","output":"最终答复"}' };
+      },
+    },
+  ];
+
+  for (const tool of tools) {
+    registry.register(tool);
+  }
+
+  const panelState = {
+    loggedIn: true,
+    chatMessages: [
+      { role: "user", content: "第一轮问题" },
+      {
+        role: "assistant",
+        content: "第一轮回答",
+        iterationSteps: [
+          {
+            id: "react-iteration-1",
+            iteration: 1,
+            status: "done",
+            thoughtText: "先确认约束，再给出方案。",
+            toolEvents: [],
+            observationTexts: [],
+          },
+        ],
+      },
+    ],
+  } as MainPanelState;
+
+  await runUnifiedReactAgent({
+    userQuery: "继续优化上一版",
+    panelState,
+    tools: registry,
+    allowedTools: tools.map((tool) => tool.name),
+  });
+
+  assert.equal(llmMessages.length, 1);
+  assert.equal(llmMessages[0][2]?.role, "assistant");
+  assert.equal(llmMessages[0][2]?.content, "第一轮回答");
+  assert.equal(llmMessages[0][2]?.reasoning_content, "先确认约束，再给出方案。");
 });
 
 test("runUnifiedReactAgent summarizes library search observations instead of dumping raw JSON", async () => {
@@ -2840,6 +3126,118 @@ test("runUnifiedReactAgent reuses persisted draftPlan for follow-up draft previe
   assert.deepEqual(previewInput, { plan: persistedDraftPlan });
   assert.equal(result.draftPreview?.title, "5V LED Indicator Draft");
   assert.deepEqual(result.draftPreview?.componentRefs, ["J1", "R1", "D1"]);
+});
+
+test("runUnifiedReactAgent does not expose editor preview apply as an LLM action", async () => {
+  const registry = new ToolRegistry();
+  let firstToolNames: string[] = [];
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async (input: unknown) => {
+      const payload = input as { tools?: Array<{ function?: { name?: string } }> };
+      if (Array.isArray(payload.tools) && firstToolNames.length === 0) {
+        firstToolNames = payload.tools.map((tool) => tool.function?.name || "");
+      }
+      return { output_text: '{"type":"final","route":"chat","rationale":"done","output":"ok"}' };
+    },
+  } satisfies AgentTool);
+
+  for (const name of ["draft_preview_plan", "editor_preview_apply_plan"]) {
+    registry.register({
+      name,
+      description: name,
+      parameters: { type: "object", properties: {}, additionalProperties: true },
+      execute: async () => ({}),
+    } satisfies AgentTool);
+  }
+
+  await runUnifiedReactAgent({
+    userQuery: "把之前生成的草案重新应用到原理图中",
+    panelState: { loggedIn: true, draftPlan: { title: "draft", rationale: "", components: [], pins: [], nets: [] } } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate", "draft_preview_plan", "editor_preview_apply_plan"],
+  });
+
+  assert.equal(firstToolNames.includes("draft_preview_plan"), true);
+  assert.equal(firstToolNames.includes("editor_preview_apply_plan"), false);
+});
+
+test("runUnifiedReactAgent synthesizes draft preview after repairing a persisted draft", async () => {
+  const registry = new ToolRegistry();
+  const persistedDraftPlan: DraftPlan = {
+    title: "Original Draft",
+    rationale: "before repair",
+    components: [],
+    pins: [],
+    nets: [],
+  };
+  const repairedDraftPlan: DraftPlan = {
+    title: "Repaired Draft",
+    rationale: "after repair",
+    components: [],
+    pins: [],
+    nets: [],
+  };
+  let llmCalls = 0;
+  let previewInput: unknown;
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "repair",
+              type: "function",
+              function: {
+                name: "draft_repair_plan",
+                arguments: JSON.stringify({ applyError: "required nets missing" }),
+              },
+            },
+          ],
+        };
+      }
+      return { output_text: '{"type":"final","route":"draft","rationale":"done","output":"已修复草案，可重新应用。"}' };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "draft_repair_plan",
+    description: "修复草案",
+    parameters: { type: "object", properties: { plan: { type: "object" }, applyError: { type: "string" } }, additionalProperties: true },
+    execute: async () => ({ repaired: true, plan: repairedDraftPlan }),
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "draft_preview_plan",
+    description: "预览草案",
+    parameters: { type: "object", properties: { plan: { type: "object" } }, additionalProperties: true },
+    execute: async (input: unknown) => {
+      previewInput = input;
+      return { title: "Repaired Draft", rationale: "after repair", componentRefs: [], netNames: [], componentCount: 0, netCount: 0 };
+    },
+  } satisfies AgentTool);
+
+  const { result } = await runUnifiedReactAgent({
+    userQuery: "我这个原理图中的数据都丢失了，你帮我把之前生成的草案重新应用到原理图中",
+    panelState: { loggedIn: true, draftPlan: persistedDraftPlan, agentRunRoute: "draft" } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate", "draft_repair_plan", "draft_preview_plan"],
+  });
+
+  assert.deepEqual(previewInput, { plan: repairedDraftPlan });
+  assert.equal(result.draftPlan?.title, "Repaired Draft");
+  assert.equal(result.draftPreview?.title, "Repaired Draft");
 });
 
 test("runUnifiedReactAgent can drive draft generation through rag -> draft plan with inline spec", async () => {

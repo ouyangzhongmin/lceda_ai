@@ -24,13 +24,8 @@ export function buildSystemPrompt(input: {
   const contextHint = String(input.contextHint || "").trim();
   const userQuery = String(input.task.userQuery || "").trim();
   const preferredOutputLanguage = String(input.task.preferredOutputLanguage || "").trim() || "zh-CN";
-  const isAnalysisTask =
-    input.task.type === "schematic_analysis" ||
-    (input.task.type !== "schematic_draft" &&
-      /(分析|检查|检查看看|看看|查看|排查|定位|问题|有什么问题|有啥问题|erc|审查|review|analy[sz]e|check|inspect)/iu.test(userQuery));
-  const isDraftTask =
-    input.task.type === "schematic_draft" ||
-    (!isAnalysisTask && /(设计|生成|草案|原理图|draft|plan|esp32|语音|电池|充电|usb|麦克风|功放)/iu.test(userQuery));
+  const isAnalysisTask = input.task.type === "schematic_analysis";
+  const isDraftTask = input.task.type === "schematic_draft";
   const isDraftFollowUpSummary = input.task.draftFollowUpIntent === "summarize_existing_draft";
   const isDraftFollowUpRevision = input.task.draftFollowUpIntent === "revise_existing_draft";
   const isDraftFollowUpRepair = input.task.draftFollowUpIntent === "repair_existing_draft";
@@ -194,7 +189,7 @@ export function buildSystemPrompt(input: {
         "- 当用户提供应用失败、网络缺失、连接缺口、required nets / missing endpoints / net mismatch 之类结构化应用错误时，应优先调用 `draft_repair_plan`。",
         "- `draft_repair_plan` 的目标是做受限局部修补：补齐缺失供电连接、修复映射缺口、保留现有草案主体结构。",
         "- 除非 `draft_repair_plan` 明确无法修补，或者用户明确要求整版重做，否则不要直接回退到 `draft_generate_plan`。",
-        "- 修补得到新的 plan 后，应继续调用 `draft_preview_plan`；必要时再调用 `rules_validate_draft` 或 `editor_preview_apply_plan`。",
+        "- 修补得到新的 plan 后，应继续调用 `draft_preview_plan`；必要时再调用 `rules_validate_draft`。真正应用草案只能由用户点击应用动作触发。",
         "- 输出重点应是：识别到的结构化应用错误、已执行或建议执行的修补动作、是否还有剩余阻断项。",
         "",
         "## 当前已存在草案摘要",
@@ -241,9 +236,10 @@ export function buildSystemPrompt(input: {
     "  - 必须优先使用模型原生 tool calling 机制选择工具并给出参数（tool_calls）。",
     "  - 工具名仅允许字母/数字/_/-；请严格从“可用工具列表”中选择工具。",
     "- 当你认为证据足够、可以结束 while-loop 时：必须只输出一个 JSON 对象作为结束信号（不要输出其他文本）：",
-    '  Final: {"type":"final","route":"chat|analysis|draft","rationale":"一句话总结","output":"最终要展示给用户的完整 Markdown 内容"}',
+    '  Final: {"type":"final","route":"chat|analysis|draft|modify","rationale":"一句话总结","output":"最终要展示给用户的完整 Markdown 内容"}',
     "- `output` 必须直接包含最终要展示给用户的完整内容；不要依赖宿主在 while-loop 结束后再次调用模型补写总结。",
     "- analysis 路由下，`output` 必须直接产出完整审查报告；不要只给一句总结。",
+    "- modify 路由下，`output` 必须说明要在当前原理图或已应用草案上修改什么、已依据哪些工具结果判断、下一步能否自动生成/应用局部变更。",
     "",
     ...analysisBlock,
     ...(analysisBlock.length > 0 ? [""] : []),

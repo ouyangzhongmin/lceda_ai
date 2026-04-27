@@ -44,10 +44,72 @@ function formatSourceRefForDisplay(sourceRef?: string): string {
   return raw;
 }
 
+function formatTemplateSourceKind(kind: string): string {
+  switch (kind) {
+    case "local_seed":
+      return "本地种子";
+    case "lceda_open_source_extract":
+      return "外部开源语料";
+    default:
+      return kind || "未知来源";
+  }
+}
+
+function buildTemplateSourceSummary(input: {
+  appliedSourceKinds?: string[];
+  suggestedSourceKinds?: string[];
+}): string {
+  const applied = Array.isArray(input.appliedSourceKinds)
+    ? input.appliedSourceKinds.map((kind) => formatTemplateSourceKind(kind))
+    : [];
+  const suggested = Array.isArray(input.suggestedSourceKinds)
+    ? input.suggestedSourceKinds.map((kind) => formatTemplateSourceKind(kind))
+    : [];
+  const parts: string[] = [];
+  if (applied.length > 0) {
+    parts.push(`已应用来源含 ${applied.join("、")}`);
+  }
+  if (suggested.length > 0) {
+    parts.push(`建议来源含 ${suggested.join("、")}`);
+  }
+  return parts.join("；");
+}
+
 export function previewDraftPlan(plan: DraftPlan): DraftPreview {
   const normalized = normalizeDraftPlan(plan);
   const guidance = normalized.guidance;
   const completionSummary = normalized.completionSummary;
+  const rawRagTemplateSummary = normalized.ragTemplateSummary ?? plan.ragTemplateSummary;
+  const ragTemplateSummary = rawRagTemplateSummary
+    ? {
+        appliedTemplateIds: Array.isArray(rawRagTemplateSummary.appliedTemplateIds)
+          ? rawRagTemplateSummary.appliedTemplateIds
+          : [],
+        suggestedTemplateIds: Array.isArray(rawRagTemplateSummary.suggestedTemplateIds)
+          ? rawRagTemplateSummary.suggestedTemplateIds
+          : [],
+        addedComponentCount:
+          typeof rawRagTemplateSummary.addedComponentCount === "number" &&
+          Number.isFinite(rawRagTemplateSummary.addedComponentCount)
+            ? rawRagTemplateSummary.addedComponentCount
+            : 0,
+        suggestionReasons: Array.isArray(rawRagTemplateSummary.suggestionReasons)
+          ? rawRagTemplateSummary.suggestionReasons
+          : [],
+        appliedSourceKinds: Array.isArray(rawRagTemplateSummary.appliedSourceKinds)
+          ? rawRagTemplateSummary.appliedSourceKinds
+          : [],
+        suggestedSourceKinds: Array.isArray(rawRagTemplateSummary.suggestedSourceKinds)
+          ? rawRagTemplateSummary.suggestedSourceKinds
+          : [],
+        appliedSourceRefs: Array.isArray(rawRagTemplateSummary.appliedSourceRefs)
+          ? rawRagTemplateSummary.appliedSourceRefs
+          : [],
+        suggestedSourceRefs: Array.isArray(rawRagTemplateSummary.suggestedSourceRefs)
+          ? rawRagTemplateSummary.suggestedSourceRefs
+          : [],
+      }
+    : undefined;
   const rationaleWithGuidance = normalized.guidance?.rationale
     ? `${normalized.rationale} ${normalized.guidance.rationale}`
     : normalized.rationale;
@@ -55,21 +117,44 @@ export function previewDraftPlan(plan: DraftPlan): DraftPreview {
     completionSummary && completionSummary.addedComponentCount > 0
       ? `${rationaleWithGuidance} 已自动补全外围器件 ${completionSummary.addedComponentCount} 个，覆盖 ${completionSummary.templateIds.join("、")} 。`
       : rationaleWithGuidance;
+  const rationaleWithRagSummary =
+    ragTemplateSummary &&
+    (ragTemplateSummary.appliedTemplateIds.length > 0 || ragTemplateSummary.suggestedTemplateIds.length > 0)
+      ? `${rationaleWithCompletion} 已参考模板：已应用 ${ragTemplateSummary.appliedTemplateIds.length} 个，建议 ${ragTemplateSummary.suggestedTemplateIds.length} 个。${buildTemplateSourceSummary({
+          appliedSourceKinds: ragTemplateSummary.appliedSourceKinds,
+          suggestedSourceKinds: ragTemplateSummary.suggestedSourceKinds,
+        }) ? ` ${buildTemplateSourceSummary({
+            appliedSourceKinds: ragTemplateSummary.appliedSourceKinds,
+            suggestedSourceKinds: ragTemplateSummary.suggestedSourceKinds,
+          })}。` : ""}`
+      : rationaleWithCompletion;
   const componentsById = new Map(normalized.components.map((component) => [component.id, component]));
   return {
     title: normalized.title,
     rationale:
       normalized.selectedDevices && normalized.selectedDevices.length > 0
-        ? `${rationaleWithCompletion} 已选器件: ${normalized.selectedDevices
+        ? `${rationaleWithRagSummary} 已选器件: ${normalized.selectedDevices
             .map((item) => `${item.role}=${item.name}`)
             .join(", ")}`
-        : rationaleWithCompletion,
+        : rationaleWithRagSummary,
     componentRefs: normalized.components.map((component) => component.ref ?? component.id),
     netNames: normalized.nets.map((net) => net.name ?? net.id),
     componentCount: normalized.components.length,
     netCount: normalized.nets.length,
     completedPeripheralCount: completionSummary?.addedComponentCount,
     completedPeripheralTemplates: completionSummary?.templateIds,
+    ragTemplateSummary: ragTemplateSummary
+      ? {
+        appliedTemplateIds: ragTemplateSummary.appliedTemplateIds,
+        suggestedTemplateIds: ragTemplateSummary.suggestedTemplateIds,
+        addedComponentCount: ragTemplateSummary.addedComponentCount,
+        suggestionReasons: ragTemplateSummary.suggestionReasons,
+        appliedSourceKinds: ragTemplateSummary.appliedSourceKinds,
+        suggestedSourceKinds: ragTemplateSummary.suggestedSourceKinds,
+        appliedSourceRefs: ragTemplateSummary.appliedSourceRefs,
+        suggestedSourceRefs: ragTemplateSummary.suggestedSourceRefs,
+        }
+      : undefined,
     selectedDeviceDetails: normalized.selectedDevices?.map((item) => {
       const parts = [`${item.role}: ${item.name}`];
       if (item.footprintName) {

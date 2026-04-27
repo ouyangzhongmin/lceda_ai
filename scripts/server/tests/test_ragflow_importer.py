@@ -6,6 +6,10 @@ from unittest.mock import Mock
 
 from scripts.server.ragflow_importer import (
     ImportStats,
+    _delete_documents,
+    _find_existing_document_ids_by_row,
+    build_legacy_title_file_name,
+    build_row_file_name,
     build_endpoint,
     iter_jsonl_rows,
     load_input_files,
@@ -42,6 +46,62 @@ class JsonlTests(unittest.TestCase):
 
 
 class SendTests(unittest.TestCase):
+    def test_build_row_file_name_prefers_idempotency_key(self):
+        row = {
+            "title": "abc template",
+            "metadata": {
+                "idempotency_key": "project_combo_local-files-004",
+                "source_ref": "ignored",
+            },
+        }
+        self.assertEqual(build_row_file_name(row), "project_combo_local-files-004.md")
+
+    def test_build_legacy_title_file_name_uses_title(self):
+        row = {"title": "abc template"}
+        self.assertEqual(build_legacy_title_file_name(row), "abc-template.md")
+
+    def test_find_existing_document_ids_by_row(self):
+        session = Mock()
+        resp = Mock()
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {
+            "code": 0,
+            "data": {
+                "docs": [
+                    {"id": "doc-1", "name": "project_combo_local-files-004.md"},
+                    {"id": "doc-2", "name": "abc-template.md"},
+                    {"id": "doc-3", "name": "other-template.md"},
+                ],
+                "total": 3,
+            },
+        }
+        session.get.return_value = resp
+
+        ids = _find_existing_document_ids_by_row(
+            session=session,
+            endpoint="http://x/api",
+            headers={},
+            timeout_seconds=10,
+            row={"title": "abc template", "metadata": {"idempotency_key": "project_combo_local-files-004"}},
+        )
+        self.assertEqual(ids, ["doc-1", "doc-2"])
+
+    def test_delete_documents(self):
+        session = Mock()
+        resp = Mock()
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {"code": 0, "data": True}
+        session.delete.return_value = resp
+
+        deleted = _delete_documents(
+            session=session,
+            endpoint="http://x/api",
+            headers={"Authorization": "Bearer k"},
+            timeout_seconds=10,
+            document_ids=["doc-1", "doc-2"],
+        )
+        self.assertEqual(deleted, 2)
+
     def test_send_one_row_success(self):
         session = Mock()
         resp = Mock()
@@ -49,6 +109,10 @@ class SendTests(unittest.TestCase):
         resp.text = "ok"
         resp.raise_for_status = Mock()
         session.request.return_value = resp
+        list_resp = Mock()
+        list_resp.raise_for_status = Mock()
+        list_resp.json.return_value = {"code": 0, "data": {"docs": [], "total": 0}}
+        session.get.return_value = list_resp
 
         stats = ImportStats()
         ok = send_one_row(
@@ -64,6 +128,7 @@ class SendTests(unittest.TestCase):
             dry_run=False,
             parse_after_upload=False,
             parse_endpoint="http://x/parse",
+            replace_existing_by_title=True,
         )
         self.assertTrue(ok)
         self.assertEqual(stats.success_count, 1)
@@ -79,6 +144,10 @@ class SendTests(unittest.TestCase):
         good.text = "ok"
         good.raise_for_status = Mock()
         session.request.side_effect = [bad, good]
+        list_resp = Mock()
+        list_resp.raise_for_status = Mock()
+        list_resp.json.return_value = {"code": 0, "data": {"docs": [], "total": 0}}
+        session.get.return_value = list_resp
 
         stats = ImportStats()
         ok = send_one_row(
@@ -94,9 +163,48 @@ class SendTests(unittest.TestCase):
             dry_run=False,
             parse_after_upload=False,
             parse_endpoint="http://x/parse",
+            replace_existing_by_title=True,
         )
         self.assertTrue(ok)
         self.assertEqual(stats.retry_count, 1)
+
+    def test_send_one_row_replaces_existing_title(self):
+        session = Mock()
+        list_resp = Mock()
+        list_resp.raise_for_status = Mock()
+        list_resp.json.return_value = {
+            "code": 0,
+            "data": {"docs": [{"id": "doc-1", "name": "tpl-esp32-s3-usb_power_input-6b403342.md"}], "total": 1},
+        }
+        delete_resp = Mock()
+        delete_resp.raise_for_status = Mock()
+        delete_resp.json.return_value = {"code": 0, "data": True}
+        upload_resp = Mock()
+        upload_resp.status_code = 200
+        upload_resp.text = "ok"
+        upload_resp.raise_for_status = Mock()
+        session.get.return_value = list_resp
+        session.delete.return_value = delete_resp
+        session.request.return_value = upload_resp
+
+        stats = ImportStats()
+        ok = send_one_row(
+            session=session,
+            method="POST",
+            endpoint="http://x/api",
+            row={"title": "T", "content": "C", "metadata": {"idempotency_key": "tpl-esp32-s3-usb_power_input-6b403342"}},
+            headers={},
+            timeout_seconds=10,
+            retries=0,
+            retry_backoff_seconds=0.0,
+            stats=stats,
+            dry_run=False,
+            parse_after_upload=False,
+            parse_endpoint="http://x/parse",
+            replace_existing_by_title=True,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(stats.deleted_count, 1)
 
 
 if __name__ == "__main__":

@@ -191,7 +191,7 @@ func LoadConfig() (Config, error) {
 			BaseURL:          firstNonEmpty(os.Getenv("RAGFLOW_BASE_URL"), fileCfg.RAGFlow.BaseURL),
 			APIKey:           firstNonEmpty(os.Getenv("RAGFLOW_API_KEY"), fileCfg.RAGFlow.APIKey),
 			DatasetID:        firstNonEmpty(os.Getenv("RAGFLOW_DATASET_ID"), fileCfg.RAGFlow.DatasetID),
-			EndpointTemplate: firstNonEmpty(os.Getenv("RAGFLOW_ENDPOINT_TEMPLATE"), firstNonEmpty(fileCfg.RAGFlow.EndpointTemplate, "/api/v1/datasets/{dataset_id}/search")),
+			EndpointTemplate: firstNonEmpty(os.Getenv("RAGFLOW_ENDPOINT_TEMPLATE"), firstNonEmpty(fileCfg.RAGFlow.EndpointTemplate, "/api/v1/retrieval")),
 			TimeoutSeconds:   resolveInt("RAGFLOW_TIMEOUT_SECONDS", fileCfg.RAGFlow.TimeoutSeconds, 12),
 		},
 		LLM: LLMConfig{
@@ -411,6 +411,14 @@ func loadFromYAMLIfPresent(path string) (Config, error) {
 			EmbeddingModel:    parsed.Memory.EmbeddingModel,
 			TopK:              parsed.Memory.TopK,
 			EnableFallback:    parsed.Memory.EnableFallback,
+		},
+		RAGFlow: RAGFlowConfig{
+			Enabled:          parsed.RAGFlow.Enabled,
+			BaseURL:          parsed.RAGFlow.BaseURL,
+			APIKey:           parsed.RAGFlow.APIKey,
+			DatasetID:        parsed.RAGFlow.DatasetID,
+			EndpointTemplate: parsed.RAGFlow.EndpointTemplate,
+			TimeoutSeconds:   parsed.RAGFlow.TimeoutSeconds,
 		},
 		LLM: LLMConfig{
 			Provider:         parsed.LLM.Provider,

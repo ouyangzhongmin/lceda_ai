@@ -16,6 +16,7 @@ class ImportStats:
     success_count: int = 0
     fail_count: int = 0
     retry_count: int = 0
+    deleted_count: int = 0
 
 
 def emit_log(enabled: bool, msg: str) -> None:
@@ -52,6 +53,113 @@ def _sanitize_filename(value: str) -> str:
     text = re.sub(r"\s+", "-", text)
     text = text.strip("-")
     return (text or "untitled")[:120]
+
+
+def _row_identity_key(row: dict[str, Any]) -> str:
+    metadata = row.get("metadata", {}) if isinstance(row.get("metadata", {}), dict) else {}
+    for key in ("idempotency_key", "source_ref", "template_id"):
+        value = str(metadata.get(key, "")).strip()
+        if value:
+            return value
+    for key in ("idempotency_key", "source_ref", "title"):
+        value = str(row.get(key, "")).strip()
+        if value:
+            return value
+    return str(row.get("title", "untitled")).strip() or "untitled"
+
+
+def build_row_file_name(row: dict[str, Any]) -> str:
+    identity = _row_identity_key(row)
+    return _sanitize_filename(identity) + ".md"
+
+
+def build_legacy_title_file_name(row: dict[str, Any]) -> str:
+    title = str(row.get("title", "untitled")).strip() or "untitled"
+    return _sanitize_filename(title) + ".md"
+
+
+def _list_existing_documents(
+    session: requests.Session,
+    endpoint: str,
+    headers: dict[str, str],
+    timeout_seconds: int,
+) -> list[dict[str, Any]]:
+    docs: list[dict[str, Any]] = []
+    page = 1
+    page_size = 100
+    while True:
+        resp = session.get(
+            endpoint,
+            headers=headers,
+            params={"page": page, "page_size": page_size},
+            timeout=timeout_seconds,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        if isinstance(body, dict) and body.get("code") not in (0, "0", None):
+            raise RuntimeError(f"list documents failed: {resp.text}")
+        data = body.get("data", {}) if isinstance(body, dict) else {}
+        batch = data.get("docs", []) if isinstance(data, dict) else []
+        if not isinstance(batch, list) or not batch:
+            break
+        docs.extend(item for item in batch if isinstance(item, dict))
+        total = int(data.get("total", len(docs))) if isinstance(data, dict) else len(docs)
+        if len(docs) >= total or len(batch) < page_size:
+            break
+        page += 1
+    return docs
+
+
+def _filename_stem_key(filename: str) -> str:
+    text = str(filename or "").strip()
+    if text.lower().endswith(".md"):
+        text = text[:-3]
+    text = re.sub(r"\(\d+\)$", "", text)
+    return text
+
+
+def _find_existing_document_ids_by_row(
+    session: requests.Session,
+    endpoint: str,
+    headers: dict[str, str],
+    timeout_seconds: int,
+    row: dict[str, Any],
+) -> list[str]:
+    target_keys = {
+        _filename_stem_key(build_row_file_name(row)),
+        _filename_stem_key(build_legacy_title_file_name(row)),
+    }
+    matches: list[str] = []
+    for item in _list_existing_documents(session, endpoint, headers, timeout_seconds):
+        doc_id = str(item.get("id", "")).strip()
+        doc_name = str(item.get("name", "") or item.get("location", "")).strip()
+        if not doc_id or not doc_name:
+            continue
+        if _filename_stem_key(doc_name) in target_keys:
+            matches.append(doc_id)
+    return matches
+
+
+def _delete_documents(
+    session: requests.Session,
+    endpoint: str,
+    headers: dict[str, str],
+    timeout_seconds: int,
+    document_ids: list[str],
+) -> int:
+    if not document_ids:
+        return 0
+    resp = session.delete(
+        endpoint,
+        headers={**headers, "Content-Type": "application/json"},
+        json={"ids": document_ids},
+        timeout=timeout_seconds,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if isinstance(body, dict) and body.get("code") not in (0, "0", None):
+        raise RuntimeError(f"delete failed: {resp.text}")
+    return len(document_ids)
 
 
 def _build_markdown_doc(row: dict[str, Any]) -> str:
@@ -124,19 +232,34 @@ def send_one_row(
     dry_run: bool,
     parse_after_upload: bool,
     parse_endpoint: str,
+    replace_existing_by_title: bool,
 ) -> bool:
     if dry_run:
         stats.success_count += 1
         return True
 
-    title = str(row.get("title", "untitled"))
-    file_name = _sanitize_filename(title) + ".md"
+    file_name = build_row_file_name(row)
     payload_text = _build_markdown_doc(row)
 
     attempts = 0
     while attempts <= retries:
         attempts += 1
         try:
+            if attempts == 1 and replace_existing_by_title:
+                deleted = _delete_documents(
+                    session=session,
+                    endpoint=endpoint,
+                    headers=headers,
+                    timeout_seconds=timeout_seconds,
+                    document_ids=_find_existing_document_ids_by_row(
+                        session=session,
+                        endpoint=endpoint,
+                        headers=headers,
+                        timeout_seconds=timeout_seconds,
+                        row=row,
+                    ),
+                )
+                stats.deleted_count += deleted
             resp = session.request(
                 method=method,
                 url=endpoint,
@@ -192,6 +315,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--failed-log", default="", help="Path to failed rows jsonl")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--quiet", action="store_true")
+    p.add_argument(
+        "--replace-existing-by-title",
+        action="store_true",
+        help="Delete existing docs with the same generated markdown file identity before upload",
+    )
     return p.parse_args()
 
 
@@ -239,6 +367,7 @@ def main() -> None:
                 dry_run=args.dry_run,
                 parse_after_upload=args.parse_after_upload,
                 parse_endpoint=parse_endpoint,
+                replace_existing_by_title=args.replace_existing_by_title,
             )
             if not ok and fail_path:
                 with fail_path.open("a", encoding="utf-8") as f:
@@ -250,6 +379,7 @@ def main() -> None:
         "success": stats.success_count,
         "fail": stats.fail_count,
         "retry": stats.retry_count,
+        "deleted": stats.deleted_count,
     }
     print(json.dumps(summary, ensure_ascii=False))
 

@@ -32,6 +32,7 @@ type ragService interface {
 	Search(query string, topK int) ([]ragusecase.SearchResult, error)
 	BuildCitationPackage(query string, topK int) (ragusecase.CitationPackage, error)
 	ProviderName() string
+	ExternalRagTemplateCorpus(query string, topK int) any
 }
 
 type knowledgeService interface {

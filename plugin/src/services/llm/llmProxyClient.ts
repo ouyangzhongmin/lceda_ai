@@ -22,6 +22,7 @@ export type LlmMessage =
   | {
       role: "assistant";
       content: string | null;
+      reasoning_content?: string;
       tool_calls?: LlmToolCall[];
     }
   | {
@@ -51,6 +52,7 @@ export interface LlmGenerateResponse {
   provider?: string;
   model: string;
   output_text: string;
+  output_reasoning_text?: string;
   tool_calls?: LlmToolCall[];
   prompt_tokens: number;
   completion_tokens: number;

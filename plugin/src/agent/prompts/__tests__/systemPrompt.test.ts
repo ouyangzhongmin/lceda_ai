@@ -146,6 +146,7 @@ test("buildSystemPrompt includes existing draft repair instructions when follow-
   assert.equal(prompt.includes("优先调用 `draft_repair_plan`"), true);
   assert.equal(prompt.includes("而不是整版重新生成"), true);
   assert.equal(prompt.includes("结构化应用错误"), true);
+  assert.equal(prompt.includes("editor_preview_apply_plan"), false);
 });
 
 test("buildSystemPrompt includes preferred output language guidance", () => {

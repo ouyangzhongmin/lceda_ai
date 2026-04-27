@@ -26,7 +26,7 @@
 - 健康检查：
   - `curl http://127.0.0.1:18082/healthz`
 - 登录 PoC 脚本：
-  - `BASE_URL=http://127.0.0.1:18082 node ../scripts/dev/run-login-poc.mjs`
+  - `BASE_URL=http://127.0.0.1:18082 node ../scripts/download/run-login-poc.mjs`
 - 正式配置：
   - `configs/config.yaml`
 - 配置示例：
@@ -45,7 +45,7 @@
   - `RAGFLOW_BASE_URL`
   - `RAGFLOW_API_KEY`
   - `RAGFLOW_DATASET_ID`
-  - `RAGFLOW_ENDPOINT_TEMPLATE`（默认 `/api/v1/datasets/{dataset_id}/search`）
+  - `RAGFLOW_ENDPOINT_TEMPLATE`（默认 `/api/v1/retrieval`）
   - `RAGFLOW_TIMEOUT_SECONDS`（默认 `12`）
   - `LLM_PROVIDER`
   - `LLM_ENABLE_FALLBACK`（默认 `true`）

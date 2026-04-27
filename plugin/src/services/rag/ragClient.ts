@@ -1,5 +1,6 @@
 import type { HttpClient } from "../api-client/httpClient";
 import type { ApiResponse } from "../api-client/apiResponse";
+import type { DevboardRagTemplateCorpusEntry } from "../../editor/apply-plan/devboardRagTemplates";
 
 export interface RagSearchResult {
   chunk_id: string;
@@ -12,6 +13,7 @@ export interface RagSearchResult {
 
 export interface RagSearchResponse {
   results: RagSearchResult[];
+  external_rag_template_corpus?: DevboardRagTemplateCorpusEntry[];
 }
 
 export interface RagCitationPackage {

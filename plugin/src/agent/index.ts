@@ -42,7 +42,7 @@ export interface PluginAgent {
     adapter?: EditorAdapter;
     signal?: AbortSignal;
     onStreamEvent?: (event: {
-      route: "chat" | "analysis" | "draft";
+      route: "chat" | "analysis" | "draft" | "modify";
       stage: "llm" | "progress";
       textDelta?: string;
       text?: string;
@@ -63,7 +63,7 @@ export interface PluginAgent {
     adapter?: EditorAdapter;
     signal?: AbortSignal;
     onStreamEvent?: (event: {
-      route: "chat" | "analysis" | "draft";
+      route: "chat" | "analysis" | "draft" | "modify";
       stage: "llm" | "progress";
       textDelta?: string;
       text?: string;
@@ -133,6 +133,8 @@ export function resolveTurnDisposition(
 ): Pick<AgentTurnResult, "route"> {
   const fallbackRoute = result.draftPlan || result.draftPreview || result.draftValidation || result.draftRisk
     ? "draft"
+    : result.selectedSkill === "modify_existing_schematic"
+      ? "modify"
     : result.analysisReport || result.checkResult || result.analysisMarkdown
       ? "analysis"
       : "chat";
@@ -218,8 +220,9 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     draftPreview: NonNullable<MainPanelState["draftPreview"]>;
     draftRisk?: AgentResult["draftRisk"];
     nextSuggestions?: AgentResult["nextSuggestions"];
+    actions?: NonNullable<MainPanelState["chatMessages"]>[number]["actions"];
   }): string => {
-    const { draftPreview, draftRisk, nextSuggestions } = input;
+    const { draftPreview, draftRisk, nextSuggestions, actions } = input;
     const selectedDevices = draftPreview.selectedDeviceDetails ?? [];
     const readableComponentRefs = buildReadableComponentRefs(
       draftPreview.componentRefs,
@@ -255,11 +258,57 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
     if (nextSuggestions && nextSuggestions.length > 0) {
       lines.push(...nextSuggestions.map((item, index) => `${index + 1}. ${item}`));
     } else {
-      lines.push("1. 先人工确认关键器件与主要网络命名");
-      lines.push("2. 再决定是否应用草案或继续局部修改");
+      lines.push(...buildDraftActionNarrativeLines(actions));
     }
 
     return lines.join("\n");
+  };
+
+  const buildDraftActionNarrativeLines = (
+    actions?: NonNullable<MainPanelState["chatMessages"]>[number]["actions"]
+  ): string[] => {
+    const actionSet = new Set((actions ?? []).map((item) => item.action));
+    const lines: string[] = [];
+
+    if (actionSet.has("apply_patch_draft")) {
+      lines.push("1. 在卡片底部点击“应用变更”，将这次修改增量应用到当前原理图页");
+    } else if (actionSet.has("apply_draft")) {
+      lines.push("1. 在卡片底部点击“应用草案”，将本计划一键应用到原理图页面");
+    } else if (actionSet.has("select_devices")) {
+      lines.push("1. 先在卡片底部点击“选择器件”，补齐未确认或需要替换的器件");
+    } else if (actionSet.has("rerun")) {
+      lines.push("1. 当前结果还不能直接应用，请先点击卡片底部的“重新分析”继续排查");
+    } else {
+      lines.push("1. 先人工确认关键器件与主要网络命名");
+    }
+
+    if (actionSet.has("rollback")) {
+      lines.push(`${lines.length + 1}. 如应用后不符合预期，可使用“回滚应用”撤销最近一次应用`);
+    } else if (actionSet.has("apply_draft") || actionSet.has("apply_patch_draft")) {
+      lines.push(`${lines.length + 1}. 应用前请再核对关键连接与器件选型，确认后再执行`);
+    } else if (actionSet.has("rerun")) {
+      lines.push(`${lines.length + 1}. 也可以继续在聊天中指出具体修改点，我会基于当前结果继续调整`);
+    } else {
+      lines.push(`${lines.length + 1}. 再决定是否继续局部修改或补充约束`);
+    }
+
+    return lines;
+  };
+
+  const sanitizeDraftNarrativeForActions = (
+    text: string,
+    actions?: NonNullable<MainPanelState["chatMessages"]>[number]["actions"]
+  ): string => {
+    const actionSet = new Set((actions ?? []).map((item) => item.action));
+    if (actionSet.has("apply_draft") || actionSet.has("apply_patch_draft")) {
+      return text;
+    }
+    return String(text || "")
+      .split(/\r?\n/u)
+      .filter((line) => !/(应用草案|Ctrl\s*\+\s*D|草案菜单|一键应用|自动放置.*器件|自动.*网络标签连接)/iu.test(line))
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   };
 
   const summarizeDraftRationale = (value?: string): string => {
@@ -683,29 +732,24 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
       const suggestions = buildDraftFollowUpSuggestions(input.structuredSuggestions);
       const narrativeText = String(input.draftNarrative || "").trim();
       const preferNarrativeMarkdown = looksLikeCompleteMarkdownDocument(narrativeText);
-      const reportMarkdown = buildDraftReportMarkdown({
-        draftPreview: preview,
-        draftRisk: input.draftRisk,
-        nextSuggestions: input.nextSuggestions,
-      });
       const readableComponentRefs = buildReadableComponentRefs(
         preview.componentRefs,
         preview.selectedDeviceDetails
       );
       const readableNetNames = buildReadableNetNames(preview.netNames);
       const actions =
-        input.draftRisk?.level === "blocked"
+        hasUnresolvedDevices
           ? [
               {
-                label: "重新分析",
-                action: "rerun" as const,
+                label: "选择器件",
+                action: "select_devices" as const,
               },
             ]
-          : hasUnresolvedDevices
+          : input.draftRisk?.level === "blocked"
             ? [
                 {
-                  label: "选择器件",
-                  action: "select_devices" as const,
+                  label: "重新分析",
+                  action: "rerun" as const,
                 },
               ]
             : [
@@ -718,6 +762,17 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
                   action: "rollback" as const,
                 },
               ];
+      const actionNarrativeLines = buildDraftActionNarrativeLines(actions);
+      const actionNarrativeText = `\n\n## 当前可用操作\n${actionNarrativeLines.join("\n")}`;
+      const safeNarrativeText = preferNarrativeMarkdown
+        ? `${sanitizeDraftNarrativeForActions(narrativeText, actions)}${actionNarrativeText}`
+        : narrativeText;
+      const reportMarkdown = buildDraftReportMarkdown({
+        draftPreview: preview,
+        draftRisk: input.draftRisk,
+        nextSuggestions: input.nextSuggestions,
+        actions,
+      });
       const structuredContent = preferNarrativeMarkdown ? undefined : buildDraftStructuredContent(input);
       return [
         {
@@ -725,10 +780,10 @@ export function createPluginAgent(deps: PluginAgentDeps): PluginAgent {
           title: "草案草图",
           tone: input.draftRisk?.level === "blocked" ? "warning" : "success",
             content: preferNarrativeMarkdown
-              ? narrativeText
-              : `${narrativeText || "我已经生成一版草案。"}\n\n标题：${preview.title}\n说明：${preview.rationale}\n器件：${readableComponentRefs.join(
+              ? safeNarrativeText
+              : `${safeNarrativeText || "我已经生成一版草案。"}\n\n标题：${preview.title}\n说明：${preview.rationale}\n器件：${readableComponentRefs.join(
                   "、"
-                )}\n网络：${readableNetNames.join("、")}${mcpHint}${mcpReadHint}${riskHint}${suggestionHint}\n\n下一步应进入人工确认，再决定是否 apply-plan。`,
+                )}\n网络：${readableNetNames.join("、")}${mcpHint}${mcpReadHint}${riskHint}${suggestionHint}\n\n下一步操作：\n${actionNarrativeLines.join("\n")}`,
             structuredContent,
             evidenceItems: buildEvidenceItems({
               toolTraces: input.toolTraces,

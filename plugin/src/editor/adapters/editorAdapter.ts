@@ -5,6 +5,7 @@ import type {
   SchematicSelection,
 } from "../../types/schematic";
 import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
+import type { DraftObjectBindings, DraftPatchPlan } from "../apply-plan/draftPatchPlan";
 import type { HostEditorBridge } from "../host/runtime";
 
 export interface ApplyPlanResult {
@@ -27,6 +28,12 @@ export interface ApplyPlanResult {
   };
 }
 
+export interface PatchDraftPlanResult {
+  applied: boolean;
+  transactionId?: string;
+  bindings?: DraftObjectBindings;
+}
+
 export interface EditorAdapter {
   readonly channel: PluginChannel;
   readonly source: "host" | "mock" | "unimplemented";
@@ -41,7 +48,8 @@ export interface EditorAdapter {
   getSelection(): Promise<SchematicSelection>;
   locate(target: LocateTarget): Promise<void>;
   previewApplyPlan(plan: DraftPlan): Promise<DraftPreview>;
-  applyPlan(plan: DraftPlan): Promise<ApplyPlanResult>;
+  patchDraftPlan(plan: DraftPatchPlan): Promise<PatchDraftPlanResult>;
+  applyPlan(plan: DraftPlan, options?: { replaceTransactionId?: string }): Promise<ApplyPlanResult>;
   rollbackApplyPlan(transactionId: string): Promise<{ rolledBack: boolean; transactionId: string }>;
 }
 
@@ -109,14 +117,33 @@ export class HostBackedEditorAdapter implements EditorAdapter {
     return this.bridge.previewApplyPlan(plan);
   }
 
-  async applyPlan(plan: DraftPlan): Promise<ApplyPlanResult> {
+  async patchDraftPlan(plan: DraftPatchPlan): Promise<PatchDraftPlanResult> {
+    const patchDraftPlan = (this.bridge as HostEditorBridge & {
+      patchDraftPlan?: (plan: DraftPatchPlan) => Promise<PatchDraftPlanResult>;
+    }).patchDraftPlan;
+
+    if (!patchDraftPlan) {
+      await this.assertCapability("patchDraftPlan");
+      throw new Error("host patch_draft_plan is not available");
+    }
+
+    return patchDraftPlan(plan);
+  }
+
+  async applyPlan(plan: DraftPlan, options?: { replaceTransactionId?: string }): Promise<ApplyPlanResult> {
     if (!this.bridge.applyPlan) {
       await this.assertCapability("applyPlan");
       throw new Error("host apply_plan is not available");
     }
     let context = await this.bridge.getCurrentContext();
     if (!isEmptySchematicContext(context)) {
-      if (this.bridge.createEmptySchematicPage) {
+      if (options?.replaceTransactionId && this.bridge.rollbackApplyPlan) {
+        const rolledBack = await this.bridge.rollbackApplyPlan(options.replaceTransactionId);
+        if (rolledBack.rolledBack) {
+          context = await this.bridge.getCurrentContext();
+        }
+      }
+      if (!isEmptySchematicContext(context) && this.bridge.createEmptySchematicPage) {
         await this.bridge.createEmptySchematicPage({ title: plan.title });
         context = await this.bridge.getCurrentContext();
       }
@@ -186,7 +213,18 @@ export class UnimplementedEditorAdapter implements EditorAdapter {
     };
   }
 
-  async applyPlan(_plan: DraftPlan): Promise<ApplyPlanResult> {
+  async patchDraftPlan(_plan: DraftPatchPlan): Promise<PatchDraftPlanResult> {
+    return {
+      applied: false,
+      bindings: {
+        pageId: undefined,
+        componentBindings: [],
+        wireBindings: [],
+      },
+    };
+  }
+
+  async applyPlan(_plan: DraftPlan, _options?: { replaceTransactionId?: string }): Promise<ApplyPlanResult> {
     return {
       applied: false,
       componentCount: _plan.components.length,

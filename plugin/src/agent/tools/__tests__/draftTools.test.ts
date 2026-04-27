@@ -98,6 +98,95 @@ test("createDraftTools resolves concrete library devices before preview when sea
   assert.equal(plan.components[2]?.properties.device_uuid, "dev-d1");
 });
 
+test("createDraftTools passes external rag template corpus into draft generation", async () => {
+  const tools = createDraftTools();
+  const tool = tools.find((item) => item.name === "draft_generate_plan");
+  if (!tool) throw new Error("draft_generate_plan missing");
+
+  const plan = await tool.execute({
+    userQuery: "帮我设计一个基于ESP32-C3的开发板",
+    externalRagTemplateCorpus: [
+      {
+        template_id: "external-esp32c3-status-indicator",
+        template_type: "status_indicator",
+        anchor_device_family: "ESP32",
+        anchor_device_model: "ESP32-C3",
+        scenario_tags: ["devboard", "status", "led"],
+        components: [
+          {
+            ref: "D_EXT_STAT",
+            name: "led",
+            value: "GREEN",
+            completion_role: "status_led",
+            attach_to_net: "GPIO8",
+          },
+          {
+            ref: "R_EXT_STAT",
+            name: "resistor",
+            value: "1k",
+            completion_role: "status_led_resistor",
+            attach_to_net: "GPIO8",
+          },
+        ],
+        source: {
+          kind: "lceda_open_source_extract",
+          project_id: "oshw-esp32c3-board",
+          sheet_ref: "sheet-1",
+          extraction_revision: "2026-04-19-a",
+        },
+        quality_score: 0.95,
+      },
+    ],
+  });
+
+  assert.equal(
+    Array.isArray((plan as any).externalRagTemplateCorpus),
+    true
+  );
+  assert.equal((plan as any).externalRagTemplateCorpus?.[0]?.template_id, "external-esp32c3-status-indicator");
+});
+
+test("createDraftTools adopts external rag template corpus directly from rag search response", async () => {
+  const tools = createDraftTools({
+    search: async () => ({
+      results: [],
+      external_rag_template_corpus: [
+        {
+          template_id: "external-rp2040-status-indicator",
+          template_type: "status_indicator",
+          anchor_device_family: "RP2040",
+          anchor_device_model: "RP2040",
+          scenario_tags: ["devboard", "status", "led"],
+          components: [
+            {
+              ref: "D_EXT_STAT",
+              name: "led",
+              value: "GREEN",
+              completion_role: "status_led",
+              attach_to_net: "GPIO25",
+            },
+          ],
+          source: {
+            kind: "lceda_open_source_extract",
+            project_id: "oshw-rp2040-board",
+            sheet_ref: "sheet-2",
+            extraction_revision: "2026-04-19-b",
+          },
+          quality_score: 0.93,
+        },
+      ],
+    }),
+    buildCitations: async () => ({ query: "", results: [] }),
+  } as any);
+  const tool = tools.find((item) => item.name === "draft_generate_plan");
+  if (!tool) throw new Error("draft_generate_plan missing");
+
+  const plan = await tool.execute({ userQuery: "帮我设计一个基于RP2040的开发板" });
+
+  assert.equal(Array.isArray((plan as any).externalRagTemplateCorpus), true);
+  assert.equal((plan as any).externalRagTemplateCorpus?.[0]?.template_id, "external-rp2040-status-indicator");
+});
+
 test("createDraftTools can convert llm-authored structured draft spec into a resolved plan", async () => {
   const tools = createDraftTools(
     {

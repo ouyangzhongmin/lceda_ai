@@ -8,10 +8,11 @@ declare global {
   interface Window {
     __LCEDA_AI_ASSISTANT_FRAME_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
     __LCEDA_AI_ASSISTANT_FRAME_STATE__?: Awaited<ReturnType<ReturnType<typeof getAssistantRuntime>["openPanel"]>>;
+    __LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__?: (
+      state: Awaited<ReturnType<ReturnType<typeof getAssistantRuntime>["openPanel"]>>
+    ) => void;
   }
 }
-
-const FRAME_STATE_EVENT = "lceda-ai-assistant:state";
 
 async function bootstrapIframeApp(): Promise<void> {
   initConfig();
@@ -32,10 +33,11 @@ async function bootstrapIframeApp(): Promise<void> {
   }
 }
 
-window.addEventListener(FRAME_STATE_EVENT, (event) => {
-  const customEvent = event as CustomEvent<Awaited<ReturnType<ReturnType<typeof getAssistantRuntime>["openPanel"]>>>;
-  window.__LCEDA_AI_ASSISTANT_FRAME_STATE__ = customEvent.detail;
-});
+const syncFrameState = window.__LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__;
+window.__LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__ = (state) => {
+  window.__LCEDA_AI_ASSISTANT_FRAME_STATE__ = state;
+  syncFrameState?.(state);
+};
 
 void bootstrapIframeApp().catch((error) => {
   if (typeof console !== "undefined") {

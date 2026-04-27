@@ -68,7 +68,7 @@ ragflow:
   base_url: "http://127.0.0.1:39380"
   api_key: "<RAGFLOW_API_KEY>"
   dataset_id: "<RAGFLOW_DATASET_ID>"
-  endpoint_template: "/api/v1/datasets/{dataset_id}/search"
+  endpoint_template: "/api/v1/retrieval"
   timeout_seconds: 12
 ```
 

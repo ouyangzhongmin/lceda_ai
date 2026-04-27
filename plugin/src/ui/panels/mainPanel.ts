@@ -1,4 +1,9 @@
 import type { DraftPlan } from "../../editor/apply-plan/draftPlan";
+import type {
+  AppliedDraftSnapshot,
+  DraftObjectBindings,
+  DraftPatchPlan,
+} from "../../editor/apply-plan/draftPatchPlan";
 import type { AgentIterationStep, AgentStepItem } from "../../agent/shared/agentTypes";
 
 export interface MainPanelState {
@@ -11,7 +16,7 @@ export interface MainPanelState {
   llmDebugEnabled?: boolean;
   sessionTitle?: string;
   agentRunState?: "idle" | "planning" | "running_tools" | "waiting_llm" | "awaiting_confirmation" | "completed" | "failed";
-  agentRunRoute?: "chat" | "analysis" | "draft";
+  agentRunRoute?: "chat" | "analysis" | "draft" | "modify";
   agentRunDetail?: string;
   loginStatus?: string;
   summary?: string;
@@ -51,6 +56,9 @@ export interface MainPanelState {
     };
   };
   draftPlan?: DraftPlan;
+  appliedDraftSnapshot?: AppliedDraftSnapshot;
+  draftObjectBindings?: DraftObjectBindings;
+  draftPatchPlan?: DraftPatchPlan;
   devicePicker?: {
     open: boolean;
     items: Array<{
@@ -172,6 +180,7 @@ export interface MainPanelState {
       draftReady: boolean;
       lastObservation?: string;
     };
+    reasoningContent?: string;
     suggestions?: Array<{
       label: string;
       actionType: "rerun_analysis" | "regenerate_draft" | "ask_followup";
@@ -180,7 +189,7 @@ export interface MainPanelState {
     streaming?: boolean;
     actions?: Array<{
       label: string;
-      action: "login" | "rerun" | "locate" | "apply_draft" | "rollback" | "select_devices";
+      action: "login" | "rerun" | "locate" | "apply_draft" | "apply_patch_draft" | "rollback" | "select_devices";
       payload?: string;
     }>;
     analysisMarkdown?: string;

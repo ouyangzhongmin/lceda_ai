@@ -27,7 +27,9 @@ from scripts.server.rag_knowledge_crawler import (
     print_crawl_report,
     resolve_path_input,
     should_visit_url,
+    trim_known_noise_sections,
     write_jsonl,
+    crawl,
 )
 
 
@@ -61,6 +63,91 @@ class HtmlExtractionTests(unittest.TestCase):
         self.assertIn("Output capacitor should meet ESR requirement.", content)
         self.assertNotIn("menu", content)
         self.assertNotIn("copyright", content)
+
+    def test_trim_known_noise_sections_removes_vendor_tail_noise(self):
+        content = "\n".join(
+            [
+                "Show side navigation",
+                "Design of a High-Frequency Series Capacitor Buck Converter",
+                "This training will cover some of the challenges to high frequency operation today.",
+                "What will I learn?",
+                "Introduction to the series capacitor buck converter",
+                "Browse videos",
+                "View all videos",
+                "Products",
+                "Power management",
+                "Cart",
+            ]
+        )
+        trimmed = trim_known_noise_sections(content)
+        self.assertIn("This training will cover some of the challenges", trimmed)
+        self.assertIn("Introduction to the series capacitor buck converter", trimmed)
+        self.assertNotIn("Show side navigation", trimmed)
+        self.assertNotIn("Browse videos", trimmed)
+        self.assertNotIn("Products", trimmed)
+        self.assertNotIn("Cart", trimmed)
+
+    def test_trim_known_noise_sections_removes_onsemi_recommendation_tail(self):
+        content = "\n".join(
+            [
+                "Current Sense Design Tool",
+                "Show side navigation",
+                "The tool streamlines the normally iterative process of designing a shunt-based current sense solution.",
+                "You May Be Interested In",
+                "Product Recommendation Tools+",
+                "Find Products",
+                "Item Name",
+                "Checkout",
+            ]
+        )
+        trimmed = trim_known_noise_sections(content)
+        self.assertIn("Current Sense Design Tool", trimmed)
+        self.assertIn("shunt-based current sense solution", trimmed)
+        self.assertNotIn("Show side navigation", trimmed)
+        self.assertNotIn("You May Be Interested In", trimmed)
+        self.assertNotIn("Checkout", trimmed)
+
+    def test_trim_known_noise_sections_removes_ti_series_tail(self):
+        content = "\n".join(
+            [
+                "VIDEO SERIES",
+                "Designing a high-power bidirectional AC/DC power supply using SiC FETs",
+                "Learn how to design a high-power bidirectional AC/DC power supply using silicon carbide MOSFETs.",
+                "View series",
+                "Applications",
+                "Automotive",
+                "Industrial",
+            ]
+        )
+        trimmed = trim_known_noise_sections(content)
+        self.assertIn("Designing a high-power bidirectional AC/DC power supply using SiC FETs", trimmed)
+        self.assertIn("View series", trimmed)
+        self.assertNotIn("Applications", trimmed)
+        self.assertNotIn("Automotive", trimmed)
+
+    def test_trim_known_noise_sections_trims_onsemi_tool_resource_tail(self):
+        content = "\n".join(
+            [
+                "Elite Power Simulator",
+                "Novel Power Device Simulation Reduces Development Time",
+                "Elite Power Simulator enables power electronic engineers to accelerate time to market.",
+                "Introduction",
+                "The tool provides valuable insights into how their circuit will work using EliteSiC family products.",
+                "Resources and Products",
+                "User Guide",
+                "Read More",
+                "Application Note",
+                "Read More",
+                "EliteSiC Family",
+            ]
+        )
+        trimmed = trim_known_noise_sections(content)
+        self.assertIn("Elite Power Simulator", trimmed)
+        self.assertIn("accelerate time to market", trimmed)
+        self.assertIn("valuable insights into how their circuit will work", trimmed)
+        self.assertNotIn("Resources and Products", trimmed)
+        self.assertNotIn("User Guide", trimmed)
+        self.assertNotIn("EliteSiC Family", trimmed)
 
 
 class LinkFilterTests(unittest.TestCase):
@@ -142,6 +229,86 @@ class ClassificationTests(unittest.TestCase):
                 url="https://www.ti.com/product-category/power-management/overview.html",
                 title="Power management | TI.com",
                 content="design and application notes",
+            )
+        )
+
+    def test_low_value_page_detects_navigation_and_filter_hubs(self):
+        self.assertTrue(
+            is_low_value_page(
+                url="https://www.onsemi.com/design/technical-documentation",
+                title="Technical Documentation | onsemi",
+                content="Show side navigation Filters Quick Reference Export Clear all Document Type Application Notes Datasheet Eval Board Manual",
+            )
+        )
+        self.assertTrue(
+            is_low_value_page(
+                url="https://www.onsemi.com/design/interactive-block-diagrams/automotive",
+                title="Automotive | onsemi",
+                content="Interactive Block Diagrams Find the perfect block diagram Solution subgroup Block Diagrams Diagram subgroup children path",
+            )
+        )
+        self.assertTrue(
+            is_low_value_page(
+                url="https://www.ti.com/power-management/overview.html",
+                title="Power management | TI.com",
+                content="View all products Browse by category parametric-filter Power trends Products",
+            )
+        )
+
+    def test_low_value_page_detects_event_registration_pages(self):
+        self.assertTrue(
+            is_low_value_page(
+                url="https://www.ti.com/ja-jp/power-supply-design-seminar.html",
+                title="パワー サプライ デザイン セミナー | TI.com",
+                content="日時 東京会場 名古屋会場 登録 チェックイン 会場",
+            )
+        )
+        self.assertTrue(
+            is_low_value_page(
+                url="https://www.ti.com/ko-kr/power-supply-design-seminar.html",
+                title="전원 공급 장치 설계 세미나 | TI.com",
+                content="등록 장소 날짜 시간 현장 교육",
+            )
+        )
+
+    def test_low_value_page_keeps_real_training_content(self):
+        self.assertFalse(
+            is_low_value_page(
+                url="https://training.ti.com/design-high-frequency-series-capacitor-buck-converter",
+                title="Design of a High-Frequency Series Capacitor Buck Converter | Video | TI.com",
+                content="This training will cover some of the challenges to high frequency operation today, introduce the series capacitor buck converter topology, present some experimental results and go through the design steps.",
+            )
+        )
+
+    def test_low_value_page_keeps_onsemi_simulation_tool_pages(self):
+        self.assertFalse(
+            is_low_value_page(
+                url="https://www.onsemi.com/design/elite-power-simulator",
+                title="Elite Power Simulator | onsemi",
+                content="Elite Power Simulator enables power electronic engineers to accelerate time to market. The tool provides valuable insights into how their circuit will work using EliteSiC family products.",
+            )
+        )
+        self.assertFalse(
+            is_low_value_page(
+                url="https://www.onsemi.com/design/self-service-plecs-model-generator",
+                title="Self-Service PLECS Model Generator | onsemi",
+                content="Self-Service PLECS Model Generator lets engineers create custom, high-fidelity models for seamless integration and simulation. The latest enhancement adds gate drivers directly into the tool for more accurate switching prediction.",
+            )
+        )
+
+    def test_low_value_page_detects_webinar_and_resource_listing_pages(self):
+        self.assertTrue(
+            is_low_value_page(
+                url="https://www.onsemi.com/design/power-webinars",
+                title="onsemi",
+                content="Power Webinars Webinar Details On-Demand Re-Watch Now English October 18 2022 Silicon Carbide topics",
+            )
+        )
+        self.assertTrue(
+            is_low_value_page(
+                url="https://www.ti.com/design-resources/seminars/power-supply-design-seminar-psds/psds-resources.html",
+                title="PSDS resources | TI.com",
+                content="PSDS library Browse through three decades of training content Top resources Title Year White paper Presentation Video Download View",
             )
         )
 
@@ -321,6 +488,40 @@ class PdfTests(unittest.TestCase):
     def test_extract_pdf_text_invalid_bytes(self):
         text = extract_pdf_text(b"not a real pdf")
         self.assertIsInstance(text, str)
+
+
+class CrawlTests(unittest.TestCase):
+    @patch("scripts.server.rag_knowledge_crawler.time.sleep")
+    @patch("scripts.server.rag_knowledge_crawler.load_robots_parser")
+    @patch("scripts.server.rag_knowledge_crawler._fetch_content")
+    def test_crawl_does_not_follow_links_when_disabled(self, mock_fetch: Mock, mock_robots: Mock, _mock_sleep: Mock):
+        mock_robots.return_value = None
+        html = """
+        <html>
+          <head><title>Seed</title></head>
+          <body>
+            <main>
+              <h1>Seed Page</h1>
+              <p>This is a focused engineering article with enough content to keep.</p>
+              <p>It should not enqueue linked pages when follow_links is disabled.</p>
+              <a href="https://example.com/docs/child">child</a>
+            </main>
+          </body>
+        </html>
+        """
+        mock_fetch.return_value = ("html", html)
+        cfg = CrawlConfig(
+            seed_urls=["https://example.com/docs/seed"],
+            allowed_domains=["example.com"],
+            include_path_keywords=["/docs/"],
+            follow_links=False,
+            min_content_chars=20,
+        )
+
+        rows = crawl(cfg, verbose=False)
+
+        self.assertEqual(len(rows), 1)
+        mock_fetch.assert_called_once()
 
 
 if __name__ == "__main__":

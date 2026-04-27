@@ -4,10 +4,11 @@ import type { LlmMessage, LlmToolCall } from "../../services/llm/llmProxyClient"
 import { throwIfCancelled, isCancelledError } from "./cancelledError";
 
 const REACT_DEBUG_FLAG = "__LCEDA_AI_REACT_DEBUG__";
+const STREAM_PROGRESS_MIN_INTERVAL_MS = 200;
 
 type ReActDecision =
   | { type: "action"; tool: string; input?: unknown; rationale?: string }
-  | { type: "final"; route?: "chat" | "analysis" | "draft"; rationale?: string; output?: string }
+  | { type: "final"; route?: "chat" | "analysis" | "draft" | "modify"; rationale?: string; output?: string }
   | { type: "retry"; rationale?: string };
 
 export interface ReActLoopResult {
@@ -16,7 +17,7 @@ export interface ReActLoopResult {
   workingMemory: AgentWorkingMemory;
   finalOutput?: string;
   finalRationale?: string;
-  finalRoute?: "chat" | "analysis" | "draft";
+  finalRoute?: "chat" | "analysis" | "draft" | "modify";
 }
 
 export async function runReActLoop(input: {
@@ -375,6 +376,7 @@ export async function runReActLoop(input: {
     ].join("|");
   };
   let lastProgressSignature = "";
+  let lastStreamProgressAt = 0;
   const emitProgressIfChanged = (payload: {
     detail: string;
     textDelta?: string;
@@ -389,6 +391,14 @@ export async function runReActLoop(input: {
     const signature = buildProgressSignature(payload);
     if (signature === lastProgressSignature) {
       return;
+    }
+    const isStreamDelta = Boolean(payload.textDelta || payload.reasoningDelta);
+    if (isStreamDelta) {
+      const now = Date.now();
+      if (now - lastStreamProgressAt < STREAM_PROGRESS_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastStreamProgressAt = now;
     }
     lastProgressSignature = signature;
     deps.onProgress?.(payload);
@@ -547,7 +557,7 @@ export async function runReActLoop(input: {
           tool_choice?: any;
           onEvent?: (event: import("../../services/llm/llmProxyClient").LlmStreamEvent) => void;
         },
-        { output_text?: string; tool_calls?: unknown }
+        { output_text?: string; output_reasoning_text?: string; tool_calls?: unknown }
       >("llm_generate", {
         stream: true,
         messages,
@@ -662,8 +672,8 @@ export async function runReActLoop(input: {
           if (obj.type === "final") {
             const routeRaw = typeof obj.route === "string" ? obj.route : undefined;
             const route =
-              routeRaw === "chat" || routeRaw === "analysis" || routeRaw === "draft"
-                ? (routeRaw as "chat" | "analysis" | "draft")
+              routeRaw === "chat" || routeRaw === "analysis" || routeRaw === "draft" || routeRaw === "modify"
+                ? (routeRaw as "chat" | "analysis" | "draft" | "modify")
                 : undefined;
             const output =
               typeof obj.output === "string"
@@ -898,6 +908,9 @@ export async function runReActLoop(input: {
     const selectedToolCall =
       rawToolCalls.find((call) => normalizeToolName(call?.function?.name || "") === toolName) ?? rawToolCalls[0];
     const toolCallId = String(selectedToolCall?.id || `call_${i + 1}_${toolName}`);
+    const assistantReasoningContent = String(
+      (decision as unknown as { output_reasoning_text?: string }).output_reasoning_text || rawStreamReasoning || thoughtEvent.text || ""
+    ).trim();
     const assistantToolCalls =
       rawToolCalls.length > 0
         ? [
@@ -927,6 +940,7 @@ export async function runReActLoop(input: {
     messages.push({
       role: "assistant",
       content: null,
+      ...(assistantReasoningContent ? { reasoning_content: assistantReasoningContent } : {}),
       tool_calls: assistantToolCalls,
     });
 

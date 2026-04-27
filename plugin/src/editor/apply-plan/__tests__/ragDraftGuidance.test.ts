@@ -136,5 +136,6 @@ test("previewDraftPlan exposes unresolved device details for downstream UI rende
   const preview = previewDraftPlan(plan);
 
   assert.equal(preview.unresolvedDeviceDetails?.[0]?.includes("J1"), true);
-  assert.equal(preview.unresolvedDeviceDetails?.[0]?.includes("no_search_results"), true);
+  assert.equal(preview.unresolvedDeviceDetails?.[0]?.includes("暂未自动匹配"), true);
+  assert.equal(preview.unresolvedDeviceDetails?.[0]?.includes("header 1x2 2pin HDR-TH_1X2"), true);
 });

@@ -5,7 +5,8 @@ import type {
   SchematicSelection,
 } from "../../types/schematic";
 import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
-import type { ApplyPlanResult } from "../adapters/editorAdapter";
+import type { DraftPatchPlan } from "../apply-plan/draftPatchPlan";
+import type { ApplyPlanResult, PatchDraftPlanResult } from "../adapters/editorAdapter";
 
 export type LibraryScope = "system" | "project" | "personal" | "favorite";
 
@@ -71,6 +72,7 @@ export interface HostEditorBridge {
   locate: (target: LocateTarget) => Promise<void>;
   createEmptySchematicPage?: (input?: { title?: string }) => Promise<SchematicContext | void>;
   previewApplyPlan?: (plan: DraftPlan) => Promise<DraftPreview>;
+  patchDraftPlan?: (plan: DraftPatchPlan) => Promise<PatchDraftPlanResult>;
   applyPlan?: (plan: DraftPlan) => Promise<ApplyPlanResult>;
   rollbackApplyPlan?: (
     transactionId: string
