@@ -4391,7 +4391,8 @@
 
         const iterationSteps = Array.isArray(message && message.iterationSteps) ? message.iterationSteps : [];
         const nextStepEntriesSourceSignature = buildIterationStepsSourceSignature(iterationSteps);
-        if (dom.lastStepEntriesSourceSignature !== nextStepEntriesSourceSignature) {
+        const stepEntriesSourceChanged = dom.lastStepEntriesSourceSignature !== nextStepEntriesSourceSignature;
+        if (stepEntriesSourceChanged) {
           dom.cachedStepEntries = mergeStepEntries(dom.cachedStepEntries, iterationSteps);
           dom.lastStepEntriesSourceSignature = nextStepEntriesSourceSignature;
         }
@@ -4412,7 +4413,7 @@
             nextStreaming &&
             dom.lastStepUiRenderAt > 0 &&
             now - dom.lastStepUiRenderAt < STEP_UI_STREAM_MIN_INTERVAL_MS;
-          if (!shouldThrottleStepUi) {
+          if (stepEntriesSourceChanged && !shouldThrottleStepUi) {
             renderStepsUI(activeUI);
             dom.lastStepUiRenderAt = now;
           }
@@ -4790,14 +4791,14 @@
       return `entry:${index}`;
     }
 
-    function buildStepEntriesSignature(entries, latestRunningIndex) {
+    function buildStepEntriesSignature(entries, latestRunningIndex, streaming) {
       const list = Array.isArray(entries) ? entries : [];
       if (list.length === 0) return "0";
       const summarizeEntry = (entry, index, trackBody) => [
         getTimelineEntryKey(entry, index),
         normalizeTimelineStatus(entry && entry.status),
-        trackBody ? String(entry && entry.text ? entry.text : "") : "",
-        trackBody ? String(entry && entry.title ? entry.title : "") : "",
+        trackBody && !(streaming && index === latestRunningIndex) ? String(entry && entry.text ? entry.text : "") : "",
+        trackBody && !(streaming && index === latestRunningIndex) ? String(entry && entry.title ? entry.title : "") : "",
         Array.isArray(entry && entry.tools) ? entry.tools.length : 0,
         Array.isArray(entry && entry.observations) ? entry.observations.length : 0,
       ].join("~");
@@ -4825,7 +4826,7 @@
         }
         return -1;
       })();
-      const nextEntriesSignature = buildStepEntriesSignature(entries, latestRunningIndex);
+      const nextEntriesSignature = buildStepEntriesSignature(entries, latestRunningIndex, ui.streaming);
       if (ui.lastEntriesSignature !== nextEntriesSignature) {
         patchTimelineNodes(ui, entries, latestRunningIndex);
         ui.lastEntriesSignature = nextEntriesSignature;
@@ -6335,9 +6336,9 @@
 var edaEsbuildExportName = (() => {
   // src/config/env.ts
   function loadConfigFromEnv() {
-    const serverBaseUrl = "https://test-api.lceda.cn";
+    const serverBaseUrl = "http://127.0.0.1:28080";
     const channel = false ? "professional" : "standard";
-    const nodeEnv = "test";
+    const nodeEnv = "development";
     return {
       serverBaseUrl,
       channel,
@@ -19304,7 +19305,10 @@ ${content}`;
     if (input.route === "chat") {
       return true;
     }
-    return !(input.hasStepItems || input.hasIterationSteps || input.hasReactEvents || input.hasReasoningDelta);
+    return false;
+  }
+  function shouldSanitizeFullStreamingText(input) {
+    return input.route === "chat" && Boolean(input.mirrorTextToBody);
   }
   function shouldApplyStreamingReactEvents(input) {
     if (!Array.isArray(input.reactEvents) || input.reactEvents.length === 0) {
@@ -20407,7 +20411,6 @@ ${patchSummary}`,
               const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
               if (internals.activeTurnId !== turnId) return;
               const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
-              const sanitizedText = stripFinalControlLikeText(event.text);
               const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
               const shouldKeepReactEvents = shouldApplyStreamingReactEvents({
                 reactEvents: event.reactEvents,
@@ -20456,6 +20459,10 @@ ${patchSummary}`,
                   hasReactEvents: sanitizedReactEvents !== void 0 && Boolean(sanitizedReactEvents?.length),
                   hasReasoningDelta: Boolean(sanitizedReasoningDelta)
                 });
+                const sanitizedText = shouldSanitizeFullStreamingText({
+                  route: event.route,
+                  mirrorTextToBody: shouldMirrorTextToBody
+                }) ? stripFinalControlLikeText(event.text) : void 0;
                 if (shouldMirrorTextToBody && lastMessage.content === "\u6B63\u5728\u601D\u8003...") {
                   lastMessage.content = "";
                 }
@@ -20539,7 +20546,7 @@ ${patchSummary}`,
                   stage: event.stage,
                   durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
                   textDeltaLength: String(sanitizedTextDelta || "").length,
-                  textLength: String(sanitizedText || "").length,
+                  textLength: String(event.text || "").length,
                   reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
                   stepItems: Array.isArray(lastMessage.stepItems) ? lastMessage.stepItems.length : 0,
                   iterationSteps: Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
@@ -21291,6 +21298,9 @@ ${patchSummary}`,
   function stripFinalControlLikeText(text) {
     const raw = String(text || "");
     if (!raw) return "";
+    if (raw.length < 64 && !raw.includes("{") && !raw.includes("`") && !/final|type/i.test(raw)) {
+      return raw;
+    }
     const patterns = [
       /([\s\S]*?)(?:\n|\r|^)\s*```(?:json)?\s*$/u,
       /([\s\S]*?)(?:\n|\r|^)\s*```json\s*(?:\n|\r)/u,

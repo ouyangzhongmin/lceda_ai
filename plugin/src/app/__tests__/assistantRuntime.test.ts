@@ -29,6 +29,7 @@ import {
   limitStreamProcessItems,
   shouldApplyStreamingReactEvents,
   shouldMirrorStreamingTextToAssistantBody,
+  shouldSanitizeFullStreamingText,
   shouldSendComposerPrompt,
   shouldStopRunningTurnFromComposer,
   shouldAutoApplyDraftFromChatInput,
@@ -2435,6 +2436,26 @@ test("shouldMirrorStreamingTextToAssistantBody suppresses duplicate body streami
     }),
     false
   );
+});
+
+test("shouldMirrorStreamingTextToAssistantBody suppresses raw draft token streaming even without steps", () => {
+  assert.equal(
+    shouldMirrorStreamingTextToAssistantBody({
+      route: "draft",
+      hasStepItems: false,
+      hasIterationSteps: false,
+      hasReactEvents: false,
+      hasReasoningDelta: false,
+    }),
+    false
+  );
+});
+
+test("shouldSanitizeFullStreamingText only sanitizes full text when it will be mirrored", () => {
+  assert.equal(shouldSanitizeFullStreamingText({ route: "chat", mirrorTextToBody: true }), true);
+  assert.equal(shouldSanitizeFullStreamingText({ route: "draft", mirrorTextToBody: false }), false);
+  assert.equal(shouldSanitizeFullStreamingText({ route: "analysis", mirrorTextToBody: false }), false);
+  assert.equal(shouldSanitizeFullStreamingText({ route: "modify", mirrorTextToBody: false }), false);
 });
 
 test("isPerfDebugEnabled reads the global flag dynamically", () => {

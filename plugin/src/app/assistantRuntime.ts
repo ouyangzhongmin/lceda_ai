@@ -1208,12 +1208,14 @@ export function shouldMirrorStreamingTextToAssistantBody(input: {
   if (input.route === "chat") {
     return true;
   }
-  return !(
-    input.hasStepItems ||
-    input.hasIterationSteps ||
-    input.hasReactEvents ||
-    input.hasReasoningDelta
-  );
+  return false;
+}
+
+export function shouldSanitizeFullStreamingText(input: {
+  route: "chat" | "analysis" | "draft" | "modify";
+  mirrorTextToBody?: boolean;
+}): boolean {
+  return input.route === "chat" && Boolean(input.mirrorTextToBody);
 }
 
 export function shouldApplyStreamingReactEvents(input: {
@@ -2534,7 +2536,6 @@ function createAssistantRuntime(): AssistantRuntime {
             // Ignore late events from previous turns to prevent UI getting stuck.
             if (internals.activeTurnId !== turnId) return;
             const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
-            const sanitizedText = stripFinalControlLikeText(event.text);
             const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
             const shouldKeepReactEvents = shouldApplyStreamingReactEvents({
               reactEvents: event.reactEvents,
@@ -2592,6 +2593,12 @@ function createAssistantRuntime(): AssistantRuntime {
                 hasReactEvents: sanitizedReactEvents !== undefined && Boolean(sanitizedReactEvents?.length),
                 hasReasoningDelta: Boolean(sanitizedReasoningDelta),
               });
+              const sanitizedText = shouldSanitizeFullStreamingText({
+                route: event.route,
+                mirrorTextToBody: shouldMirrorTextToBody,
+              })
+                ? stripFinalControlLikeText(event.text)
+                : undefined;
               // ReAct 过程中，LLM 流式文本应进入当前 step，而不是底部正式报告区。
               // 最终报告只在 turn 完成后由 final message 渲染。
               if (shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
@@ -2687,7 +2694,7 @@ function createAssistantRuntime(): AssistantRuntime {
                 stage: event.stage,
                 durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
                 textDeltaLength: String(sanitizedTextDelta || "").length,
-                textLength: String(sanitizedText || "").length,
+                textLength: String(event.text || "").length,
                 reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
                 stepItems: Array.isArray(lastMessage.stepItems) ? lastMessage.stepItems.length : 0,
                 iterationSteps: Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
@@ -3537,6 +3544,14 @@ function stripInitialWelcomeMessages(
 export function stripFinalControlLikeText(text: string | undefined): string {
   const raw = String(text || "");
   if (!raw) return "";
+  if (
+    raw.length < 64 &&
+    !raw.includes("{") &&
+    !raw.includes("`") &&
+    !/final|type/i.test(raw)
+  ) {
+    return raw;
+  }
   const patterns = [
     /([\s\S]*?)(?:\n|\r|^)\s*```(?:json)?\s*$/u,
     /([\s\S]*?)(?:\n|\r|^)\s*```json\s*(?:\n|\r)/u,
