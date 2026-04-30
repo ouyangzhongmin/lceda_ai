@@ -2,8 +2,8 @@
   "name": "lceda-ai-assistant",
   "uuid": "8f6b9a9d4e8348a8b0fd67c2a1a4c9e1",
   "displayName": "AI助手",
-  "description": "可以使用于嘉立创专业版与标准版的AI分析与生成原理图助手,有问题可加q:574781136",
-  "version": "0.1.0",
+  "description": "可以使用于嘉立创专业版与标准版的 AI 原理图分析、规则检查与草案生成助手。",
+  "version": "0.1.4",
   "entry": "./dist/index",
   "publisher": "oyzm",
   "engines": {
@@ -11,7 +11,7 @@
   },
   "license": "MIT",
   "categories": [
-    "Schematic",
+    "schematic",
     "pcb"
   ],
   "keywords": [
@@ -20,6 +20,10 @@
     "ai",
     "schematic"
   ],
+  "images": {
+    "logo": "./images/logo.png",
+    "banner": "./images/banner.jpg"
+  },
   "homepage": "https://gitee.com/ouyangzhongmin/lceda_ai",
   "bugs": "https://gitee.com/ouyangzhongmin/lceda_ai/issues",
   "headerMenus": {
