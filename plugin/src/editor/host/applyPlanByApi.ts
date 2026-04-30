@@ -4,6 +4,7 @@ import { normalizeDraftPlan } from "../apply-plan/generateDraftPlan";
 import { resolveDraftPlanDevices } from "../apply-plan/resolveDraftPlanDevices";
 import type { SchematicPin } from "../../types/schematic";
 import { typedGetLibrarySymbol, typedSearchLibraryDevices } from "./proHostProbe";
+import { typedGetLibrarySymbolSource } from "./proHostProbe";
 import { resolveHostEditorBridge } from "./runtime";
 import type { ApplyPlanResult } from "../adapters/editorAdapter";
 import { matchDraftPinsToRealPins } from "./pinMatchEngine";
@@ -210,6 +211,19 @@ async function enrichResolvedPinsForTypedPlacement(plan: DraftPlan): Promise<Dra
           })
       : async ({ symbolUuid, libraryUuid }) =>
           typedGetLibrarySymbol({
+            symbolUuid,
+            libraryUuid,
+            scope: "system",
+          }),
+    bridge.getLibrarySymbolSource
+      ? async ({ symbolUuid, libraryUuid }) =>
+          bridge.getLibrarySymbolSource!({
+            symbolUuid,
+            libraryUuid,
+            scope: "system",
+          })
+      : async ({ symbolUuid, libraryUuid }) =>
+          typedGetLibrarySymbolSource({
             symbolUuid,
             libraryUuid,
             scope: "system",

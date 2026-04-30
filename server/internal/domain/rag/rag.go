@@ -13,6 +13,7 @@ type SearchResult struct {
 	Snippet   string  `json:"snippet"`
 	SourceRef string  `json:"source_ref"`
 	KBType    string  `json:"kb_type"`
+	Metadata  any     `json:"metadata,omitempty"`
 }
 
 type CitationPackage struct {

@@ -4,7 +4,8 @@ services:
       - elasticsearch
     image: elasticsearch:${STACK_VERSION}
     volumes:
-      - ./data/es01:/usr/share/elasticsearch/data
+      # `:Z` is important on SELinux-enabled hosts (CentOS/RHEL) so ES can write data dir.
+      - ./data/es01:/usr/share/elasticsearch/data:Z
     ports:
       - ${ES_PORT}:9200
     env_file: .env

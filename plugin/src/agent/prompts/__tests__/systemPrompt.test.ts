@@ -34,6 +34,10 @@ test("buildSystemPrompt includes strict DraftDesignSpec guidance for schematic_d
   assert.equal(prompt.includes("元件库中直接检索"), true);
   assert.equal(prompt.includes("禁止把 `generic`"), true);
   assert.equal(prompt.includes("连接器/电池接口"), true);
+  assert.equal(prompt.includes("`rag_search` 返回的知识不是只用于引用说明"), true);
+  assert.equal(prompt.includes("connectionChains"), true);
+  assert.equal(prompt.includes("VBUS -> C6 -> GND"), true);
+  assert.equal(prompt.includes("翻译成 `components` 中的器件"), true);
 });
 
 test("buildSystemPrompt includes existing draft follow-up instructions when draft summary mode is enabled", () => {

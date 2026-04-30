@@ -54,6 +54,7 @@ export function createStandardHostBridge(rawApi?: RawHostApi): HostEditorBridge 
       rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
       openExternal: Boolean(capabilities.openExternal || typedWindowAvailable),
       showToastMessage: Boolean(capabilities.showToastMessage || typedToastAvailable),
+      searchLibraryDevicesByProperties: false,
       searchLibraryDevices: false,
       getLibraryDevice: false,
       getLibraryDevicesByLcscIds: false,
@@ -117,9 +118,11 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
       rollbackApplyPlan: Boolean(capabilities.rollbackApplyPlan),
       openExternal: Boolean(capabilities.openExternal || typedWindowAvailable),
       showToastMessage: Boolean(capabilities.showToastMessage || typedToastAvailable),
+      searchLibraryDevicesByProperties: Boolean(capabilities.searchLibraryDevicesByProperties),
       searchLibraryDevices: Boolean(capabilities.searchLibraryDevices),
       getLibraryDevice: Boolean(capabilities.getLibraryDevice),
       getLibrarySymbol: Boolean(capabilities.getLibrarySymbol),
+      getLibrarySymbolSource: Boolean(capabilities.getLibrarySymbolSource),
       getLibraryDevicesByLcscIds: Boolean(capabilities.getLibraryDevicesByLcscIds),
     }
   );
@@ -156,9 +159,11 @@ export function createProfessionalHostBridge(rawApi?: RawHostApi): HostEditorBri
         throw new Error("host toast not available");
       }
     },
+    searchLibraryDevicesByProperties: capabilities.searchLibraryDevicesByProperties,
     searchLibraryDevices: capabilities.searchLibraryDevices,
     getLibraryDevice: capabilities.getLibraryDevice,
     getLibrarySymbol: capabilities.getLibrarySymbol,
+    getLibrarySymbolSource: capabilities.getLibrarySymbolSource,
     getLibraryDevicesByLcscIds: capabilities.getLibraryDevicesByLcscIds,
     getCapabilityReport: () => capabilityReport,
   };

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
 
@@ -23,6 +25,7 @@ import {
   hasUnresolvedDraftDevices,
   inferDraftComponentRole,
   mergeAssistantFinalMessage,
+  mergeStreamProcessFields,
   normalizeDevicePickerCandidates,
   isPerfDebugEnabled,
   buildStreamingProcessSignature,
@@ -38,6 +41,7 @@ import {
   shouldIgnoreDuplicateSendWhileRunning,
   shouldUseDraftReplyLeadNarrative,
   resolveDraftDeviceSearchQuery,
+  buildDraftDeviceSearchQueries,
   resolveDevicePickerManualQueryStateForSearch,
   updateDevicePickerManualQueryState,
   upsertLlmReasoningStepItem,
@@ -48,6 +52,12 @@ import type { MainPanelState } from "../../ui/panels/mainPanel";
 import { previewDraftPlan } from "../../editor/apply-plan/previewDraftPlan";
 import type { DraftPlan } from "../../editor/apply-plan/draftPlan";
 import type { HostEditorBridge } from "../../editor/host/runtime";
+
+const assistantRuntimeSource = readFileSync(resolve(process.cwd(), "src/app/assistantRuntime.ts"), "utf8");
+
+test("assistant runtime does not batch analysis llm stream events behind a second buffer", () => {
+  assert.equal(assistantRuntimeSource.includes("analysisStreamBuffer"), false);
+});
 
 test("shouldIgnoreDuplicateSendWhileRunning returns true for the same pending prompt in an active turn", () => {
   assert.equal(
@@ -408,6 +418,64 @@ test("manual device selection followed by library enrichment clears unresolved p
   assert.equal(enriched?.pins.find((pin) => pin.id === "draft-d1-c")?.resolvedPinName, "K");
 });
 
+test("enrichDraftPlanFromBridge falls back to host symbol source when device detail lacks explicit pins", async () => {
+  const plan = {
+    title: "ip5306",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-u1",
+        ref: "U1",
+        properties: {
+          device_uuid: "device-ip5306",
+          library_uuid: "lib-lcsc",
+        },
+      },
+    ],
+    pins: [
+      {
+        id: "draft-u1-vin",
+        componentId: "draft-u1",
+        pinName: "VIN",
+      },
+      {
+        id: "draft-u1-bat",
+        componentId: "draft-u1",
+        pinName: "BAT",
+      },
+    ],
+    nets: [],
+  } as DraftPlan;
+
+  const enriched = await enrichDraftPlanFromBridge(plan, {
+    getLibraryDevice: async () => ({
+      uuid: "device-ip5306",
+      symbol: {
+        uuid: "symbol-ip5306",
+        libraryUuid: "lib-lcsc",
+      },
+    }),
+    getLibrarySymbol: async () => ({
+      uuid: "symbol-ip5306",
+      raw: {},
+    }),
+    getLibrarySymbolSource: async () => ({
+      uuid: "symbol-ip5306",
+      raw: {
+        documentSource: JSON.stringify({
+          shape: [
+            { pin: "VIN", num: "1", type: "power" },
+            { pin: "BAT", num: "5", type: "power" },
+          ],
+        }),
+      },
+    }),
+  });
+
+  assert.equal(enriched?.pins.find((pin) => pin.id === "draft-u1-vin")?.resolvedPinNumber, "1");
+  assert.equal(enriched?.pins.find((pin) => pin.id === "draft-u1-bat")?.resolvedPinNumber, "5");
+});
+
 test("applyDraftPlanWithRepair retries structured repair up to the configured limit", async () => {
   const attempts: DraftPlan[] = [
     { title: "draft-0", rationale: "r", components: [], pins: [], nets: [] },
@@ -556,6 +624,249 @@ test("closeDevicePicker syncs state without dispatching a global DOM event", asy
     runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
     runtimeGlobals.__LCEDA_AI_ASSISTANT_FRAME_SYNC_STATE__ = previousSync;
     runtimeGlobals.dispatchEvent = previousDispatchEvent;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("closeDevicePicker keeps picker closed when an in-flight device choice finishes later", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const draftPlan: DraftPlan = {
+    title: "Device picker race",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-c1",
+        ref: "C1",
+        name: "Capacitor",
+        packageName: "C0603",
+        value: "100nF",
+        properties: {
+          device_resolution_status: "unresolved",
+          device_resolution_reason: "manual",
+          preferred_search_query: "100nF capacitor C0603",
+        },
+      },
+    ],
+    pins: [
+      { id: "draft-c1-1", componentId: "draft-c1", pinName: "1", pinNumber: "1", electricalType: "passive" },
+      { id: "draft-c1-2", componentId: "draft-c1", pinName: "2", pinNumber: "2", electricalType: "passive" },
+    ],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.last_state",
+    JSON.stringify({
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "草案待确认",
+      chatMessages: [],
+      draftPlan,
+      draftPreview: {
+        title: draftPlan.title,
+        rationale: draftPlan.rationale,
+        componentRefs: ["C1"],
+        netNames: [],
+        componentCount: 1,
+        netCount: 0,
+      },
+      devicePicker: {
+        open: true,
+        items: [
+          {
+            componentId: "draft-c1",
+            componentRef: "C1",
+            role: "input_capacitor",
+            roleLabel: "输入电容",
+            status: "unresolved",
+            query: "100nF capacitor C0603",
+            candidates: [
+              {
+                uuid: "cap-device",
+                name: "CC0603KRX7R9BB104",
+                libraryUuid: "cap-lib",
+                footprintName: "C0603",
+              },
+            ],
+          },
+        ],
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  try {
+    const runtime = getAssistantRuntime();
+    runtimeGlobals.LCEDA_HOST_BRIDGE = {
+      getChannel: () => "standard",
+      isAvailable: async () => true,
+      getCapabilityReport: () => ({
+        channel: "standard",
+        available: true,
+        missing: [],
+        optionalMissing: [],
+      }),
+      getCurrentContext: async () => ({
+        project: { channel: "standard", projectId: "p1", projectName: "demo", pageId: "page-picker", pageName: "Sheet 1" },
+        components: [],
+        pins: [],
+        nets: [],
+        selection: { objectIds: [] },
+      }),
+      getSelection: async () => ({ objectIds: [] }),
+      locate: async () => {},
+      getLibraryDevice: async () => {
+        await runtime.closeDevicePicker();
+        return {
+          uuid: "cap-device",
+          raw: {
+            device: {
+              uuid: "cap-device",
+            },
+          },
+        };
+      },
+    };
+
+    await runtime.openPanel();
+    const selected = await runtime.chooseDraftDeviceCandidate({ componentId: "draft-c1", candidateIndex: 0 });
+
+    assert.equal(selected.devicePicker?.open, false);
+    assert.equal(selected.draftPlan?.components[0]?.properties?.device_resolution_status, "resolved");
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("openDevicePicker falls back to restored state draft plan after history restore", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const draftPlan: DraftPlan = {
+    title: "History draft",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-r1",
+        ref: "R1",
+        name: "Resistor",
+        value: "10k",
+        properties: {
+          device_resolution_status: "unresolved",
+          device_resolution_reason: "manual",
+          preferred_search_query: "10k resistor 0603",
+        },
+      },
+    ],
+    pins: [],
+    nets: [],
+  };
+
+  storageMap.set(
+    "lceda_ai.panel.session.history-draft",
+    JSON.stringify({
+      sessionId: "history-draft",
+      loggedIn: false,
+      agentRunState: "awaiting_confirmation",
+      agentRunRoute: "draft",
+      summary: "历史草案待确认",
+      chatMessages: [],
+      draftPlan,
+      draftPreview: {
+        title: draftPlan.title,
+        rationale: draftPlan.rationale,
+        componentRefs: ["R1"],
+        netNames: [],
+        componentCount: 1,
+        netCount: 0,
+      },
+    } satisfies Partial<MainPanelState>)
+  );
+
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: { channel: "standard", projectId: "p1", projectName: "demo", pageId: "page-history", pageName: "Sheet 1" },
+      components: [],
+      pins: [],
+      nets: [],
+      selection: { objectIds: [] },
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    const restored = await runtime.restoreSession("history-draft");
+    assert.equal(restored.draftPlan?.title, "History draft");
+
+    const opened = await runtime.openDevicePicker();
+    assert.equal(opened.devicePicker?.open, true);
+    assert.equal(opened.devicePicker?.items[0]?.componentId, "draft-r1");
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
     runtimeGlobals.localStorage = previousStorage;
   }
 });
@@ -2193,6 +2504,37 @@ test("mergeAssistantFinalMessage preserves pending process stepItems when final 
   assert.equal(merged.stepItems?.[0]?.text, "正在思考");
 });
 
+test("mergeAssistantFinalMessage does not preserve partial streaming body as final content", () => {
+  const pending = {
+    role: "assistant" as const,
+    title: "草案生成中",
+    content: "我来并让我信息",
+    streaming: true,
+    iterationSteps: [
+      {
+        id: "react-iteration-1",
+        iteration: 1,
+        status: "running" as const,
+        thoughtText: "正在整理模块信息",
+        streaming: true,
+        toolEvents: [],
+        observationTexts: [],
+      },
+    ],
+  };
+  const finalMessage = {
+    role: "assistant" as const,
+    title: "草案结果",
+    content: "",
+  };
+
+  const merged = mergeAssistantFinalMessage(pending, finalMessage);
+
+  assert.equal(merged.streaming, false);
+  assert.equal(merged.content, "");
+  assert.equal(merged.iterationSteps?.[0]?.thoughtText, "正在整理模块信息");
+});
+
 test("mergeAssistantFinalMessage preserves pending iterationSteps when final message omits them", () => {
   const pending = {
     role: "assistant" as const,
@@ -2412,16 +2754,155 @@ test("clampStreamingAssistantContent strips partial final control payload leaked
   assert.equal(message.content, "这是一个简单的点亮 LED 电路。");
 });
 
-test("shouldMirrorStreamingTextToAssistantBody keeps natural chat streaming in the assistant body", () => {
+test("mergeStreamProcessFields does not append reasoning delta twice when iteration step already contains it", () => {
+  const message: NonNullable<MainPanelState["chatMessages"]>[number] = {
+    role: "assistant",
+    title: "分析中",
+    content: "",
+    streaming: true,
+    iterationSteps: [
+      {
+        id: "react-iteration-1",
+        iteration: 1,
+        status: "running",
+        thoughtText: "Let",
+        toolEvents: [],
+        observationTexts: [],
+        streaming: true,
+      },
+    ],
+  };
+
+  mergeStreamProcessFields({
+    lastMessage: message,
+    reasoningDelta: "Let",
+    iterationSteps: [
+      {
+        id: "react-iteration-1",
+        iteration: 1,
+        status: "running",
+        thoughtText: "Let",
+        toolEvents: [],
+        observationTexts: [],
+        streaming: true,
+      },
+    ],
+  });
+
+  assert.equal(message.iterationSteps?.[0]?.thoughtText, "Let");
+});
+
+test("mergeStreamProcessFields upserts lightweight iteration step without dropping prior steps", () => {
+  const message: NonNullable<MainPanelState["chatMessages"]>[number] = {
+    role: "assistant",
+    title: "分析中",
+    content: "",
+    streaming: true,
+    iterationSteps: [
+      {
+        id: "react-iteration-1",
+        iteration: 1,
+        status: "done",
+        thoughtText: "one",
+        toolEvents: [],
+        observationTexts: [],
+      },
+      {
+        id: "react-iteration-2",
+        iteration: 2,
+        status: "running",
+        thoughtText: "two",
+        toolEvents: [],
+        observationTexts: [],
+      },
+    ],
+  };
+
+  mergeStreamProcessFields({
+    lastMessage: message,
+    reasoningDelta: " x",
+    iterationSteps: [
+      {
+        id: "react-iteration-2",
+        iteration: 2,
+        status: "running",
+        thoughtText: "two x",
+        toolEvents: [],
+        observationTexts: [],
+        streaming: true,
+      },
+    ],
+  });
+
+  assert.equal(message.iterationSteps?.length, 2);
+  assert.equal(message.iterationSteps?.[0]?.iteration, 1);
+  assert.equal(message.iterationSteps?.[1]?.iteration, 2);
+  assert.equal(message.iterationSteps?.[1]?.thoughtText, "two x");
+  assert.equal(message.iterationSteps?.[1]?.streaming, true);
+});
+
+test("mergeStreamProcessFields applies analysis text stream to the active iteration step without mirroring body text", () => {
+  const message: NonNullable<MainPanelState["chatMessages"]>[number] = {
+    role: "assistant",
+    title: "分析中",
+    content: "",
+    streaming: true,
+    iterationSteps: [
+      {
+        id: "react-iteration-8",
+        iteration: 8,
+        status: "running",
+        thoughtText: "正在分析",
+        toolEvents: [],
+        observationTexts: [],
+        streaming: true,
+      },
+    ],
+  };
+
+  mergeStreamProcessFields({
+    lastMessage: message,
+    text: "正在分析当前电源拓扑并定位关键路径",
+    iterationSteps: [
+      {
+        id: "react-iteration-8",
+        iteration: 8,
+        status: "running",
+        thoughtText: "正在分析当前电源拓扑并定位关键路径",
+        toolEvents: [],
+        observationTexts: [],
+        streaming: true,
+      },
+    ],
+  });
+
+  assert.equal(message.content, "");
+  assert.equal(message.iterationSteps?.[0]?.thoughtText, "正在分析当前电源拓扑并定位关键路径");
+});
+
+test("shouldMirrorStreamingTextToAssistantBody keeps plain natural chat streaming in the assistant body", () => {
   assert.equal(
     shouldMirrorStreamingTextToAssistantBody({
       route: "chat",
-      hasStepItems: true,
-      hasIterationSteps: true,
-      hasReactEvents: true,
-      hasReasoningDelta: true,
+      hasStepItems: false,
+      hasIterationSteps: false,
+      hasReactEvents: false,
+      hasReasoningDelta: false,
     }),
     true
+  );
+});
+
+test("shouldMirrorStreamingTextToAssistantBody suppresses ReAct step tokens even when route is chat", () => {
+  assert.equal(
+    shouldMirrorStreamingTextToAssistantBody({
+      route: "chat",
+      hasStepItems: false,
+      hasIterationSteps: true,
+      hasReactEvents: false,
+      hasReasoningDelta: false,
+    }),
+    false
   );
 });
 
@@ -2555,6 +3036,39 @@ test("buildStreamingProcessSignature is stable for identical tail state", () => 
       workingMemory: undefined,
     })
   );
+});
+
+test("buildStreamingProcessSignature detects cloned iteration step changes even when source object is later mutated", () => {
+  const sharedStep = {
+    id: "react-iteration-7",
+    iteration: 7,
+    status: "running" as const,
+    thoughtText: "abc",
+    toolEvents: [],
+    observationTexts: [],
+  };
+  const previousSnapshot = structuredClone
+    ? structuredClone([sharedStep])
+    : JSON.parse(JSON.stringify([sharedStep]));
+  const previousSignature = buildStreamingProcessSignature({
+    stepItems: undefined,
+    iterationSteps: previousSnapshot,
+    reactEvents: undefined,
+    stepStates: undefined,
+    workingMemory: undefined,
+  });
+
+  sharedStep.thoughtText = "abcd";
+
+  const nextSignature = buildStreamingProcessSignature({
+    stepItems: undefined,
+    iterationSteps: [sharedStep],
+    reactEvents: undefined,
+    stepStates: undefined,
+    workingMemory: undefined,
+  });
+
+  assert.notEqual(previousSignature, nextSignature);
 });
 
 test("limitStreamProcessItems trims old process events before streaming state commit", () => {
@@ -2775,6 +3289,472 @@ test("device picker items can carry manual query ui state", () => {
   assert.equal(state.devicePicker?.items[0]?.manualQueryDraft, "STM32F103C8T6");
 });
 
+test("openDevicePicker keeps existing candidates after picker state rebuild", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "professional",
+    isAvailable: () => true,
+    getCurrentContext: async () => ({
+      project: { channel: "professional", projectId: "p1", pageId: "pg1", pageName: "P1" },
+      selection: { objectIds: [] },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    const state = runtime.getLastState() as MainPanelState & { draftPlan?: DraftPlan };
+    state.draftPlan = {
+      title: "device picker preserve",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u1",
+          ref: "U1",
+          name: "IP5306",
+          value: "IP5306",
+          properties: {
+            preferred_search_query: "IP5306",
+            device_resolution_status: "unresolved",
+            device_resolution_reason: "manual",
+          },
+        } as any,
+      ],
+      pins: [],
+      nets: [],
+    };
+    state.devicePicker = {
+      open: true,
+      items: [
+        {
+          componentId: "draft-u1",
+          componentRef: "U1",
+          role: "ldo_regulator",
+          roleLabel: "稳压/电源器件",
+          query: "IP5306",
+          status: "unresolved",
+          attemptedQueries: ["IP5306"],
+          searchDiagnostics: {
+            route: "query_search",
+            normalizedCount: 1,
+          },
+          candidates: [
+            {
+              uuid: "49a464100aba46e28c3d78994480a888",
+              name: "IP5306",
+              libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+              supplierId: "C181692",
+              footprintName: "ESOP-8",
+              manufacturer: "INJOINIC(英集芯)",
+              description: "电池管理",
+              ...buildDevicePickerCandidatePresentation(
+                { role: inferDraftComponentRole("U1"), query: "IP5306" },
+                {
+                  uuid: "49a464100aba46e28c3d78994480a888",
+                  name: "IP5306",
+                  libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+                  supplierId: "C181692",
+                  footprintName: "ESOP-8",
+                  manufacturer: "INJOINIC(英集芯)",
+                  description: "电池管理",
+                } as any,
+                0
+              ),
+            },
+          ],
+        },
+      ],
+    };
+
+    const reopened = await runtime.openDevicePicker();
+    assert.equal(reopened.devicePicker?.items[0]?.candidates?.length, 1);
+    assert.equal(reopened.devicePicker?.items[0]?.candidates?.[0]?.name, "IP5306");
+    assert.equal(reopened.devicePicker?.items[0]?.searchDiagnostics?.normalizedCount, 1);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("choosing the final unresolved device updates draft message action to apply draft", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "professional",
+    isAvailable: () => true,
+    getCurrentContext: async () => ({
+      project: { channel: "professional", projectId: "p1", pageId: "pg1", pageName: "P1" },
+      selection: { objectIds: [] },
+      components: [],
+      pins: [],
+      nets: [],
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+    getLibraryDevice: async () => ({
+      uuid: "49a464100aba46e28c3d78994480a888",
+      pins: [],
+    }),
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    const state = runtime.getLastState() as MainPanelState & { draftPlan?: DraftPlan };
+    state.draftPlan = {
+      title: "ip5306 draft",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u1",
+          ref: "U1",
+          name: "IP5306",
+          value: "IP5306",
+          properties: {
+            preferred_search_query: "IP5306",
+            device_resolution_status: "unresolved",
+            device_resolution_reason: "manual",
+          },
+        } as any,
+      ],
+      pins: [],
+      nets: [],
+    };
+    state.draftPreview = {
+      title: "ip5306 draft",
+      rationale: "test",
+      componentRefs: ["U1"],
+      netNames: [],
+      componentCount: 1,
+      netCount: 0,
+      unresolvedDeviceDetails: ["U1：充放电管理，暂未自动匹配到可直接放置的器件。建议搜索：IP5306"],
+    };
+    state.devicePicker = {
+      open: true,
+      items: [
+        {
+          componentId: "draft-u1",
+          componentRef: "U1",
+          role: "charger_powerbank",
+          roleLabel: "充放电管理",
+          query: "IP5306",
+          status: "unresolved",
+          candidates: [
+            {
+              uuid: "49a464100aba46e28c3d78994480a888",
+              name: "IP5306",
+              libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+              supplierId: "C181692",
+              footprintName: "ESOP-8",
+              manufacturer: "INJOINIC(英集芯)",
+            },
+          ],
+        },
+      ],
+    };
+    state.chatMessages = [
+      {
+        role: "assistant",
+        title: "草案草图",
+        tone: "success",
+        content: "我已经生成一版草案。\n\n当前可用操作：选择器件",
+        structuredContent: [{ kind: "paragraph", text: "结构化草案内容" }],
+        actions: [{ label: "选择器件", action: "select_devices" }],
+      },
+    ];
+    await runtime.openDevicePicker();
+
+    const updated = await runtime.chooseDraftDeviceCandidate({
+      componentId: "draft-u1",
+      candidateIndex: 0,
+    });
+    const lastMessage = updated.chatMessages?.at(-1);
+
+    assert.equal(hasUnresolvedDraftDevices(updated.draftPlan), false);
+    assert.equal(lastMessage?.actions?.some((item) => item.action === "apply_draft"), true);
+    assert.equal(lastMessage?.actions?.some((item) => item.action === "select_devices"), false);
+    assert.match(lastMessage?.content ?? "", /应用草案/);
+    assert.match(lastMessage?.content ?? "", /器件确认状态/);
+    assert.deepEqual(lastMessage?.structuredContent, [{ kind: "paragraph", text: "结构化草案内容" }]);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("device picker role labels prefer explicit draft component roles over U-prefix fallback", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+  runtimeGlobals.LCEDA_HOST_BRIDGE = {
+    getChannel: () => "standard",
+    isAvailable: async () => true,
+    getCapabilityReport: () => ({
+      channel: "standard",
+      available: true,
+      missing: [],
+      optionalMissing: [],
+    }),
+    getCurrentContext: async () => ({
+      project: { channel: "standard", projectId: "p1", projectName: "demo", pageId: "page-role", pageName: "Sheet 1" },
+      components: [],
+      pins: [],
+      nets: [],
+      selection: { objectIds: [] },
+    }),
+    getSelection: async () => ({ objectIds: [] }),
+    locate: async () => {},
+  };
+
+  try {
+    const runtime = getAssistantRuntime();
+    await runtime.openPanel();
+    const state = runtime.getLastState();
+    assert.ok(state);
+    state.draftPlan = {
+      title: "voice",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u4",
+          ref: "U4",
+          name: "INMP441",
+          value: "INMP441",
+          properties: {
+            role: "microphone",
+            preferred_search_query: "INMP441 I2S MEMS microphone",
+            device_resolution_status: "unresolved",
+          },
+        },
+      ],
+      pins: [],
+      nets: [],
+    };
+
+    const opened = await runtime.openDevicePicker();
+    assert.equal(opened.devicePicker?.items[0]?.role, "microphone");
+    assert.equal(opened.devicePicker?.items[0]?.roleLabel, "麦克风");
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("device picker search calls keyword search before LCSC fallback and merges both result sets", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  try {
+    const runtime = getAssistantRuntime();
+    runtimeGlobals.LCEDA_HOST_BRIDGE = {
+      getChannel: () => "professional",
+      isAvailable: async () => true,
+      getCapabilityReport: () => ({
+        channel: "professional",
+        available: true,
+        missing: [],
+        optionalMissing: [],
+      }),
+      getCurrentContext: async () => ({
+        project: { channel: "professional", projectId: "p1", projectName: "demo", pageId: "page-ip5306", pageName: "Sheet 1" },
+        components: [],
+        pins: [],
+        nets: [],
+        selection: { objectIds: [] },
+      }),
+      getSelection: async () => ({ objectIds: [] }),
+      locate: async () => {},
+      searchLibraryDevices: async () => ({
+        success: true,
+        code: 0,
+        result: {
+          lists: {
+            lcsc: [
+              {
+                uuid: "ip5306-device",
+                title: "IP5306",
+                owner: { uuid: "0819f05c4eef4c71ace90d822a990e87" },
+                product_code: "C181692",
+                attributes: {
+                  "Supplier Part": "C181692",
+                  "Manufacturer": "INJOINIC(英集芯)",
+                  "Supplier Footprint": "ESOP-8",
+                },
+              },
+              {
+                uuid: "ip5306-alt-device",
+                title: "IP5306-variant",
+                owner: { uuid: "0819f05c4eef4c71ace90d822a990e87" },
+                product_code: "C999999",
+                attributes: {
+                  "Supplier Part": "C999999",
+                  "Manufacturer": "INJOINIC(英集芯)",
+                  "Supplier Footprint": "ESOP-8",
+                },
+              },
+            ],
+          },
+        },
+      }) as unknown as Awaited<ReturnType<NonNullable<HostEditorBridge["searchLibraryDevices"]>>>,
+      getLibraryDevicesByLcscIds: async () => [
+        {
+          uuid: "ip5306-device",
+          name: "IP5306",
+          libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+          lcscId: "C181692",
+          supplierId: "C181692",
+          description: "power bank charge boost power management",
+          footprint: {
+            name: "ESOP-8",
+          },
+        },
+      ],
+    };
+
+    await runtime.openPanel();
+    const state = runtime.getLastState();
+    assert.ok(state);
+    state.draftPlan = {
+      title: "power",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u2",
+          ref: "U2",
+          name: "IP5306",
+          value: "IP5306",
+          properties: {
+            role: "charger_powerbank",
+            preferred_search_query: "IP5306 lithium battery charge boost power management",
+            device_resolution_status: "unresolved",
+          },
+        },
+      ],
+      pins: [],
+      nets: [],
+    };
+
+    await runtime.openDevicePicker();
+    const searched = await runtime.searchDraftDeviceCandidates("draft-u2", "IP5306");
+
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.length, 2);
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[0]?.name, "IP5306");
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[1]?.name, "IP5306-variant");
+    assert.equal(searched.devicePicker?.items[0]?.searchDiagnostics?.route, "merged_search");
+    assert.deepEqual(searched.devicePicker?.items[0]?.searchDiagnostics?.attemptedLcscIds, ["C181692"]);
+    assert.equal(searched.devicePicker?.items[0]?.searchDiagnostics?.attemptedQueries?.[0], "IP5306");
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
 test("resolveDraftDeviceSearchQuery prefers manual query over default", () => {
   assert.equal(
     resolveDraftDeviceSearchQuery({
@@ -2802,6 +3782,24 @@ test("resolveDraftDeviceSearchQuery returns null when both manual and default qu
       manualQuery: "",
     }),
     null
+  );
+});
+
+test("buildDraftDeviceSearchQueries adds role-based fallbacks for confusing LLM search targets", () => {
+  assert.deepEqual(
+    buildDraftDeviceSearchQueries({
+      role: "ldo_regulator",
+      defaultQuery: "3.3V LDO regulator 500mA",
+    }),
+    ["3.3V LDO regulator 500mA", "LDO regulator 500mA", "3.3V LDO", "ME6211", "XC6206", "AMS1117-3.3"]
+  );
+
+  assert.deepEqual(
+    buildDraftDeviceSearchQueries({
+      role: "microphone",
+      defaultQuery: "INMP441 I2S MEMS microphone",
+    }).slice(0, 4),
+    ["INMP441 I2S MEMS microphone", "INMP441", "I2S MEMS microphone", "MEMS microphone"]
   );
 });
 
@@ -3071,6 +4069,549 @@ test("normalizeDevicePickerCandidates unwraps wrapped host payload and maps titl
   assert.equal(candidates[0]?.name, "rps6045-47mt");
   assert.equal(candidates[0]?.libraryUuid, "0819f05c4eef4c71ace90d822a990e87");
   assert.equal(candidates[0]?.description, "4.7uH power inductor");
+});
+
+test("normalizeDevicePickerCandidates unwraps LCEDA search payload lists", () => {
+  const candidates = normalizeDevicePickerCandidates({
+    success: true,
+    code: 0,
+    result: {
+      facets: {
+        lcsc: 8,
+      },
+      lists: {
+        lcsc: [
+          {
+            uuid: "49a464100aba46e28c3d78994480a888",
+            title: "ip5306",
+            owner: {
+              uuid: "0819f05c4eef4c71ace90d822a990e87",
+              username: "LCSC",
+              nickname: "LCSC",
+            },
+            description: "power bank charge boost power management",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.uuid, "49a464100aba46e28c3d78994480a888");
+  assert.equal(candidates[0]?.name, "ip5306");
+  assert.equal(candidates[0]?.libraryUuid, "0819f05c4eef4c71ace90d822a990e87");
+});
+
+test("normalizeDevicePickerCandidates handles raw LCEDA list objects and json strings", () => {
+  const payload = JSON.stringify({
+    success: true,
+    code: 0,
+    result: {
+      lists: {
+        lcsc: [
+          {
+            uuid: "3c7529e264044fad8ab981491bd5501c",
+            creator: {
+              uuid: "0819f05c4eef4c71ace90d822a990e87",
+              username: "LCSC",
+              nickname: "LCSC",
+            },
+            title: "xc6206p332mr-g",
+            lcsc: "C5446",
+            dataStr: "Low dropout voltage regulator",
+          },
+        ],
+      },
+    },
+  });
+
+  const candidates = normalizeDevicePickerCandidates(payload);
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.uuid, "3c7529e264044fad8ab981491bd5501c");
+  assert.equal(candidates[0]?.name, "xc6206p332mr-g");
+  assert.equal(candidates[0]?.libraryUuid, "0819f05c4eef4c71ace90d822a990e87");
+  assert.equal(candidates[0]?.supplierId, "C5446");
+  assert.equal(candidates[0]?.description, "Low dropout voltage regulator");
+});
+
+test("normalizeDevicePickerCandidates reads symbol and footprint ids from searchByCodes-style attributes payload", () => {
+  const candidates = normalizeDevicePickerCandidates({
+    success: true,
+    code: 0,
+    result: [
+      {
+        uuid: "49a464100aba46e28c3d78994480a888",
+        product_code: "C181692",
+        attributes: {
+          "Supplier Part": "C181692",
+          "Manufacturer": "INJOINIC(英集芯)",
+          "Manufacturer Part": "IP5306",
+          "Supplier Footprint": "ESOP-8",
+          "Symbol": "286af622b93c4ec5b0ad7c348ee7f8aa",
+          "Footprint": "236714646ca442a4843d26e3285daa73",
+          "LCSC Part Name": "集成2.1A充电器和2.1A放电器的移动电源系统级芯片",
+        },
+        footprint: {
+          uuid: "236714646ca442a4843d26e3285daa73",
+          title: "esop-8_l4.9-w3.9-p1.27-ls6.0-bl-ep",
+          display_title: "ESOP-8_L4.9-W3.9-P1.27-LS6.0-BL-EP",
+        },
+      },
+    ],
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.uuid, "49a464100aba46e28c3d78994480a888");
+  assert.equal(candidates[0]?.supplierId, "C181692");
+  assert.equal(candidates[0]?.symbolUuid, "286af622b93c4ec5b0ad7c348ee7f8aa");
+  assert.equal(candidates[0]?.footprintUuid, "236714646ca442a4843d26e3285daa73");
+  assert.equal(candidates[0]?.footprintName, "ESOP-8_L4.9-W3.9-P1.27-LS6.0-BL-EP");
+  assert.match(String(candidates[0]?.description || ""), /系统级芯片/);
+});
+
+test("device picker lcsc detail candidates are kept even when detail payload omits libraryUuid", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  try {
+    const runtime = getAssistantRuntime();
+    runtimeGlobals.LCEDA_HOST_BRIDGE = {
+      getChannel: () => "professional",
+      isAvailable: async () => true,
+      getCapabilityReport: () => ({
+        channel: "professional",
+        available: true,
+        missing: [],
+        optionalMissing: [],
+      }),
+      getCurrentContext: async () => ({
+        project: { channel: "professional", projectId: "p1", projectName: "demo", pageId: "page-ip5306", pageName: "Sheet 1" },
+        components: [],
+        pins: [],
+        nets: [],
+        selection: { objectIds: [] },
+      }),
+      getSelection: async () => ({ objectIds: [] }),
+      locate: async () => {},
+      searchLibraryDevices: async () => [],
+      getLibraryDevicesByLcscIds: async () => [
+        {
+          uuid: "ip5306-device",
+          name: "IP5306",
+          lcscId: "C181692",
+          supplierId: "C181692",
+          description: "power bank charge boost power management",
+          footprint: {
+            name: "ESOP-8",
+          },
+        },
+      ],
+    };
+
+    await runtime.openPanel();
+    const state = runtime.getLastState();
+    assert.ok(state);
+    state.draftPlan = {
+      title: "power",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u2",
+          ref: "U2",
+          name: "IP5306",
+          value: "IP5306",
+          properties: {
+            role: "charger_powerbank",
+            preferred_search_query: "IP5306",
+            device_resolution_status: "unresolved",
+          },
+        },
+      ],
+      pins: [],
+      nets: [],
+    };
+
+    await runtime.openDevicePicker();
+    const searched = await runtime.searchDraftDeviceCandidates("draft-u2");
+
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.length, 1);
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[0]?.name, "IP5306");
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[0]?.supplierId, "C181692");
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("device picker query candidates can be enriched from getLibraryDevice when search payload misses library metadata", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  try {
+    const runtime = getAssistantRuntime();
+    runtimeGlobals.LCEDA_HOST_BRIDGE = {
+      getChannel: () => "professional",
+      isAvailable: async () => true,
+      getCapabilityReport: () => ({
+        channel: "professional",
+        available: true,
+        missing: [],
+        optionalMissing: [],
+      }),
+      getCurrentContext: async () => ({
+        project: { channel: "professional", projectId: "p1", projectName: "demo", pageId: "page-typec", pageName: "Sheet 1" },
+        components: [],
+        pins: [],
+        nets: [],
+        selection: { objectIds: [] },
+      }),
+      getSelection: async () => ({ objectIds: [] }),
+      locate: async () => {},
+      searchLibraryDevices: async () => ({
+        success: true,
+        code: 0,
+        result: {
+          lists: {
+            lcsc: [
+              {
+                uuid: "typec-device",
+                title: "TYPE-C 16PIN",
+                description: "usb type-c receptacle",
+              },
+            ],
+          },
+        },
+      }) as unknown as Awaited<ReturnType<NonNullable<HostEditorBridge["searchLibraryDevices"]>>>,
+      getLibraryDevice: async () => ({
+        uuid: "typec-device",
+        name: "TYPE-C 16PIN",
+        libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+        supplierId: "C2988369",
+        description: "usb type-c receptacle",
+        footprint: {
+          name: "TYPE-C-SMD_16P",
+        },
+      }),
+    };
+
+    await runtime.openPanel();
+    const state = runtime.getLastState();
+    assert.ok(state);
+    state.draftPlan = {
+      title: "usb",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-j1",
+          ref: "J1",
+          name: "USB-C",
+          value: "TYPE-C",
+          properties: {
+            role: "power_connector",
+            preferred_search_query: "USB Type-C",
+            device_resolution_status: "unresolved",
+          },
+        },
+      ],
+      pins: [],
+      nets: [],
+    };
+
+    await runtime.openDevicePicker();
+    const searched = await runtime.searchDraftDeviceCandidates("draft-j1");
+
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.length, 1);
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[0]?.libraryUuid, "0819f05c4eef4c71ace90d822a990e87");
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[0]?.footprintName, "TYPE-C-SMD_16P");
+    assert.equal(searched.devicePicker?.items[0]?.searchDiagnostics?.detailHits, 1);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("device picker prefers structured property search when host supports it", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  const propertyCalls: Array<Record<string, string>> = [];
+  let queryCalls = 0;
+
+  try {
+    const runtime = getAssistantRuntime();
+    runtimeGlobals.LCEDA_HOST_BRIDGE = {
+      getChannel: () => "professional",
+      isAvailable: async () => true,
+      getCapabilityReport: () => ({
+        channel: "professional",
+        available: true,
+        missing: [],
+        optionalMissing: [],
+      }),
+      getCurrentContext: async () => ({
+        project: { channel: "professional", projectId: "p1", projectName: "demo", pageId: "page-ip5306", pageName: "Sheet 1" },
+        components: [],
+        pins: [],
+        nets: [],
+        selection: { objectIds: [] },
+      }),
+      getSelection: async () => ({ objectIds: [] }),
+      locate: async () => {},
+      searchLibraryDevicesByProperties: async ({ properties }) => {
+        propertyCalls.push(properties as Record<string, string>);
+        return [
+          {
+            uuid: "ip5306-device",
+            name: "IP5306",
+            libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+            footprintName: "ESOP-8",
+            description: "charge boost power management",
+            supplierId: "C181692",
+          },
+        ];
+      },
+      searchLibraryDevices: async () => {
+        queryCalls += 1;
+        return [];
+      },
+    };
+
+    await runtime.openPanel();
+    const state = runtime.getLastState();
+    assert.ok(state);
+    state.draftPlan = {
+      title: "power",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u2",
+          ref: "U2",
+          name: "IP5306",
+          value: "IP5306",
+          properties: {
+            role: "charger_powerbank",
+            preferred_search_query: "IP5306 lithium battery charge boost power management",
+            device_resolution_status: "unresolved",
+          },
+        },
+      ],
+      pins: [],
+      nets: [],
+    };
+
+    await runtime.openDevicePicker();
+    const searched = await runtime.searchDraftDeviceCandidates("draft-u2");
+
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.length, 1);
+    assert.equal(searched.devicePicker?.items[0]?.searchDiagnostics?.route, "property_search");
+    assert.equal(propertyCalls.length > 0, true);
+    assert.equal(queryCalls > 0, true);
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
+});
+
+test("manual candidate selection persists resolved symbol and footprint ids from device detail", async () => {
+  const runtimeGlobals = globalThis as typeof globalThis & {
+    LCEDA_HOST_BRIDGE?: HostEditorBridge;
+    __LCEDA_AI_ASSISTANT_RUNTIME__?: ReturnType<typeof getAssistantRuntime>;
+    localStorage?: Storage;
+  };
+  const previousBridge = runtimeGlobals.LCEDA_HOST_BRIDGE;
+  const previousRuntime = runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__;
+  const previousStorage = runtimeGlobals.localStorage;
+
+  const storageMap = new Map<string, string>();
+  runtimeGlobals.localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storageMap.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storageMap.delete(key);
+    },
+    clear: () => {
+      storageMap.clear();
+    },
+    key: (index: number) => Array.from(storageMap.keys())[index] ?? null,
+    get length() {
+      return storageMap.size;
+    },
+  } as Storage;
+
+  try {
+    const runtime = getAssistantRuntime();
+    runtimeGlobals.LCEDA_HOST_BRIDGE = {
+      getChannel: () => "professional",
+      isAvailable: async () => true,
+      getCapabilityReport: () => ({
+        channel: "professional",
+        available: true,
+        missing: [],
+        optionalMissing: [],
+      }),
+      getCurrentContext: async () => ({
+        project: { channel: "professional", projectId: "p1", projectName: "demo", pageId: "page-ip5306", pageName: "Sheet 1" },
+        components: [],
+        pins: [],
+        nets: [],
+        selection: { objectIds: [] },
+      }),
+      getSelection: async () => ({ objectIds: [] }),
+      locate: async () => {},
+      searchLibraryDevices: async () => ({
+        success: true,
+        code: 0,
+        result: {
+          lists: {
+            lcsc: [
+              {
+                uuid: "49a464100aba46e28c3d78994480a888",
+                title: "ip5306",
+                owner: { uuid: "0819f05c4eef4c71ace90d822a990e87" },
+              },
+            ],
+          },
+        },
+      }) as unknown as Awaited<ReturnType<NonNullable<HostEditorBridge["searchLibraryDevices"]>>>,
+      getLibraryDevice: async () => ({
+        uuid: "49a464100aba46e28c3d78994480a888",
+        name: "IP5306",
+        libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+        supplierId: "C181692",
+        manufacturer: "INJOINIC",
+        symbol: {
+          uuid: "286af622b93c4ec5b0ad7c348ee7f8aa",
+          name: "IP5306",
+          libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+        },
+        footprint: {
+          uuid: "236714646ca442a4843d26e3285daa73",
+          name: "ESOP-8_L4.9-W3.9-P1.27-LS6.0-BL-EP",
+          libraryUuid: "0819f05c4eef4c71ace90d822a990e87",
+        },
+        description: "charge boost power management",
+      }),
+    };
+
+    await runtime.openPanel();
+    const state = runtime.getLastState();
+    assert.ok(state);
+    state.draftPlan = {
+      title: "power",
+      rationale: "test",
+      components: [
+        {
+          id: "draft-u2",
+          ref: "U2",
+          name: "IP5306",
+          value: "IP5306",
+          properties: {
+            role: "charger_powerbank",
+            preferred_search_query: "IP5306",
+            device_resolution_status: "unresolved",
+          },
+        },
+      ],
+      pins: [],
+      nets: [],
+    };
+
+    await runtime.openDevicePicker();
+    const searched = await runtime.searchDraftDeviceCandidates("draft-u2");
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[0]?.symbolUuid, "286af622b93c4ec5b0ad7c348ee7f8aa");
+    assert.equal(searched.devicePicker?.items[0]?.candidates?.[0]?.footprintUuid, "236714646ca442a4843d26e3285daa73");
+
+    const selected = await runtime.chooseDraftDeviceCandidate({ componentId: "draft-u2", candidateIndex: 0 });
+    const component = selected.draftPlan?.components[0];
+    assert.equal(component?.properties?.device_uuid, "49a464100aba46e28c3d78994480a888");
+    assert.equal(component?.properties?.library_uuid, "0819f05c4eef4c71ace90d822a990e87");
+    assert.equal(component?.properties?.symbol_uuid, "286af622b93c4ec5b0ad7c348ee7f8aa");
+    assert.equal(component?.properties?.footprint_uuid, "236714646ca442a4843d26e3285daa73");
+    assert.equal(selected.draftPlan?.selectedDevices?.[0]?.symbolUuid, "286af622b93c4ec5b0ad7c348ee7f8aa");
+    assert.equal(selected.draftPlan?.selectedDevices?.[0]?.footprintUuid, "236714646ca442a4843d26e3285daa73");
+  } finally {
+    runtimeGlobals.LCEDA_HOST_BRIDGE = previousBridge;
+    runtimeGlobals.__LCEDA_AI_ASSISTANT_RUNTIME__ = previousRuntime;
+    runtimeGlobals.localStorage = previousStorage;
+  }
 });
 
 test("deriveSessionHistoryEntries migrates last_state into history when session index is empty", () => {

@@ -119,9 +119,10 @@ test("generateDraftPlanFromPrompt keeps ESP32-S3 voice device requests from fall
   assert.equal(plan.title, "ESP32-S3 Voice Device Draft");
   assert.equal(plan.components.some((component) => /ESP32-S3/i.test(component.name ?? "")), true);
   assert.equal(plan.components.some((component) => /INMP441/i.test(component.name ?? "")), true);
-  assert.equal(plan.components.some((component) => /MAX98357A/i.test(component.name ?? "")), true);
-  assert.equal(plan.components.some((component) => /USB-C/i.test(component.name ?? "")), true);
-  assert.equal(plan.title === "5V to 3.3V LDO Draft", false);
+  assert.equal(plan.components.some((component) => component.properties.role === "audio_amplifier"), true);
+  assert.equal(plan.components.some((component) => /USB[-\s]?Type-C|Type-C/i.test(component.name ?? "")), true);
+  assert.equal(plan.nets.some((net) => net.name === "I2S_DOUT"), true);
+  assert.notEqual(String(plan.title), "5V to 3.3V LDO Draft");
 });
 
 test("normalizeDraftPlan converts legacy connections into pins and nets", () => {

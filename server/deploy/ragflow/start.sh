@@ -19,6 +19,12 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# Load ports and other variables from .env for health checks.
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
 mkdir -p ragflow-logs
 mkdir -p data/es01 data/opensearch01 data/infinity data/mysql data/minio data/redis data/kibana
 
@@ -34,7 +40,7 @@ wait_for_http() {
   while true; do
     # 200/401 means upstream is alive and routing is ready.
     local code
-    code="$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)"
+    code="$(curl --connect-timeout 2 --max-time 3 -s -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
     if [[ "$code" == "200" || "$code" == "401" ]]; then
       echo "[ragflow] ${name} ready (http ${code})"
       return 0
@@ -53,11 +59,15 @@ $COMPOSE_BIN -f docker-compose-base.yml -f docker-compose.yml pull
 echo "[ragflow] starting services..."
 $COMPOSE_BIN -f docker-compose-base.yml -f docker-compose.yml up -d
 
-wait_for_http "http://127.0.0.1:39381/api/v1/admin/ping" "admin api" 180 || true
-wait_for_http "http://127.0.0.1:39380/v1/system/version" "main api" 420 || true
-wait_for_http "http://127.0.0.1:38080/v1/system/version" "web proxy api" 420 || true
+ADMIN_SVR_HTTP_PORT="${ADMIN_SVR_HTTP_PORT:-39381}"
+SVR_HTTP_PORT="${SVR_HTTP_PORT:-39380}"
+SVR_WEB_HTTP_PORT="${SVR_WEB_HTTP_PORT:-38080}"
+
+wait_for_http "http://127.0.0.1:${ADMIN_SVR_HTTP_PORT}/api/v1/admin/ping" "admin api" 180 || true
+wait_for_http "http://127.0.0.1:${SVR_HTTP_PORT}/v1/system/version" "main api" 420 || true
+wait_for_http "http://127.0.0.1:${SVR_WEB_HTTP_PORT}/v1/system/version" "web proxy api" 420 || true
 
 echo "[ragflow] started"
-echo "[ragflow] web:   http://127.0.0.1:38080"
-echo "[ragflow] api:   http://127.0.0.1:39380"
-echo "[ragflow] admin: http://127.0.0.1:39381"
+echo "[ragflow] web:   http://127.0.0.1:${SVR_WEB_HTTP_PORT}"
+echo "[ragflow] api:   http://127.0.0.1:${SVR_HTTP_PORT}"
+echo "[ragflow] admin: http://127.0.0.1:${ADMIN_SVR_HTTP_PORT}"

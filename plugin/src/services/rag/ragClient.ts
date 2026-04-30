@@ -9,6 +9,7 @@ export interface RagSearchResult {
   snippet: string;
   source_ref: string;
   kb_type: string;
+  metadata?: unknown;
 }
 
 export interface RagSearchResponse {

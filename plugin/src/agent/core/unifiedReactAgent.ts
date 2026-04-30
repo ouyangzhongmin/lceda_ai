@@ -4,6 +4,7 @@ import type { LibraryDeviceDetail, LibrarySearchResultItem } from "../../editor/
 import type { DraftPlan, DraftPreview } from "../../editor/apply-plan/draftPlan";
 import type { SchematicContext } from "../../types/schematic";
 import type { DraftPlanningMode } from "../../editor/apply-plan/draftPlan";
+import { formatRagModuleEvidenceForModel } from "../../editor/apply-plan/ragModuleEvidence";
 import type { AgentResult, AgentStepItem, AgentStepState, AgentTask, AgentTaskType, AgentWorkingMemory } from "../shared/agentTypes";
 import type { ReactAgentDeps, ReactAgentRunResult, ReactAgentState } from "./reactTypes";
 import { runReActLoop } from "./reactLoopAgent";
@@ -455,9 +456,21 @@ export async function runUnifiedReactAgent(input: {
           componentCount: input.panelState.draftPreview?.componentCount ?? input.panelState.appliedDraftSnapshot?.components?.length,
           netCount: input.panelState.draftPreview?.netCount ?? input.panelState.appliedDraftSnapshot?.nets?.length,
           selectedDeviceDetails: input.panelState.draftPreview?.selectedDeviceDetails,
-        }
+      }
       : undefined,
   };
+  const initialProgressRoute: "chat" | "analysis" | "draft" | "modify" =
+    draftFollowUpIntent === "revise_existing_draft"
+      ? "draft"
+      : draftFollowUpIntent === "repair_existing_draft" || draftFollowUpIntent === "summarize_existing_draft"
+        ? "chat"
+        : draftFollowUpIntent === "analyze_existing_draft_risk"
+          ? "analysis"
+          : shouldTreatAsDraft({ taskType: resolvedTaskType, userQuery: input.userQuery })
+            ? "draft"
+            : shouldTreatAsAnalysis({ taskType: resolvedTaskType, userQuery: input.userQuery })
+              ? "analysis"
+              : "chat";
 
   const state: ReactAgentState = {
     toolTraces: [],
@@ -569,7 +582,7 @@ export async function runUnifiedReactAgent(input: {
     invokeTool: (toolName, toolInput) => input.tools.invoke(toolName, toolInput, { signal: input.signal }),
     listToolNames: () => input.tools.list().map((t) => t.name),
     onProgress: (payload) => {
-      const route = inferRouteFromResult({
+      const inferredRoute = inferRouteFromResult({
         summary: "",
         toolTraceNames: [],
         checkResult,
@@ -579,6 +592,7 @@ export async function runUnifiedReactAgent(input: {
         draftRisk,
         analysisMarkdown: undefined,
       });
+      const route = inferredRoute === "chat" ? initialProgressRoute : inferredRoute;
       // If we receive model stream deltas/reasoning, treat it as llm stage so UI can render thinking.
       const stage = payload.reasoningDelta || payload.textDelta ? "llm" : "progress";
       input.onStreamEvent?.({
@@ -861,6 +875,22 @@ export async function runUnifiedReactAgent(input: {
         messageForModel: JSON.stringify(output),
       };
     }
+    if (toolName === "rag_search") {
+      const payload = asRecord(output);
+      const results = Array.isArray(payload.results) ? (payload.results as any[]) : [];
+      const moduleEvidence = formatRagModuleEvidenceForModel(results as any);
+      const preview = results
+        .slice(0, 3)
+        .map((item) => joinParts([item.title, item.source_ref], " / "))
+        .filter(Boolean);
+      return {
+        summary:
+          results.length > 0
+            ? `RAG 命中 ${results.length} 条知识${preview.length > 0 ? `；前几项：${preview.join("；")}` : ""}`
+            : "RAG 未命中可用知识",
+        messageForModel: moduleEvidence || JSON.stringify(output),
+      };
+    }
     if (toolName === "draft_generate_plan") {
       const plan = asRecord(output) as DraftPlan;
       const components = Array.isArray(plan.components) ? plan.components : [];
@@ -940,7 +970,7 @@ export async function runUnifiedReactAgent(input: {
     formatObservation,
     // While-loop 决策阶段不做 llm token streaming，只做进度更新；route 动态推断。
     onProgress: (detail) => {
-      const route = inferRouteFromResult({
+      const inferredRoute = inferRouteFromResult({
         summary: "",
         toolTraceNames: [],
         checkResult,
@@ -951,6 +981,7 @@ export async function runUnifiedReactAgent(input: {
         analysisMarkdown: undefined,
         naturalReply: undefined,
       });
+      const route = inferredRoute === "chat" ? initialProgressRoute : inferredRoute;
       input.onStreamEvent?.({
         route,
         stage: "progress",

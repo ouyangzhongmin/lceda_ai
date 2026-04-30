@@ -8,6 +8,13 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 2
 fi
 
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 http_code() {
   local url="$1"
   curl --connect-timeout 2 --max-time 3 -s -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000"
@@ -21,9 +28,13 @@ if [[ -z "${cpu_container}" ]]; then
   exit 1
 fi
 
-api_code="$(http_code "http://127.0.0.1:39380/v1/system/version")"
-web_code="$(http_code "http://127.0.0.1:38080/v1/system/version")"
-admin_code="$(http_code "http://127.0.0.1:39381/api/v1/admin/ping")"
+ADMIN_SVR_HTTP_PORT="${ADMIN_SVR_HTTP_PORT:-39381}"
+SVR_HTTP_PORT="${SVR_HTTP_PORT:-39380}"
+SVR_WEB_HTTP_PORT="${SVR_WEB_HTTP_PORT:-38080}"
+
+api_code="$(http_code "http://127.0.0.1:${SVR_HTTP_PORT}/v1/system/version")"
+web_code="$(http_code "http://127.0.0.1:${SVR_WEB_HTTP_PORT}/v1/system/version")"
+admin_code="$(http_code "http://127.0.0.1:${ADMIN_SVR_HTTP_PORT}/api/v1/admin/ping")"
 
 api_ok=false
 web_ok=false

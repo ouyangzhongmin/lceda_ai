@@ -29,6 +29,7 @@ type SearchHit struct {
 	Snippet   string
 	SourceRef string
 	KBType    string
+	Metadata  any
 }
 
 type VectorStore interface {
@@ -66,6 +67,7 @@ func (a *RetrieverAdapter) Search(query domainrag.SearchQuery) ([]domainrag.Sear
 			Snippet:   hit.Snippet,
 			SourceRef: hit.SourceRef,
 			KBType:    hit.KBType,
+			Metadata:  hit.Metadata,
 		})
 	}
 	return results, nil

@@ -84,7 +84,20 @@ func TestProviderSearchExposesExternalRagTemplateCorpus(t *testing.T) {
                 "content": "USB-C + LDO + decoupling",
                 "metadata": {
                   "source_ref": "oshw#1",
-                  "kb_type": "open_source"
+                  "kb_type": "open_source",
+                  "module_type": "esp32_s3_minimum_system",
+                  "anchor_component": {
+                    "part": "ESP32-S3",
+                    "role": "mcu_module"
+                  },
+                  "connection_chains": [
+                    {
+                      "from": "EN",
+                      "via": "R8",
+                      "to": "3V3",
+                      "intent": "enable_pullup"
+                    }
+                  ]
                 }
               }
             ],
@@ -138,6 +151,53 @@ func TestProviderSearchExposesExternalRagTemplateCorpus(t *testing.T) {
 	}
 	if got := corpus[0]["template_id"]; got != "external-esp32s3-power" {
 		t.Fatalf("unexpected template id: %v", got)
+	}
+}
+
+func TestProviderSearchPreservesStructuredResultMetadata(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+          "data": {
+            "results": [
+              {
+                "id": "chk_1",
+                "score": 0.91,
+                "title": "ESP32-S3 Board",
+                "content": "USB-C + LDO + decoupling",
+                "metadata": {
+                  "source_ref": "oshw#1",
+                  "kb_type": "template",
+                  "module_type": "esp32_s3_minimum_system",
+                  "connection_chains": [
+                    { "from": "EN", "via": "R8", "to": "3V3", "intent": "enable_pullup" }
+                  ]
+                }
+              }
+            ]
+          }
+        }`))
+	}))
+	defer srv.Close()
+
+	p := NewProvider(ProviderConfig{
+		BaseURL:          srv.URL,
+		APIKey:           "k",
+		DatasetID:        "ds_1",
+		TimeoutSeconds:   5,
+		EndpointTemplate: "/api/v1/retrieval",
+	})
+
+	hits, err := p.Search(qdrantrepo.SearchQuery{QueryText: "esp32s3", TopK: 5})
+	if err != nil {
+		t.Fatalf("search error: %v", err)
+	}
+	metadata, ok := hits[0].Metadata.(map[string]any)
+	if !ok {
+		t.Fatalf("expected metadata map, got %T", hits[0].Metadata)
+	}
+	if got := metadata["module_type"]; got != "esp32_s3_minimum_system" {
+		t.Fatalf("unexpected module_type: %v", got)
 	}
 }
 
@@ -243,6 +303,59 @@ func TestProviderSearchExtractsChunkMetadataFromMarkdownFooter(t *testing.T) {
 	}
 	if hits[0].KBType != "principle" {
 		t.Fatalf("unexpected kb_type: %q", hits[0].KBType)
+	}
+}
+
+func TestProviderSearchPreservesStructuredChunkFooterMetadata(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/retrieval" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		payload := "{\n" +
+			"  \"data\": {\n" +
+			"    \"chunks\": [\n" +
+			"      {\n" +
+			"        \"id\": \"chunk_1\",\n" +
+			"        \"document_keyword\": \"tpl-esp32-s3-gpio_passive_power_chain-b3bf3bff.md\",\n" +
+			"        \"content\": \"# ESP32-S3 minimum system\\nEN -> R8 -> 3V3.\\n\\n---\\nmetadata:\\n```json\\n{\\\"kb_type\\\":\\\"template\\\",\\\"source_ref\\\":\\\"tpl-esp32-s3-gpio_passive_power_chain-b3bf3bff\\\",\\\"module_type\\\":\\\"esp32_s3_minimum_system\\\",\\\"connection_chains\\\":[{\\\"from\\\":\\\"EN\\\",\\\"via\\\":\\\"R8\\\",\\\"to\\\":\\\"3V3\\\",\\\"intent\\\":\\\"enable_pullup\\\"}]}\\n```\",\n" +
+			"        \"similarity\": 0.68\n" +
+			"      }\n" +
+			"    ],\n" +
+			"    \"doc_aggs\": [\n" +
+			"      { \"doc_name\": \"tpl-esp32-s3-gpio_passive_power_chain-b3bf3bff.md\" }\n" +
+			"    ]\n" +
+			"  }\n" +
+			"}"
+		_, _ = w.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	p := NewProvider(ProviderConfig{
+		BaseURL:          srv.URL,
+		APIKey:           "k",
+		DatasetID:        "ds_1",
+		TimeoutSeconds:   5,
+		EndpointTemplate: "/api/v1/retrieval",
+	})
+
+	hits, err := p.Search(qdrantrepo.SearchQuery{QueryText: "ESP32-S3 EN R8", TopK: 5})
+	if err != nil {
+		t.Fatalf("search error: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 hit, got %d", len(hits))
+	}
+	metadata, ok := hits[0].Metadata.(map[string]any)
+	if !ok {
+		t.Fatalf("expected metadata map, got %T", hits[0].Metadata)
+	}
+	if got := metadata["module_type"]; got != "esp32_s3_minimum_system" {
+		t.Fatalf("unexpected module_type: %v", got)
+	}
+	chains, ok := metadata["connection_chains"].([]any)
+	if !ok || len(chains) != 1 {
+		t.Fatalf("unexpected connection_chains: %#v", metadata["connection_chains"])
 	}
 }
 

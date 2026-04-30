@@ -148,3 +148,12 @@
   - 宿主桥接中的“当前文档 / 当前原理图页信息”已增加官方类型 API 补齐路径
   - 产物输出到 `/build/dist/`
   - 增加 `.edaignore`
+
+## 打印日志
+在嘉立创f12控制台中执行:
+localStorage.setItem("lceda_ai.perf_debug", "1")
+window.__LCEDA_AI_PERF_DEBUG__ = true
+
+关闭打印
+localStorage.removeItem("lceda_ai.perf_debug")
+window.__LCEDA_AI_PERF_DEBUG__ = false

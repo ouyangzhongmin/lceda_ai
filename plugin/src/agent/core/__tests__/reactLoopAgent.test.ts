@@ -592,6 +592,153 @@ test("runReActLoop appends human-readable tool timeline into iteration step", as
   );
 });
 
+test("runUnifiedReactAgent presents RAG hits as composable module evidence for draft specs", async () => {
+  const registry = new ToolRegistry();
+  let llmCalls = 0;
+  let secondLlmMessages: any[] = [];
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async (input: any) => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        return {
+          output_text: "",
+          tool_calls: [
+            {
+              id: "call_rag",
+              type: "function",
+              function: {
+                name: "rag_search",
+                arguments: JSON.stringify({ query: "ESP32-S3 小智 语音 模块 电容 电阻 接线" }),
+              },
+            },
+          ],
+        };
+      }
+      secondLlmMessages = input.messages;
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"stop after evidence","output":"ok"}',
+      };
+    },
+  } satisfies AgentTool);
+
+  registry.register({
+    name: "rag_search",
+    description: "检索知识库",
+    parameters: { type: "object", properties: { query: { type: "string" } }, additionalProperties: true },
+    execute: async () => ({
+      results: [
+        {
+          chunk_id: "1",
+          score: 0.66,
+          title: "tpl-esp32-s3-gpio_passive_power_chain.md",
+          snippet:
+            "Template type: gpio_passive_power_chain\nScenario tags: gpio, passive-network, power-bias\nComponents: EN, R8, IO0, R1\nPin bindings: EN -> 3V3 via R8; IO0 -> GND via R1\n连接链:\n- P1: EN -> R8 -> 3V3\n- P1: IO0 -> R1 -> GND\nLCSC part codes: C19702",
+          source_ref: "tpl-esp32-s3-gpio_passive_power_chain",
+          kb_type: "template",
+        },
+      ],
+    }),
+  } satisfies AgentTool);
+
+  await runUnifiedReactAgent({
+    userQuery: "生成基于ESP32-S3的小智语音聊天设备原理图",
+    panelState: { loggedIn: true } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate", "rag_search"],
+  });
+
+  const toolMessage = secondLlmMessages.find((message) => message.role === "tool");
+  assert.equal(typeof toolMessage?.content, "string");
+  assert.equal(toolMessage.content.includes("\"modules\""), true);
+  assert.equal(toolMessage.content.includes("gpio_passive_power_chain"), true);
+  assert.equal(toolMessage.content.includes("\"nodes\""), true);
+  assert.equal(toolMessage.content.includes("\"EN\""), true);
+  assert.equal(toolMessage.content.includes("\"R8\""), true);
+  assert.equal(toolMessage.content.includes("\"3V3\""), true);
+  assert.equal(toolMessage.content.includes("boot strap / download mode network"), true);
+});
+
+test("runUnifiedReactAgent keeps early draft LLM deltas on draft route before draftPlan exists", async () => {
+  const registry = new ToolRegistry();
+  const streamEvents: Array<{ route?: string; stage?: string; textDelta?: string }> = [];
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async (input: any) => {
+      input.onEvent?.({ type: "delta", delta: "我来先整理模块信息" });
+      return {
+        output_text: '{"type":"final","route":"draft","rationale":"stop","output":"ok"}',
+      };
+    },
+  } satisfies AgentTool);
+
+  await runUnifiedReactAgent({
+    taskType: "schematic_draft",
+    userQuery: "生成基于ESP32-S3的小智语音聊天设备原理图",
+    panelState: { loggedIn: true } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate"],
+    onStreamEvent: (event) => {
+      streamEvents.push({ route: event.route, stage: event.stage, textDelta: event.textDelta });
+    },
+  });
+
+  assert.equal(
+    streamEvents.some((event) => event.stage === "llm" && event.textDelta === "我来先整理模块信息" && event.route === "draft"),
+    true
+  );
+  assert.equal(
+    streamEvents.some((event) => event.stage === "llm" && event.textDelta === "我来先整理模块信息" && event.route === "chat"),
+    false
+  );
+});
+
+test("runUnifiedReactAgent keeps early analysis LLM deltas on analysis route before checks finish", async () => {
+  const registry = new ToolRegistry();
+  const streamEvents: Array<{ route?: string; stage?: string; textDelta?: string }> = [];
+
+  registry.register({
+    name: "llm_generate",
+    description: "生成 AI 回复",
+    parameters: { type: "object", properties: { messages: { type: "array", items: { type: "object" } } }, additionalProperties: true },
+    execute: async (input: any) => {
+      input.onEvent?.({ type: "delta", delta: "当前检查和" });
+      return {
+        output_text: '{"type":"final","route":"analysis","rationale":"stop","output":"## 报告"}',
+      };
+    },
+  } satisfies AgentTool);
+
+  await runUnifiedReactAgent({
+    taskType: "schematic_analysis",
+    userQuery: "检查这个原理图",
+    panelState: { loggedIn: true } as MainPanelState,
+    context: createMinimalContext(),
+    tools: registry,
+    allowedTools: ["llm_generate"],
+    onStreamEvent: (event) => {
+      streamEvents.push({ route: event.route, stage: event.stage, textDelta: event.textDelta });
+    },
+  });
+
+  assert.equal(
+    streamEvents.some((event) => event.stage === "llm" && event.textDelta === "当前检查和" && event.route === "analysis"),
+    true
+  );
+  assert.equal(
+    streamEvents.some((event) => event.stage === "llm" && event.textDelta === "当前检查和" && event.route === "chat"),
+    false
+  );
+});
+
 test("runUnifiedReactAgent forwards iterationSteps on progress events", async () => {
   const progressEvents: Array<{ detail?: string; iterationStepsLength?: number }> = [];
   let llmCalls = 0;
@@ -979,6 +1126,108 @@ test("runReActLoop throttles high-frequency reasoning stream progress", async ()
   assert.equal(progressEvents.length >= 1, true);
 });
 
+test("runReActLoop flushes buffered reasoning progress with the latest thought text", async () => {
+  const state = createState();
+  const progressEvents: Array<{
+    reasoningDelta?: string;
+    detail: string;
+    iterationThoughtText?: string;
+    stepItems: number;
+    stepStates: number;
+  }> = [];
+
+  const chunks = ["先读取上下文。", "再确认关键网络。", "最后整理结论。"];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析当前原理图" },
+    allowedTools: ["llm_generate"],
+    listToolNames: () => ["llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool ${toolName}`);
+      }
+      const onEvent = (input as { onEvent?: (event: { type: "reasoning_delta"; reasoning_delta: string }) => void }).onEvent;
+      chunks.forEach((chunk) => {
+        onEvent?.({ type: "reasoning_delta", reasoning_delta: chunk });
+      });
+      return { output_text: '{"type":"final","route":"analysis","rationale":"done","output":"报告"}' } as never;
+    },
+    onProgress: (payload) => {
+      progressEvents.push({
+        detail: payload.detail,
+        reasoningDelta: payload.reasoningDelta,
+        iterationThoughtText: payload.iterationSteps?.[0]?.thoughtText,
+        stepItems: payload.stepItems.length,
+        stepStates: payload.stepStates.length,
+      });
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    maxIterations: 1,
+  });
+
+  const reasoningEvents = progressEvents.filter((event) => event.reasoningDelta);
+  assert.equal(reasoningEvents.length >= 2, true);
+  assert.equal(reasoningEvents[reasoningEvents.length - 1]?.iterationThoughtText, chunks.join(""));
+  assert.equal(reasoningEvents.every((event) => event.stepItems === 0), true);
+  assert.equal(reasoningEvents.every((event) => event.stepStates === 0), true);
+});
+
+test("runReActLoop emits lightweight payloads for streaming deltas", async () => {
+  const state = createState();
+  const progressEvents: Array<{
+    reasoningDelta?: string;
+    stepItems?: number;
+    stepStates?: number;
+    hasWorkingMemory?: boolean;
+    iterationSteps?: number;
+  }> = [];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析当前原理图" },
+    allowedTools: ["llm_generate"],
+    listToolNames: () => ["llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool ${toolName}`);
+      }
+      const onEvent = (input as { onEvent?: (event: { type: "reasoning_delta"; reasoning_delta: string }) => void }).onEvent;
+      onEvent?.({ type: "reasoning_delta", reasoning_delta: "先读取上下文。" });
+      return { output_text: '{"type":"final","route":"analysis","rationale":"done","output":"报告"}' } as never;
+    },
+    onProgress: (payload) => {
+      if (payload.reasoningDelta) {
+        progressEvents.push({
+          reasoningDelta: payload.reasoningDelta,
+          stepItems: payload.stepItems.length,
+          stepStates: payload.stepStates.length,
+          hasWorkingMemory: Boolean(payload.workingMemory),
+          iterationSteps: payload.iterationSteps?.length ?? 0,
+        });
+      }
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state,
+    system: "system",
+    user: "user",
+    maxIterations: 1,
+  });
+
+  assert.equal(progressEvents.length, 1);
+  assert.equal(progressEvents[0].iterationSteps, 1);
+  assert.equal(progressEvents[0].stepItems, 0);
+  assert.equal(progressEvents[0].stepStates, 0);
+  assert.equal(progressEvents[0].hasWorkingMemory, false);
+});
+
 test("runReActLoop fills thought step item from rationale when model does not emit reasoning deltas", async () => {
   const state = createState();
 
@@ -1299,6 +1548,72 @@ test("runReActLoop extracts rationale preview from streamed action control json 
   const thoughtItems = state.stepItems.filter((item) => item.type === "thought");
   assert.equal(thoughtItems.length, 1);
   assert.equal(thoughtItems[0]?.text, "调用 `schematic_build_analysis_evidence`：获取到统计摘要");
+});
+
+test("runReActLoop forwards rationale preview from streamed action control json as llm progress", async () => {
+  const progressEvents: Array<{ reasoningDelta?: string; iterationThoughtText?: string }> = [];
+
+  const deps: ReactAgentDeps = {
+    task: { type: "natural_chat", userQuery: "分析这个原理图" },
+    allowedTools: ["schematic_build_analysis_evidence"],
+    listToolNames: () => ["schematic_build_analysis_evidence", "llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName === "schematic_build_analysis_evidence") {
+        return { summary: "ok" } as never;
+      }
+      if (toolName !== "llm_generate") {
+        throw new Error(`unexpected tool: ${toolName}`);
+      }
+      const payload = input as {
+        onEvent?: (event: {
+          type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+          delta?: string;
+        }) => void;
+      };
+      payload.onEvent?.({ type: "start" });
+      payload.onEvent?.({
+        type: "delta",
+        delta: '{"type":"action","tool":"schematic_build_analysis_evidence","input":{},"rationale":"调用 `',
+      });
+      payload.onEvent?.({ type: "delta", delta: "schematic_build_analysis_evidence" });
+      payload.onEvent?.({ type: "delta", delta: "`：获取到" });
+      payload.onEvent?.({ type: "delta", delta: '统计摘要"}' });
+      payload.onEvent?.({ type: "done" });
+      return {
+        output_text:
+          '{"type":"action","tool":"schematic_build_analysis_evidence","input":{},"rationale":"调用 `schematic_build_analysis_evidence`：获取到统计摘要"}',
+      } as never;
+    },
+    onProgress: (payload) => {
+      if (payload.reasoningDelta) {
+        progressEvents.push({
+          reasoningDelta: payload.reasoningDelta,
+          iterationThoughtText: payload.iterationSteps?.[0]?.thoughtText,
+        });
+      }
+    },
+  };
+
+  await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+    toolDefinitions: [
+      {
+        name: "schematic_build_analysis_evidence",
+        description: "构建分析证据",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      },
+    ],
+    maxIterations: 1,
+  });
+
+  assert.equal(progressEvents.length > 0, true);
+  assert.equal(
+    progressEvents.some((event) => event.iterationThoughtText === "调用 `schematic_build_analysis_evidence`：获取到统计摘要"),
+    true
+  );
 });
 
 test("runReActLoop keeps reasoning_delta thought text when later control-json deltas also contain rationale", async () => {

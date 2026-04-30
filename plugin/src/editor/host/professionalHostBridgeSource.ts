@@ -7,14 +7,17 @@ import {
   getTypedSchematicContext,
   getTypedSelection,
   hasTypedLibraryRuntime,
+  hasTypedLibraryPropertySearchRuntime,
   hasTypedSchematicPlacementRuntime,
   hasTypedHostRuntime,
   locateTypedHostObject,
   openTypedHostWindow,
   typedGetLibraryDevice,
   typedGetLibrarySymbol,
+  typedGetLibrarySymbolSource,
   typedGetLibraryDevicesByLcscIds,
   typedSearchLibraryDevices,
+  typedSearchLibraryDevicesByProperties,
 } from "./proHostProbe";
 
 export function resolveProfessionalRawHostApi(): ProfessionalRawHostApi | undefined {
@@ -141,6 +144,18 @@ export function resolveProfessionalRawHostApi(): ProfessionalRawHostApi | undefi
             }
             return [];
           },
+      searchDevicesByProperties: fromNamespace?.library?.searchDevicesByProperties
+        ? fromNamespace.library.searchDevicesByProperties
+        : async (input) => {
+            const typedResults = await typedSearchLibraryDevicesByProperties(input);
+            if (typedResults) {
+              return typedResults;
+            }
+            if (!hasTypedLibraryPropertySearchRuntime()) {
+              throw new Error("professional host library property search is not available");
+            }
+            return [];
+          },
       getDevice: fromNamespace?.library?.getDevice
         ? fromNamespace.library.getDevice
         : async (input) => {
@@ -158,6 +173,15 @@ export function resolveProfessionalRawHostApi(): ProfessionalRawHostApi | undefi
               return typedResult;
             }
             throw new Error("professional host library symbol get is not available");
+          },
+      getLibrarySymbolSource: fromNamespace?.library?.getLibrarySymbolSource
+        ? fromNamespace.library.getLibrarySymbolSource
+        : async (input) => {
+            const typedResult = await typedGetLibrarySymbolSource(input);
+            if (typedResult) {
+              return typedResult;
+            }
+            throw new Error("professional host library symbol source get is not available");
           },
       getDevicesByLcscIds: fromNamespace?.library?.getDevicesByLcscIds
         ? fromNamespace.library.getDevicesByLcscIds

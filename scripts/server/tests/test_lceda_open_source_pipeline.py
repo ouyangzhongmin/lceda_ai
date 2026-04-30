@@ -782,6 +782,52 @@ class TestStaticScoring(unittest.TestCase):
         self.assertIn("real_connection_chains", scored["scoring"]["score_reasons"])
         self.assertIn("gpio_bias", scored["scoring"]["intent_tags"])
 
+    def test_static_scoring_adds_structured_rag_module_fields(self):
+        template = {
+            "template_type": "gpio_passive_power_chain",
+            "anchor_device_family": "ESP32",
+            "anchor_device_model": "ESP32-S3",
+            "quality_detail": {
+                "connection_chain_count": 2,
+                "connection_chains": [
+                    {
+                        "anchor_net": "EN",
+                        "to_power_net": "3V3",
+                        "passive_values": ["10k"],
+                        "passive_refdes": ["R8"],
+                        "evidence": "P1: EN -> R8 -> 3V3",
+                    },
+                    {
+                        "anchor_net": "IO0",
+                        "to_power_net": "GND",
+                        "passive_values": ["10k"],
+                        "passive_refdes": ["R1"],
+                        "evidence": "P1: IO0 -> R1 -> GND",
+                    },
+                ],
+                "lcsc_part_codes": ["C19702"],
+                "has_token_fallback_chain": False,
+            },
+            "source_project": {},
+            "components": [{"value": "10k", "role": "pullup_resistor"}],
+            "default_values": {},
+        }
+
+        scored = _apply_static_scoring(template)
+
+        self.assertEqual(scored["module_type"], "esp32_s3_minimum_system")
+        self.assertEqual(scored["anchor_component"]["part"], "ESP32-S3")
+        self.assertEqual(scored["anchor_component"]["role"], "mcu_module")
+        self.assertEqual(
+            scored["connection_chains"],
+            [
+                {"from": "EN", "via": "R8", "to": "3V3", "intent": "enable_pullup"},
+                {"from": "IO0", "via": "R1", "to": "GND", "intent": "boot_strap"},
+            ],
+        )
+        self.assertIn({"component_role": "mcu_module", "pin": "EN", "net": "EN"}, scored["pin_bindings"])
+        self.assertIn({"ref": "R8", "role": "en_pullup", "value": "10k"}, scored["structured_components"])
+
     def test_token_fallback_template_is_penalized(self):
         template = {
             "template_type": "mcu_boot_reset",
@@ -1817,6 +1863,33 @@ class LcedaTemplateRagflowTransformTests(unittest.TestCase):
         self.assertEqual(record["metadata"]["template_type"], "usb_power_input")
         self.assertEqual(record["metadata"]["source_ref"], "tpl-esp32-usb_power_input-12345678")
         self.assertIn("USB-C", record["content"])
+
+    def test_to_ragflow_template_record_exports_structured_module_metadata(self):
+        template = {
+            "template_id": "tpl-esp32-s3-gpio_passive_power_chain-12345678",
+            "template_type": "gpio_passive_power_chain",
+            "anchor_device_family": "ESP32",
+            "anchor_device_model": "ESP32-S3",
+            "scenario_tags": ["gpio", "passive-network"],
+            "components": [{"role": "gpio_anchor", "suggested_prefix": "GPIO", "value": "EN"}],
+            "structured_components": [{"ref": "R8", "role": "en_pullup", "value": "10k"}],
+            "pin_bindings": [{"component_role": "mcu_module", "pin": "EN", "net": "EN"}],
+            "nets": ["EN", "3V3"],
+            "connection_chains": [{"from": "EN", "via": "R8", "to": "3V3", "intent": "enable_pullup"}],
+            "module_type": "esp32_s3_minimum_system",
+            "anchor_component": {"part": "ESP32-S3", "role": "mcu_module"},
+            "default_values": {},
+            "source": "lceda_open_source_extract",
+            "quality_score": 0.95,
+            "source_project": {},
+        }
+
+        record = to_ragflow_template_record(template)
+
+        self.assertEqual(record["metadata"]["module_type"], "esp32_s3_minimum_system")
+        self.assertEqual(record["metadata"]["anchor_component"]["role"], "mcu_module")
+        self.assertEqual(record["metadata"]["connection_chains"][0]["intent"], "enable_pullup")
+        self.assertEqual(record["metadata"]["pin_bindings"][0]["pin"], "EN")
 
 
 if __name__ == "__main__":

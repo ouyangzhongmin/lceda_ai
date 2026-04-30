@@ -73,16 +73,32 @@ export interface MainPanelState {
       usageHint?: string;
       manualQueryExpanded?: boolean;
       manualQueryDraft?: string;
+      suggestedQueries?: string[];
+      attemptedQueries?: string[];
+      searchDiagnostics?: {
+        route?: string;
+        attemptedLcscIds?: string[];
+        attemptedQueries?: string[];
+        rawResultKinds?: string[];
+        detailHits?: number;
+        unwrappedCount?: number;
+        normalizedCount?: number;
+      };
       selectedDeviceLabel?: string;
       candidates?: Array<{
         uuid: string;
         name: string;
         libraryUuid: string;
+        displayName?: string;
+        symbolUuid?: string;
+        symbolName?: string;
+        footprintUuid?: string;
         footprintName?: string;
         manufacturer?: string;
         supplier?: string;
         supplierId?: string;
         description?: string;
+        resolvedFrom?: "search" | "lcsc_detail" | "device_detail";
         typeLabel?: string;
         fitLabel?: string;
         fitLevel?: "recommended" | "possible" | "weak";

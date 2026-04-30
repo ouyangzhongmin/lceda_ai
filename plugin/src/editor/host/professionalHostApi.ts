@@ -3,6 +3,7 @@ import type { DraftPlan, DraftPreview } from "../apply-plan/draftPlan";
 import type { ApplyPlanResult } from "../adapters/editorAdapter";
 import type {
   LibraryDeviceDetail,
+  LibraryDeviceSearchProperties,
   LibraryScope,
   LibrarySearchResultItem,
 } from "./runtime";
@@ -28,12 +29,26 @@ export interface ProfessionalRawHostApi {
       pageSize?: number;
       page?: number;
     }) => Promise<LibrarySearchResultItem[]> | LibrarySearchResultItem[];
+    searchDevicesByProperties?: (input: {
+      properties: LibraryDeviceSearchProperties;
+      scope?: LibraryScope;
+      libraryUuid?: string;
+      classification?: string[];
+      symbolType?: number;
+      pageSize?: number;
+      page?: number;
+    }) => Promise<LibrarySearchResultItem[]> | LibrarySearchResultItem[];
     getDevice?: (input: {
       deviceUuid: string;
       libraryUuid?: string;
       scope?: LibraryScope;
     }) => Promise<LibraryDeviceDetail> | LibraryDeviceDetail;
     getSymbol?: (input: {
+      symbolUuid: string;
+      libraryUuid?: string;
+      scope?: LibraryScope;
+    }) => Promise<LibraryDeviceDetail> | LibraryDeviceDetail;
+    getLibrarySymbolSource?: (input: {
       symbolUuid: string;
       libraryUuid?: string;
       scope?: LibraryScope;
@@ -72,12 +87,26 @@ export interface ProfessionalHostCapabilities {
     pageSize?: number;
     page?: number;
   }) => Promise<LibrarySearchResultItem[]>;
+  searchLibraryDevicesByProperties?: (input: {
+    properties: LibraryDeviceSearchProperties;
+    scope?: LibraryScope;
+    libraryUuid?: string;
+    classification?: string[];
+    symbolType?: number;
+    pageSize?: number;
+    page?: number;
+  }) => Promise<LibrarySearchResultItem[]>;
   getLibraryDevice?: (input: {
     deviceUuid: string;
     libraryUuid?: string;
     scope?: LibraryScope;
   }) => Promise<LibraryDeviceDetail>;
   getLibrarySymbol?: (input: {
+    symbolUuid: string;
+    libraryUuid?: string;
+    scope?: LibraryScope;
+  }) => Promise<LibraryDeviceDetail>;
+  getLibrarySymbolSource?: (input: {
     symbolUuid: string;
     libraryUuid?: string;
     scope?: LibraryScope;
@@ -126,11 +155,17 @@ export function resolveProfessionalHostCapabilities(
     searchLibraryDevices: rawApi?.library?.searchDevices
       ? async (input): Promise<LibrarySearchResultItem[]> => rawApi.library!.searchDevices!(input)
       : undefined,
+    searchLibraryDevicesByProperties: rawApi?.library?.searchDevicesByProperties
+      ? async (input): Promise<LibrarySearchResultItem[]> => rawApi.library!.searchDevicesByProperties!(input)
+      : undefined,
     getLibraryDevice: rawApi?.library?.getDevice
       ? async (input): Promise<LibraryDeviceDetail> => rawApi.library!.getDevice!(input)
       : undefined,
     getLibrarySymbol: rawApi?.library?.getSymbol
       ? async (input): Promise<LibraryDeviceDetail> => rawApi.library!.getSymbol!(input)
+      : undefined,
+    getLibrarySymbolSource: rawApi?.library?.getLibrarySymbolSource
+      ? async (input): Promise<LibraryDeviceDetail> => rawApi.library!.getLibrarySymbolSource!(input)
       : undefined,
     getLibraryDevicesByLcscIds: rawApi?.library?.getDevicesByLcscIds
       ? async (input): Promise<LibraryDeviceDetail[]> => rawApi.library!.getDevicesByLcscIds!(input)

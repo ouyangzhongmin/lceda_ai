@@ -384,6 +384,160 @@ test("resolveDraftPlanDevices falls back to associated symbol detail when device
   assert.equal(cathode?.pinResolutionStatus, "resolved");
 });
 
+test("resolveDraftPlanDevices reads symbol pins from dataStr shape payload when explicit pin arrays are missing", async () => {
+  const draft = {
+    title: "datastr symbol fallback test",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-d1",
+        ref: "D1",
+        name: "LED",
+        packageName: "LED0805",
+        value: "RED",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {
+          preferred_search_query: "RED LED LED0805",
+        },
+      },
+    ],
+    pins: [
+      { id: "draft-d1-a", componentId: "draft-d1", pinName: "A", pinNumber: "1", electricalType: "passive" },
+      { id: "draft-d1-k", componentId: "draft-d1", pinName: "K", pinNumber: "2", electricalType: "passive" },
+    ],
+    nets: [],
+  } as any;
+
+  const resolved = await resolveDraftPlanDevices(
+    draft,
+    async () => [
+      {
+        uuid: "dev-d1",
+        name: "LED0805",
+        libraryUuid: "lib-d1",
+        symbolUuid: "sym-d1",
+        footprintName: "LED0805",
+      },
+    ],
+    async ({ deviceUuid }) => {
+      if (deviceUuid !== "dev-d1") {
+        return null as any;
+      }
+      return {
+        uuid: "dev-d1",
+        symbol: {
+          uuid: "sym-d1",
+          libraryUuid: "lib-d1",
+        },
+        raw: {
+          association: {
+            symbolUuid: "sym-d1",
+          },
+        },
+      } as any;
+    },
+    async ({ symbolUuid }) => {
+      if (symbolUuid !== "sym-d1") {
+        return null as any;
+      }
+      return {
+        uuid: "sym-d1",
+        raw: {
+          dataStr: JSON.stringify({
+            head: { docType: "symbol" },
+            shape: [
+              { pin: "A", num: "1", type: "passive" },
+              { pin: "K", num: "2", type: "passive" },
+            ],
+          }),
+        },
+      } as any;
+    }
+  );
+
+  const pinA = resolved.pins.find((pin: any) => pin.id === "draft-d1-a");
+  const pinK = resolved.pins.find((pin: any) => pin.id === "draft-d1-k");
+  assert.equal(pinA?.resolvedPinName, "A");
+  assert.equal(pinA?.resolvedPinNumber, "1");
+  assert.equal(pinA?.pinResolutionStatus, "resolved");
+  assert.equal(pinK?.resolvedPinName, "K");
+  assert.equal(pinK?.resolvedPinNumber, "2");
+  assert.equal(pinK?.pinResolutionStatus, "resolved");
+});
+
+test("resolveDraftPlanDevices also reads symbol pins from documentSource payload variants", async () => {
+  const draft = {
+    title: "documentSource symbol fallback test",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-d2",
+        ref: "D2",
+        name: "LED",
+        packageName: "LED0805",
+        value: "GREEN",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {
+          preferred_search_query: "GREEN LED LED0805",
+        },
+      },
+    ],
+    pins: [
+      { id: "draft-d2-a", componentId: "draft-d2", pinName: "A", pinNumber: "1", electricalType: "passive" },
+      { id: "draft-d2-k", componentId: "draft-d2", pinName: "K", pinNumber: "2", electricalType: "passive" },
+    ],
+    nets: [],
+  } as any;
+
+  const resolved = await resolveDraftPlanDevices(
+    draft,
+    async () => [
+      {
+        uuid: "dev-d2",
+        name: "LED0805",
+        libraryUuid: "lib-d2",
+        symbolUuid: "sym-d2",
+        footprintName: "LED0805",
+      },
+    ],
+    async () => ({
+      uuid: "dev-d2",
+      symbol: {
+        uuid: "sym-d2",
+        libraryUuid: "lib-d2",
+      },
+      raw: {
+        association: {
+          symbolUuid: "sym-d2",
+        },
+      },
+    }) as any,
+    async () => ({
+      uuid: "sym-d2",
+      raw: {
+        documentSource: JSON.stringify({
+          head: { docType: "symbol" },
+          shape: [
+            { pin: "A", num: "1", type: "passive" },
+            { pin: "K", num: "2", type: "passive" },
+          ],
+        }),
+      },
+    }) as any
+  );
+
+  const pinA = resolved.pins.find((pin: any) => pin.id === "draft-d2-a");
+  const pinK = resolved.pins.find((pin: any) => pin.id === "draft-d2-k");
+  assert.equal(pinA?.resolvedPinName, "A");
+  assert.equal(pinA?.resolvedPinNumber, "1");
+  assert.equal(pinK?.resolvedPinName, "K");
+  assert.equal(pinK?.resolvedPinNumber, "2");
+});
+
 test("resolveDraftPlanDevices reads associated nested symbol reference from host device metadata", async () => {
   const draft = {
     title: "capacitor symbol fallback test",
@@ -459,6 +613,82 @@ test("resolveDraftPlanDevices reads associated nested symbol reference from host
   assert.equal(pin2?.resolvedPinName, "2");
   assert.equal(pin2?.resolvedPinNumber, "2");
   assert.equal(pin2?.pinResolutionStatus, "resolved");
+});
+
+test("resolveDraftPlanDevices keeps draft pins resolved when selected passive device detail has no pins", async () => {
+  const draft = {
+    title: "selected passive fallback test",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-c6",
+        ref: "C6",
+        name: "Capacitor",
+        packageName: "C0603",
+        value: "100nF",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {
+          device_uuid: "cap-device",
+          library_uuid: "cap-lib",
+          device_resolution_status: "resolved",
+          device_resolution_reason: "manual_selection",
+        },
+      },
+    ],
+    pins: [
+      { id: "draft-c6-1", componentId: "draft-c6", pinName: "1", pinNumber: "1", electricalType: "passive" },
+      { id: "draft-c6-2", componentId: "draft-c6", pinName: "2", pinNumber: "2", electricalType: "passive" },
+    ],
+    nets: [],
+    selectedDevices: [
+      {
+        componentId: "draft-c6",
+        componentRef: "C6",
+        role: "input_capacitor",
+        query: "100nF capacitor C0603",
+        deviceUuid: "cap-device",
+        libraryUuid: "cap-lib",
+        name: "CC0603KRX7R9BB104",
+        footprintName: "C0603",
+      },
+    ],
+  } as any;
+
+  const warnings: unknown[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  try {
+    const resolved = await resolveDraftPlanDevices(
+      draft,
+      async () => [],
+      async () => ({
+        uuid: "cap-device",
+        raw: {
+          device: {
+            uuid: "cap-device",
+          },
+        },
+      })
+    );
+
+    const pin1 = resolved.pins.find((pin: any) => pin.id === "draft-c6-1");
+    const pin2 = resolved.pins.find((pin: any) => pin.id === "draft-c6-2");
+    assert.equal(pin1?.resolvedPinName, "1");
+    assert.equal(pin1?.resolvedPinNumber, "1");
+    assert.equal(pin1?.pinResolutionStatus, "resolved");
+    assert.equal(pin1?.pinResolutionReason, "fallback_draft_pin_without_library_pins");
+    assert.equal(pin2?.resolvedPinName, "2");
+    assert.equal(pin2?.resolvedPinNumber, "2");
+    assert.equal(pin2?.pinResolutionStatus, "resolved");
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(warnings.length, 0);
 });
 
 test("buildDraftDeviceSearchQuery infers battery connector queries for BT refs", () => {
@@ -542,4 +772,81 @@ test("summarizeLibraryDeviceDetailShape reports nested keys and string samples f
   assert.match(String(summary.rawDataStrSample || ""), /docType/);
   assert.equal(summary.symbolName, "LED Symbol");
   assert.equal(summary.footprintName, "LED0805");
+});
+
+test("resolveDraftPlanDevices falls back to symbol source detail when device and symbol detail omit explicit pins", async () => {
+  const draft = {
+    title: "symbol source fallback",
+    rationale: "test",
+    components: [
+      {
+        id: "draft-u1",
+        ref: "U1",
+        name: "ip5306",
+        packageName: "ESOP-8",
+        value: "IP5306",
+        componentType: "part",
+        addIntoBom: true,
+        addIntoPcb: true,
+        properties: {
+          device_uuid: "device-ip5306",
+          library_uuid: "lib-lcsc",
+        },
+      },
+    ],
+    pins: [
+      { id: "draft-u1-bat", componentId: "draft-u1", pinName: "BAT", electricalType: "power" },
+      { id: "draft-u1-vin", componentId: "draft-u1", pinName: "VIN", electricalType: "power" },
+    ],
+    nets: [],
+  } as any;
+
+  const resolved = await resolveDraftPlanDevices(
+    draft,
+    async () => [],
+    async () => ({
+      uuid: "device-ip5306",
+      libraryUuid: "lib-lcsc",
+      symbol: {
+        uuid: "symbol-ip5306",
+        libraryUuid: "lib-lcsc",
+      },
+      raw: {
+        symbol: {
+          uuid: "symbol-ip5306",
+        },
+      },
+    }),
+    async () => ({
+      uuid: "symbol-ip5306",
+      libraryUuid: "lib-lcsc",
+      raw: {
+        result: {
+          uuid: "symbol-ip5306",
+        },
+      },
+    }),
+    async () => ({
+      uuid: "symbol-ip5306",
+      libraryUuid: "lib-lcsc",
+      raw: {
+        documentSource: JSON.stringify({
+          head: { docType: "symbol" },
+          shape: [
+            { pin: "VIN", num: "1", type: "power" },
+            { pin: "BAT", num: "5", type: "power" },
+          ],
+        }),
+      },
+    })
+  );
+
+  const vinPin = resolved.pins.find((pin: any) => pin.id === "draft-u1-vin");
+  const batPin = resolved.pins.find((pin: any) => pin.id === "draft-u1-bat");
+  assert.equal(vinPin?.resolvedPinName, "VIN");
+  assert.equal(vinPin?.resolvedPinNumber, "1");
+  assert.equal(vinPin?.pinResolutionStatus, "resolved");
+  assert.equal(batPin?.resolvedPinName, "BAT");
+  assert.equal(batPin?.resolvedPinNumber, "5");
+  assert.equal(batPin?.pinResolutionStatus, "resolved");
 });

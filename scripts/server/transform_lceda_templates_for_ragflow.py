@@ -101,6 +101,16 @@ def to_ragflow_template_record(template: dict[str, Any]) -> dict[str, Any]:
         "source_project_url": source_project.get("project_url", ""),
         "idempotency_key": template_id,
     }
+    for key in (
+        "module_type",
+        "anchor_component",
+        "structured_components",
+        "nets",
+        "connection_chains",
+        "pin_bindings",
+    ):
+        if key in template:
+            metadata[key] = template.get(key)
     normalized_score_reasons = _normalize_text_list(scoring.get("score_reasons"))
     normalized_intent_tags = _normalize_text_list(scoring.get("intent_tags"))
     for key in (

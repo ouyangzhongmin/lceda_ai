@@ -1,0 +1,17 @@
+[Unit]
+Description=LCEDA AI Server
+After=network.target docker.service
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/lceda-ai-server
+EnvironmentFile=-/opt/lceda-ai-server/.env
+ExecStart=/opt/lceda-ai-server/run.sh
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

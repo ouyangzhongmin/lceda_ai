@@ -1,0 +1,92 @@
+server:
+  port: "18082"
+  base_url: "http://127.0.0.1:18082"
+
+database:
+  host: "127.0.0.1"
+  port: "15432"
+  name: "lceda_ai"
+  user: "lceda"
+  password: ""
+  sslmode: "disable"
+
+redis:
+  addr: "127.0.0.1:16379"
+  password: ""
+  db: 0
+
+smtp:
+  host: ""
+  port: 465
+  user: ""
+  pass: ""
+  tls: true
+  from: ""
+
+memory:
+  qdrant_url: "http://127.0.0.1:6333"
+  qdrant_api_key: ""
+  collection: "lceda_ai_memory"
+  embedding_provider: "qwen"
+  embedding_model: "text-embedding-v4"
+  top_k: 5
+  enable_fallback: true
+
+ragflow:
+  enabled: false
+  base_url: ""
+  api_key: ""
+  dataset_id: ""
+  endpoint_template: "/api/v1/retrieval"
+  timeout_seconds: 12
+
+llm:
+  provider: "doubao"
+  amap_api_key: ""
+  enable_fallback: false
+  request_timeout_ms: 25000
+  retry_count: 1
+  retry_backoff_ms: 300
+  qwen:
+    endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    apikey: ""
+    model: "qwen-plus"
+  deepseek:
+    endpoint: "https://api.deepseek.com/v1"
+    apikey: ""
+    model: "deepseek-chat"
+  kimi:
+    endpoint: "https://api.moonshot.cn/v1"
+    apikey: ""
+    model: "moonshot-v1-8k"
+  doubao:
+    endpoint: "https://ark.cn-beijing.volces.com/api/v3"
+    apikey: ""
+    model: "doubao-seed-2-0-mini-250821"
+  openai:
+    endpoint: "https://api.openai.com/v1"
+    apikey: ""
+    model: "gpt-4o-mini"
+
+wechat:
+  app_id: ""
+  app_secret: ""
+  redirect_uri: "https://your-domain.example.com/api/v1/auth/wechat/callback"
+
+knowledge:
+  queue_mode: "stream" # stream | list
+  queue_stream: "lceda:knowledge:import_tasks:stream"
+  queue_group: "lceda_import_task_workers"
+  queue_block_ms: 2000
+  queue_claim_enabled: true
+  queue_claim_count: 1
+  queue_claim_interval_ms: 2000
+  queue_claim_idle_ms: 30000
+  task_max_attempts: 3
+  task_retry_delay_ms: 2000
+  task_retry_backoff_mode: "fixed" # fixed | exponential
+  task_retry_max_delay_ms: 30000
+  task_lock_ttl_ms: 60000
+  ack_retry_count: 2
+  ack_retry_interval_ms: 200
+

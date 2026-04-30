@@ -9,6 +9,49 @@ function buildHaystack(results: RagSearchResult[]): string {
     .toLowerCase();
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.indexOf(value) === index);
+}
+
+function addTemplateConnection(
+  connections: NonNullable<DraftPlanGuidance["requiredConnections"]>,
+  fromComponentRef: string,
+  fromPin: string,
+  toComponentRef: string,
+  toPin: string,
+  netName: string
+): void {
+  const candidate = { fromComponentRef, fromPin, toComponentRef, toPin, netName };
+  const key = `${fromComponentRef}.${fromPin}|${toComponentRef}.${toPin}|${netName}`;
+  if (
+    !connections.some(
+      (item) => `${item.fromComponentRef}.${item.fromPin}|${item.toComponentRef}.${item.toPin}|${item.netName}` === key
+    )
+  ) {
+    connections.push(candidate);
+  }
+}
+
+function extractPassiveChainGuidance(results: RagSearchResult[]): NonNullable<DraftPlanGuidance["requiredConnections"]> {
+  const connections: NonNullable<DraftPlanGuidance["requiredConnections"]> = [];
+  for (const result of results) {
+    const text = `${result.title || ""}\n${result.snippet || ""}`;
+    const chainMatches = text.matchAll(/(?:^|\n)\s*-\s*[^:\n]+:\s*([A-Z0-9_+.-]+)\s*->\s*([A-Z]+\d+)\s*->\s*([A-Z0-9_+.-]+)/giu);
+    for (const match of chainMatches) {
+      const leftNet = String(match[1] || "").toUpperCase();
+      const componentRef = String(match[2] || "").toUpperCase();
+      const rightNet = String(match[3] || "").toUpperCase();
+      if (!leftNet || !componentRef || !rightNet) continue;
+      addTemplateConnection(connections, leftNet, leftNet, componentRef, "1", leftNet);
+      addTemplateConnection(connections, componentRef, "2", rightNet, rightNet, rightNet);
+    }
+  }
+  return connections;
+}
+
 export function buildDraftGuidanceFromRag(
   userQuery: string,
   results: RagSearchResult[]
@@ -24,6 +67,64 @@ export function buildDraftGuidanceFromRag(
     snippet: item.snippet,
     sourceRef: item.source_ref,
   }));
+
+  const looksLikeEsp32S3Voice =
+    /(esp32-s3|esp32 s3|esp32s3)/iu.test(userQuery) &&
+    /(小智|语音|聊天|voice|chat|mic|microphone|麦克风|音频|功放|speaker|扬声器)/iu.test(userQuery);
+  const wantsBatteryCharging = /(锂电|电池|充电|battery|charger|charge|ip5306|tp4056)/iu.test(userQuery);
+
+  if (looksLikeEsp32S3Voice) {
+    const requiredConnections = extractPassiveChainGuidance(results);
+    if (!requiredConnections.some((item) => item.netName === "EN")) {
+      addTemplateConnection(requiredConnections, "U1", "EN", "R_EN", "1", "EN");
+      addTemplateConnection(requiredConnections, "R_EN", "2", "3V3", "3V3", "3V3");
+    }
+    if (!requiredConnections.some((item) => item.netName === "IO0")) {
+      addTemplateConnection(requiredConnections, "U1", "IO0", "R_BOOT", "1", "IO0");
+      addTemplateConnection(requiredConnections, "R_BOOT", "2", "GND", "GND", "GND");
+    }
+
+    return {
+      templateId: wantsBatteryCharging ? "esp32_s3_voice_battery_assistant" : "esp32_s3_voice_assistant",
+      rationale:
+        "依据 ESP32-S3 语音设备相关模板，将 RAG 命中的去耦、EN/IO0 偏置链路转成草案约束；同时补齐语音设备必须具备的电源管理、I2S 麦克风和音频输出检索目标。",
+      evidence,
+      preferredSearches: {
+        mcu: "ESP32-S3-WROOM-1 ESP32-S3 module",
+        charger_powerbank: wantsBatteryCharging
+          ? "IP5306 lithium battery charge boost power management"
+          : "5V to 3.3V power management",
+        usb_c_connector: "USB Type-C 16P female connector",
+        battery_connector: "JST PH 2P battery connector",
+        ldo_regulator: "3.3V LDO regulator 500mA",
+        microphone: "INMP441 I2S MEMS microphone",
+        audio_amplifier: /(ns4168|NS4168)/u.test(haystack)
+          ? "NS4168 I2S audio amplifier"
+          : "MAX98357A NS4168 I2S audio amplifier",
+        speaker_connector: "speaker connector 2pin 4ohm",
+        decoupling_capacitor: /(C25744|C25794|0\.1u|100n)/iu.test(haystack)
+          ? "0.1uF capacitor 0603"
+          : "0.1uF capacitor 0603",
+        boot_resistor: "10k resistor 0603",
+      },
+      requiredNets: uniqueStrings([
+        "VBUS",
+        ...(wantsBatteryCharging ? ["VBAT"] : []),
+        "5V",
+        "3V3",
+        "GND",
+        "EN",
+        "IO0",
+        "I2S_SCK",
+        "I2S_LRCK",
+        "I2S_SD",
+        "I2S_DOUT",
+        "SPK_P",
+        "SPK_N",
+      ]),
+      requiredConnections,
+    };
+  }
 
   if (looksLikeLedIndicator) {
     const prefersTwoPinHeader = /(2pin|1x2|两针|2 针|2pin header)/i.test(haystack) || results.length === 0;

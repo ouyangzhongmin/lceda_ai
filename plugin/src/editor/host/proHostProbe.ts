@@ -4,6 +4,7 @@ import type { SchematicSelection } from "../../types/schematic";
 import type { SchematicContext } from "../../types/schematic";
 import type {
   LibraryDeviceDetail,
+  LibraryDeviceSearchProperties,
   LibraryScope,
   LibrarySearchResultItem,
 } from "./runtime";
@@ -255,6 +256,14 @@ export function hasTypedLibraryRuntime(): boolean {
   );
 }
 
+export function hasTypedLibraryPropertySearchRuntime(): boolean {
+  return (
+    typeof eda !== "undefined" &&
+    typeof eda.lib_Device?.searchByProperties === "function" &&
+    typeof eda.lib_LibrariesList?.getSystemLibraryUuid === "function"
+  );
+}
+
 export function hasTypedSchematicPlacementRuntime(): boolean {
   return (
     typeof eda !== "undefined" &&
@@ -291,7 +300,43 @@ export async function typedSearchLibraryDevices(input: {
       input.pageSize,
       input.page
     );
-    return Array.isArray(results) ? results.map(normalizeLibrarySearchResult) : [];
+    return unwrapLibrarySearchResults(results).map(normalizeLibrarySearchResult);
+  } catch {
+    return null;
+  }
+}
+
+export async function typedSearchLibraryDevicesByProperties(input: {
+  properties: LibraryDeviceSearchProperties;
+  scope?: LibraryScope;
+  libraryUuid?: string;
+  classification?: string[];
+  symbolType?: number;
+  pageSize?: number;
+  page?: number;
+}): Promise<LibrarySearchResultItem[] | null> {
+  if (!hasTypedLibraryPropertySearchRuntime()) {
+    return null;
+  }
+
+  const normalizedProperties = Object.fromEntries(
+    Object.entries(input.properties ?? {}).filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+  ) as LibraryDeviceSearchProperties;
+  if (Object.keys(normalizedProperties).length === 0) {
+    return [];
+  }
+
+  try {
+    const libraryUuid = input.libraryUuid ?? (await resolveScopeLibraryUuid(input.scope ?? "system"));
+    const results = await eda.lib_Device.searchByProperties(
+      normalizedProperties as never,
+      libraryUuid,
+      input.classification && input.classification.length > 0 ? input.classification : undefined,
+      input.symbolType as never,
+      input.pageSize,
+      input.page
+    );
+    return unwrapLibrarySearchResults(results).map(normalizeLibrarySearchResult);
   } catch {
     return null;
   }
@@ -341,6 +386,172 @@ export async function typedGetLibrarySymbol(input: {
   }
 }
 
+export async function typedGetLibrarySymbolSource(input: {
+  symbolUuid: string;
+  libraryUuid?: string;
+  scope?: LibraryScope;
+}): Promise<LibraryDeviceDetail | null> {
+  const symbolUuid = input.symbolUuid?.trim();
+  if (!symbolUuid || typeof fetch !== "function") {
+    return null;
+  }
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+  const timer =
+    controller
+      ? setTimeout(() => {
+          controller.abort();
+        }, 3000)
+      : undefined;
+
+  try {
+    const componentResponse = await fetch(`https://pro.lceda.cn/api/v2/components/${encodeURIComponent(symbolUuid)}`, {
+      method: "GET",
+      credentials: "include",
+      signal: controller?.signal,
+    });
+    if (!componentResponse.ok) {
+      return null;
+    }
+    const payload = await componentResponse.json().catch(() => null);
+    const normalized = normalizeLibraryDeviceDetail(
+      typeof payload === "object" && payload !== null && "result" in (payload as Record<string, unknown>)
+        ? (payload as Record<string, unknown>).result
+        : payload
+    );
+    const rawRecord =
+      typeof normalized.raw === "object" && normalized.raw !== null
+        ? ({ ...(normalized.raw as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+
+    if (
+      typeof rawRecord.dataStr !== "string" &&
+      typeof rawRecord.documentSource !== "string"
+    ) {
+      const dataStrUrl = resolveDataStrUrl(rawRecord);
+      if (dataStrUrl) {
+        const dataStrResponse = await fetch(dataStrUrl, {
+          method: "GET",
+          credentials: "include",
+          signal: controller?.signal,
+        });
+        if (dataStrResponse.ok) {
+          rawRecord.documentSource = await dataStrResponse.text().catch(() => undefined);
+        }
+      }
+    }
+
+    return {
+      ...normalized,
+      libraryUuid: normalized.libraryUuid ?? input.libraryUuid,
+      raw: rawRecord,
+    };
+  } catch {
+    return null;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+export function __testNormalizeLibraryDeviceDetail(value: unknown): LibraryDeviceDetail {
+  return normalizeLibraryDeviceDetail(value);
+}
+
+export function __testNormalizeLibrarySearchResults(value: unknown): LibrarySearchResultItem[] {
+  return unwrapLibrarySearchResults(value).map(normalizeLibrarySearchResult);
+}
+
+function unwrapLibrarySearchResults(value: unknown): unknown[] {
+  if (typeof value === "string") {
+    try {
+      return unwrapLibrarySearchResults(JSON.parse(value) as unknown);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.result)) {
+    return record.result;
+  }
+  if (record.result && typeof record.result === "object") {
+    const nested = record.result as Record<string, unknown>;
+    if (nested.lists && typeof nested.lists === "object") {
+      return flattenLibrarySearchListGroups(nested.lists);
+    }
+    const nestedItems = unwrapLibrarySearchResults(nested);
+    if (nestedItems.length > 0) {
+      return nestedItems;
+    }
+  }
+  if (record.data && typeof record.data === "object") {
+    const dataItems = unwrapLibrarySearchResults(record.data);
+    if (dataItems.length > 0) {
+      return dataItems;
+    }
+  }
+  if (record.lists && typeof record.lists === "object") {
+    return flattenLibrarySearchListGroups(record.lists);
+  }
+  if (Array.isArray(record.results)) {
+    return record.results;
+  }
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+  return [];
+}
+
+function flattenLibrarySearchListGroups(value: unknown): unknown[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  return Object.values(value as Record<string, unknown>).flatMap((entry) => {
+    if (Array.isArray(entry)) {
+      return entry;
+    }
+    if (entry && typeof entry === "object") {
+      return flattenLibrarySearchListGroups(entry);
+    }
+    return [];
+  });
+}
+
+function resolveDataStrUrl(record: Record<string, unknown>): string | undefined {
+  const directCandidates = [
+    record.dataStrUrl,
+    record.documentSourceUrl,
+    record.sourceUrl,
+  ];
+  for (const candidate of directCandidates) {
+    if (typeof candidate === "string" && /^https?:\/\//i.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  const nestedCandidates = [record.data, record.result];
+  for (const nested of nestedCandidates) {
+    if (typeof nested !== "object" || nested === null) {
+      continue;
+    }
+    const nestedRecord = nested as Record<string, unknown>;
+    for (const key of ["dataStrUrl", "documentSourceUrl", "sourceUrl", "url"]) {
+      const candidate = nestedRecord[key];
+      if (typeof candidate === "string" && /modules\.lceda\.cn\/datastr\//i.test(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 export async function typedGetLibraryDevicesByLcscIds(input: {
   lcscIds: string[];
   libraryUuid?: string;
@@ -371,43 +582,98 @@ export async function typedGetLibraryDevicesByLcscIds(input: {
 
 function normalizeLibrarySearchResult(value: unknown): LibrarySearchResultItem {
   const record = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
+  const owner =
+    typeof record.owner === "object" && record.owner !== null ? (record.owner as Record<string, unknown>) : undefined;
+  const symbol =
+    typeof record.symbol === "object" && record.symbol !== null ? (record.symbol as Record<string, unknown>) : undefined;
+  const footprint =
+    typeof record.footprint === "object" && record.footprint !== null
+      ? (record.footprint as Record<string, unknown>)
+      : undefined;
+  const attributes =
+    typeof record.attributes === "object" && record.attributes !== null
+      ? (record.attributes as Record<string, unknown>)
+      : undefined;
   return {
     uuid: readStringRecord(record, ["uuid"]) ?? "",
-    name: readStringRecord(record, ["name"]) ?? "",
-    libraryUuid: readStringRecord(record, ["libraryUuid"]) ?? "",
-    symbolUuid: readStringRecord(record, ["symbolUuid"]),
-    symbolName: readStringRecord(record, ["symbolName"]),
-    footprintUuid: readStringRecord(record, ["footprintUuid"]),
-    footprintName: readStringRecord(record, ["footprintName"]),
-    manufacturer: readStringRecord(record, ["manufacturer"]),
-    supplier: readStringRecord(record, ["supplier"]),
-    supplierId: readStringRecord(record, ["supplierId"]),
+    name: readStringRecord(record, ["name", "title", "display_title"]) ?? "",
+    libraryUuid:
+      readStringRecord(record, ["libraryUuid"]) ??
+      readStringRecord(owner ?? {}, ["uuid"]) ??
+      "",
+    symbolUuid:
+      readStringRecord(record, ["symbolUuid"]) ??
+      readStringRecord(symbol ?? {}, ["uuid"]) ??
+      readStringRecord(attributes ?? {}, ["Symbol"]),
+    symbolName:
+      readStringRecord(record, ["symbolName"]) ??
+      readStringRecord(symbol ?? {}, ["name", "title", "display_title"]),
+    footprintUuid:
+      readStringRecord(record, ["footprintUuid"]) ??
+      readStringRecord(footprint ?? {}, ["uuid"]) ??
+      readStringRecord(attributes ?? {}, ["Footprint"]),
+    footprintName:
+      readStringRecord(record, ["footprintName"]) ??
+      readStringRecord(footprint ?? {}, ["name", "title", "display_title"]) ??
+      readStringRecord(attributes ?? {}, ["Supplier Footprint"]),
+    manufacturer:
+      readStringRecord(record, ["manufacturer"]) ??
+      readStringRecord(attributes ?? {}, ["Manufacturer"]),
+    supplier:
+      readStringRecord(record, ["supplier"]) ??
+      readStringRecord(attributes ?? {}, ["Supplier"]),
+    supplierId:
+      readStringRecord(record, ["supplierId", "product_code"]) ??
+      readStringRecord(attributes ?? {}, ["Supplier Part"]),
     lcscInventory: readNumberRecord(record, ["lcscInventory"]),
     lcscPrice: readNumberRecord(record, ["lcscPrice"]),
     jlcInventory: readNumberRecord(record, ["jlcInventory", "jlcInventory"]),
     jlcPrice: readNumberRecord(record, ["jlcPrice"]),
-    description: readStringRecord(record, ["description"]),
+    description: readStringRecord(record, ["description"]) ?? readStringRecord(attributes ?? {}, ["Description"]),
   };
 }
 
 function normalizeLibraryDeviceDetail(value: unknown): LibraryDeviceDetail {
   const record = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
+  const owner =
+    typeof record.owner === "object" && record.owner !== null ? (record.owner as Record<string, unknown>) : undefined;
+  const attributes =
+    typeof record.attributes === "object" && record.attributes !== null
+      ? (record.attributes as Record<string, unknown>)
+      : undefined;
+  const mergedOtherProperty = {
+    ...(typeof attributes === "object" ? attributes : {}),
+    ...(
+      typeof record.otherProperty === "object" && record.otherProperty !== null
+        ? (record.otherProperty as Record<string, boolean | number | string | undefined>)
+        : {}
+    ),
+  };
   return {
     uuid: readStringRecord(record, ["uuid"]) ?? "",
-    name: readStringRecord(record, ["name"]),
-    libraryUuid: readStringRecord(record, ["libraryUuid"]),
-    lcscId: readStringRecord(record, ["supplierId", "lcscId"]),
-    manufacturer: readStringRecord(record, ["manufacturer"]),
-    supplier: readStringRecord(record, ["supplier"]),
-    supplierId: readStringRecord(record, ["supplierId"]),
-    description: readStringRecord(record, ["description"]),
+    name: readStringRecord(record, ["name", "title", "display_title"]),
+    libraryUuid:
+      readStringRecord(record, ["libraryUuid"]) ??
+      readStringRecord(owner ?? {}, ["uuid"]),
+    lcscId:
+      readStringRecord(record, ["supplierId", "lcscId", "product_code"]) ??
+      readStringRecord(attributes ?? {}, ["Supplier Part"]),
+    manufacturer:
+      readStringRecord(record, ["manufacturer"]) ??
+      readStringRecord(attributes ?? {}, ["Manufacturer"]),
+    supplier:
+      readStringRecord(record, ["supplier"]) ??
+      readStringRecord(attributes ?? {}, ["Supplier"]),
+    supplierId:
+      readStringRecord(record, ["supplierId", "product_code"]) ??
+      readStringRecord(attributes ?? {}, ["Supplier Part"]),
+    description:
+      readStringRecord(record, ["description"]) ??
+      readStringRecord(attributes ?? {}, ["Description"]),
     symbol: normalizeLinkedLibraryItem(record.symbol),
     footprint: normalizeLinkedLibraryItem(record.footprint),
     model3D: normalizeLinkedLibraryItem(record.model3D),
-    otherProperty:
-      typeof record.otherProperty === "object" && record.otherProperty !== null
-        ? (record.otherProperty as Record<string, boolean | number | string | undefined>)
-        : undefined,
+    otherProperty: Object.keys(mergedOtherProperty).length > 0 ? mergedOtherProperty : undefined,
     pins: normalizeLibraryDevicePins(record),
     raw: value,
   };
@@ -699,7 +965,7 @@ function normalizeLinkedLibraryItem(value: unknown):
   const record = value as Record<string, unknown>;
   return {
     uuid: readStringRecord(record, ["uuid"]),
-    name: readStringRecord(record, ["name"]),
+    name: readStringRecord(record, ["name", "title", "display_title"]),
     libraryUuid: readStringRecord(record, ["libraryUuid"]),
   };
 }

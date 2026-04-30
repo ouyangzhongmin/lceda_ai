@@ -1672,6 +1672,147 @@ def _build_score_reasons(
     return reasons
 
 
+def _canonical_net_name(value: str) -> str:
+    text = str(value or "").strip().upper()
+    aliases = {
+        "+3.3V": "3V3",
+        "3.3V": "3V3",
+        "+5V": "5V",
+        "GPIO0": "IO0",
+        "BOOT": "IO0",
+        "BOOT0": "IO0",
+        "CHIP_EN": "EN",
+        "RESET": "EN",
+        "RST": "EN",
+    }
+    return aliases.get(text, text)
+
+
+def _infer_module_type(template: dict[str, Any], chains: list[dict[str, Any]]) -> str:
+    anchor_model = str(template.get("anchor_device_model", "")).upper()
+    template_type = str(template.get("template_type", "")).strip()
+    chain_text = " ".join(
+        f"{chain.get('anchor_net', '')} {chain.get('to_power_net', '')} {chain.get('evidence', '')}"
+        for chain in chains
+    ).upper()
+    if "ESP32-S3" in anchor_model and template_type in {
+        "gpio_passive_power_chain",
+        "mcu_boot_reset",
+        "mcu_power_core",
+        "component_combo_bundle",
+    }:
+        if any(marker in chain_text for marker in ("EN", "IO0", "GPIO0", "BOOT", "3V3", "VBUS", "GND")):
+            return "esp32_s3_minimum_system"
+    if template_type == "usb_power_input":
+        return "usb_c_power_input"
+    if template_type in {"battery_protection", "current_sense", "temperature_sense"}:
+        return f"battery_{template_type}"
+    return template_type or "reference_subcircuit"
+
+
+def _infer_anchor_component(template: dict[str, Any], module_type: str) -> dict[str, str]:
+    anchor_model = str(template.get("anchor_device_model", "")).strip()
+    anchor_family = str(template.get("anchor_device_family", "")).strip()
+    part = anchor_model or anchor_family or module_type
+    role = "module_anchor"
+    if module_type == "esp32_s3_minimum_system" or str(anchor_family).upper() in {"ESP32", "STM32", "RP2040"}:
+        role = "mcu_module"
+    elif module_type == "usb_c_power_input":
+        role = "usb_c_connector"
+    elif module_type.startswith("battery_"):
+        role = "battery_power_module"
+    return {"part": part, "role": role}
+
+
+def _infer_structured_chain_intent(anchor_net: str, via: str, to_power_net: str) -> str:
+    anchor = _canonical_net_name(anchor_net)
+    target = _canonical_net_name(to_power_net)
+    middle = str(via or "").upper()
+    if middle.startswith("C") and target == "GND":
+        return "decoupling"
+    if anchor == "EN" and target in {"3V3", "VCC", "VDD", "VBUS", "5V"}:
+        return "enable_pullup"
+    if anchor == "IO0" and target == "GND":
+        return "boot_strap"
+    if anchor == "EN" and target == "GND":
+        return "reset_or_enable_bias"
+    if anchor in {"VBUS", "VBAT", "5V", "3V3", "VCC", "VDD"} or target in {"VBUS", "VBAT", "5V", "3V3", "VCC", "VDD"}:
+        return "power_path"
+    return "signal_or_reference_chain"
+
+
+def _infer_structured_component_role(ref: str, anchor_net: str, to_power_net: str) -> str:
+    designator = str(ref or "").upper()
+    anchor = _canonical_net_name(anchor_net)
+    target = _canonical_net_name(to_power_net)
+    if designator.startswith("C"):
+        return "decoupling_capacitor"
+    if designator.startswith("R") and anchor == "EN" and target in {"3V3", "VCC", "VDD", "VBUS", "5V"}:
+        return "en_pullup"
+    if designator.startswith("R") and anchor == "IO0" and target == "GND":
+        return "boot_pulldown_or_button_resistor"
+    if designator.startswith("R") and anchor == "EN" and target == "GND":
+        return "reset_or_enable_bias_resistor"
+    if designator.startswith("R"):
+        return "bias_resistor"
+    if designator.startswith(("J", "CN", "USB")):
+        return "connector"
+    return "module_component"
+
+
+def _build_structured_rag_module_fields(template: dict[str, Any], chains: list[dict[str, Any]]) -> dict[str, Any]:
+    module_type = _infer_module_type(template, chains)
+    anchor_component = _infer_anchor_component(template, module_type)
+    structured_chains: list[dict[str, str]] = []
+    structured_components: list[dict[str, str]] = []
+    pin_bindings: list[dict[str, str]] = []
+    nets: list[str] = []
+
+    def add_net(value: str) -> None:
+        net = _canonical_net_name(value)
+        if net and net not in nets:
+            nets.append(net)
+
+    for chain in chains:
+        anchor = _canonical_net_name(str(chain.get("anchor_net", "")).strip())
+        target = _canonical_net_name(str(chain.get("to_power_net", "")).strip())
+        passive_refdes = [str(v).strip() for v in chain.get("passive_refdes", []) if str(v).strip()]
+        passive_values = [str(v).strip() for v in chain.get("passive_values", []) if str(v).strip()]
+        via = passive_refdes[0] if passive_refdes else passive_values[0] if passive_values else ""
+        if not anchor or not target:
+            continue
+        add_net(anchor)
+        add_net(target)
+        structured_chains.append(
+            {
+                "from": anchor,
+                "via": via,
+                "to": target,
+                "intent": _infer_structured_chain_intent(anchor, via, target),
+            }
+        )
+        if via:
+            component = {
+                "ref": via,
+                "role": _infer_structured_component_role(via, anchor, target),
+            }
+            if passive_values:
+                component["value"] = passive_values[0]
+            if component not in structured_components:
+                structured_components.append(component)
+        if anchor in {"EN", "IO0"} and {"component_role": "mcu_module", "pin": anchor, "net": anchor} not in pin_bindings:
+            pin_bindings.append({"component_role": "mcu_module", "pin": anchor, "net": anchor})
+
+    return {
+        "module_type": module_type,
+        "anchor_component": anchor_component,
+        "structured_components": structured_components,
+        "nets": nets,
+        "connection_chains": structured_chains,
+        "pin_bindings": pin_bindings,
+    }
+
+
 def _infer_intent_tags(
     template: dict[str, Any],
     chains: list[dict[str, Any]],
@@ -1750,6 +1891,13 @@ def _apply_static_scoring(template: dict[str, Any]) -> dict[str, Any]:
         "score_reasons": score_reasons,
         "intent_tags": intent_tags,
     }
+    structured_module = _build_structured_rag_module_fields(template, chains)
+    template["module_type"] = structured_module["module_type"]
+    template["anchor_component"] = structured_module["anchor_component"]
+    template["structured_components"] = structured_module["structured_components"]
+    template["nets"] = structured_module["nets"]
+    template["connection_chains"] = structured_module["connection_chains"]
+    template["pin_bindings"] = structured_module["pin_bindings"] or template.get("pin_bindings", [])
     return template
 
 

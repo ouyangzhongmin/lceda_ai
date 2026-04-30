@@ -64,6 +64,18 @@ export interface LibraryDeviceDetail {
   raw?: unknown;
 }
 
+export interface LibraryDeviceSearchProperties {
+  name?: string;
+  value?: string;
+  description?: string;
+  symbolName?: string;
+  footprintName?: string;
+  supplierFootprint?: string;
+  supplierId?: string;
+  partNumber?: string;
+  partCode?: string;
+}
+
 export interface HostEditorBridge {
   getChannel?: () => PluginChannel;
   isAvailable?: () => boolean | Promise<boolean>;
@@ -79,6 +91,15 @@ export interface HostEditorBridge {
   ) => Promise<{ rolledBack: boolean; transactionId: string }>;
   openExternal?: (url: string) => Promise<void>;
   showToastMessage?: (message: string, timeoutMs?: number) => Promise<void>;
+  searchLibraryDevicesByProperties?: (input: {
+    properties: LibraryDeviceSearchProperties;
+    scope?: LibraryScope;
+    libraryUuid?: string;
+    classification?: string[];
+    symbolType?: number;
+    pageSize?: number;
+    page?: number;
+  }) => Promise<LibrarySearchResultItem[]>;
   searchLibraryDevices?: (input: {
     query: string;
     scope?: LibraryScope;
@@ -90,6 +111,11 @@ export interface HostEditorBridge {
   }) => Promise<LibrarySearchResultItem[]>;
   getLibraryDevice?: (input: { deviceUuid: string; libraryUuid?: string; scope?: LibraryScope }) => Promise<LibraryDeviceDetail>;
   getLibrarySymbol?: (input: { symbolUuid: string; libraryUuid?: string; scope?: LibraryScope }) => Promise<LibraryDeviceDetail>;
+  getLibrarySymbolSource?: (input: {
+    symbolUuid: string;
+    libraryUuid?: string;
+    scope?: LibraryScope;
+  }) => Promise<LibraryDeviceDetail>;
   getLibraryDevicesByLcscIds?: (input: {
     lcscIds: string[];
     libraryUuid?: string;

@@ -11,6 +11,10 @@ type GetLibrarySymbol = (input: {
   symbolUuid: string;
   libraryUuid?: string;
 }) => Promise<LibraryDeviceDetail | null>;
+type GetLibrarySymbolSource = (input: {
+  symbolUuid: string;
+  libraryUuid?: string;
+}) => Promise<LibraryDeviceDetail | null>;
 
 function safeObjectKeys(value: unknown): string[] {
   return typeof value === "object" && value !== null ? Object.keys(value as Record<string, unknown>).slice(0, 20) : [];
@@ -397,18 +401,101 @@ function extractDetailPins(detail: LibraryDeviceDetail | null | undefined): Arra
   const source =
     direct ??
     nestedPinCandidates.find((candidate) => Array.isArray(candidate));
-  if (!Array.isArray(source)) {
+  const directPins = Array.isArray(source)
+    ? source
+        .map((item) => {
+          if (typeof item !== "object" || item === null) {
+            return undefined;
+          }
+          const record = item as Record<string, unknown>;
+          const pinName = typeof record.pinName === "string" ? record.pinName : typeof record.name === "string" ? record.name : undefined;
+          const pinNumber =
+            typeof record.pinNumber === "string" ? record.pinNumber : typeof record.number === "string" ? record.number : undefined;
+          const electricalType =
+            typeof record.electricalType === "string"
+              ? record.electricalType
+              : typeof record.type === "string"
+                ? record.type
+                : undefined;
+          if (!pinName && !pinNumber) {
+            return undefined;
+          }
+          return { pinName, pinNumber, electricalType };
+        })
+        .filter((item): item is { pinName?: string; pinNumber?: string; electricalType?: string } => Boolean(item))
+    : [];
+  if (directPins.length > 0) {
+    return directPins;
+  }
+
+  const dataStrSources = [
+    typeof rawRecord?.dataStr === "string" ? rawRecord.dataStr : undefined,
+    typeof rawRecord?.rawData === "string" ? rawRecord.rawData : undefined,
+    typeof rawRecord?.source === "string" ? rawRecord.source : undefined,
+    typeof rawRecord?.documentSource === "string" ? rawRecord.documentSource : undefined,
+    typeof (detail as Record<string, unknown>)?.dataStr === "string"
+      ? ((detail as Record<string, unknown>).dataStr as string)
+      : undefined,
+    typeof (detail as Record<string, unknown>)?.rawData === "string"
+      ? ((detail as Record<string, unknown>).rawData as string)
+      : undefined,
+    typeof (detail as Record<string, unknown>)?.source === "string"
+      ? ((detail as Record<string, unknown>).source as string)
+      : undefined,
+    typeof (detail as Record<string, unknown>)?.documentSource === "string"
+      ? ((detail as Record<string, unknown>).documentSource as string)
+      : undefined,
+  ].filter((item): item is string => Boolean(item && item.trim()));
+
+  for (const sourceText of dataStrSources) {
+    const parsedPins = extractPinsFromDataStr(sourceText);
+    if (parsedPins.length > 0) {
+      return parsedPins;
+    }
+  }
+
+  return [];
+}
+
+function extractPinsFromDataStr(dataStr: string): Array<{
+  pinName?: string;
+  pinNumber?: string;
+  electricalType?: string;
+}> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(dataStr);
+  } catch {
     return [];
   }
-  return source
+  if (typeof parsed !== "object" || parsed === null) {
+    return [];
+  }
+  const shape = Array.isArray((parsed as Record<string, unknown>).shape)
+    ? ((parsed as Record<string, unknown>).shape as unknown[])
+    : [];
+  return shape
     .map((item) => {
       if (typeof item !== "object" || item === null) {
         return undefined;
       }
       const record = item as Record<string, unknown>;
-      const pinName = typeof record.pinName === "string" ? record.pinName : typeof record.name === "string" ? record.name : undefined;
+      const pinName =
+        typeof record.pinName === "string"
+          ? record.pinName
+          : typeof record.name === "string"
+            ? record.name
+            : typeof record.pin === "string"
+              ? record.pin
+              : undefined;
       const pinNumber =
-        typeof record.pinNumber === "string" ? record.pinNumber : typeof record.number === "string" ? record.number : undefined;
+        typeof record.pinNumber === "string"
+          ? record.pinNumber
+          : typeof record.number === "string"
+            ? record.number
+            : typeof record.num === "string"
+              ? record.num
+              : undefined;
       const electricalType =
         typeof record.electricalType === "string"
           ? record.electricalType
@@ -474,6 +561,29 @@ function scoreRealPinMatch(planPin: SchematicPin, realPin: { pinName?: string; p
   return score;
 }
 
+function canFallbackToDraftPins(component: SchematicComponent | undefined, pins: SchematicPin[]): boolean {
+  if (!component || !hasPlacementDevice(component) || pins.length === 0) {
+    return false;
+  }
+  const role = inferComponentRole(component);
+  const fallbackRoles = new Set(["battery_connector", "resistor", "led", "power_connector", "input_capacitor"]);
+  return fallbackRoles.has(role) && pins.every((pin) => Boolean(pin.pinName || pin.pinNumber));
+}
+
+function fallbackToDraftPin(pin: SchematicPin): SchematicPin {
+  const fallbackName = pin.resolvedPinName ?? pin.pinName ?? pin.pinNumber;
+  const fallbackNumber = pin.resolvedPinNumber ?? pin.pinNumber ?? pin.pinName;
+  return {
+    ...pin,
+    resolvedPinName: fallbackName,
+    resolvedPinNumber: fallbackNumber,
+    resolvedElectricalType: pin.resolvedElectricalType ?? pin.electricalType,
+    pinResolutionStatus: "resolved",
+    pinResolutionConfidence: pin.pinResolutionConfidence ?? 0.5,
+    pinResolutionReason: "fallback_draft_pin_without_library_pins",
+  };
+}
+
 function rewritePlanPinsWithResolvedDevicePins(
   plan: DraftPlan,
   detailsByComponentId: Map<string, LibraryDeviceDetail>
@@ -482,8 +592,9 @@ function rewritePlanPinsWithResolvedDevicePins(
     return plan;
   }
   const usedRealPinKeys = new Set<string>();
+  const loggedFailureKeys = new Set<string>();
   const componentsById = new Map(plan.components.map((component) => [component.id, component]));
-  const pins = plan.pins.map((pin) => {
+  const pins: SchematicPin[] = plan.pins.map((pin): SchematicPin => {
     const detail = detailsByComponentId.get(pin.componentId);
     const component = componentsById.get(pin.componentId);
     const componentPins = plan.pins.filter((item) => item.componentId === pin.componentId);
@@ -497,15 +608,22 @@ function rewritePlanPinsWithResolvedDevicePins(
     }
     const realPins = extractDetailPins(detail);
     if (realPins.length === 0) {
-      logLibraryPinResolutionFailure({
-        componentId: pin.componentId,
-        componentRef: component?.ref,
-        deviceUuid: component?.properties?.device_uuid,
-        libraryUuid: component?.properties?.library_uuid,
-        reason: "device_detail_without_pins",
-        detail,
-        planPins: componentPins,
-      });
+      if (canFallbackToDraftPins(component, componentPins)) {
+        return fallbackToDraftPin(pin);
+      }
+      const logKey = `${pin.componentId}:device_detail_without_pins`;
+      if (!loggedFailureKeys.has(logKey)) {
+        loggedFailureKeys.add(logKey);
+        logLibraryPinResolutionFailure({
+          componentId: pin.componentId,
+          componentRef: component?.ref,
+          deviceUuid: component?.properties?.device_uuid,
+          libraryUuid: component?.properties?.library_uuid,
+          reason: "device_detail_without_pins",
+          detail,
+          planPins: componentPins,
+        });
+      }
       return {
         ...pin,
         pinResolutionStatus: "unresolved",
@@ -527,15 +645,19 @@ function rewritePlanPinsWithResolvedDevicePins(
       }
     }
     if (!bestMatch || bestScore <= 0) {
-      logLibraryPinResolutionFailure({
-        componentId: pin.componentId,
-        componentRef: component?.ref,
-        deviceUuid: component?.properties?.device_uuid,
-        libraryUuid: component?.properties?.library_uuid,
-        reason: "no_matching_library_pin",
-        detail,
-        planPins: componentPins,
-      });
+      const logKey = `${pin.componentId}:no_matching_library_pin`;
+      if (!loggedFailureKeys.has(logKey)) {
+        loggedFailureKeys.add(logKey);
+        logLibraryPinResolutionFailure({
+          componentId: pin.componentId,
+          componentRef: component?.ref,
+          deviceUuid: component?.properties?.device_uuid,
+          libraryUuid: component?.properties?.library_uuid,
+          reason: "no_matching_library_pin",
+          detail,
+          planPins: componentPins,
+        });
+      }
       return {
         ...pin,
         pinResolutionStatus: "unresolved",
@@ -564,7 +686,8 @@ export async function resolveDraftPlanDevices(
   plan: DraftPlan,
   searchLibraryDevices: SearchLibraryDevices,
   getLibraryDevice?: GetLibraryDevice,
-  getLibrarySymbol?: GetLibrarySymbol
+  getLibrarySymbol?: GetLibrarySymbol,
+  getLibrarySymbolSource?: GetLibrarySymbolSource
 ): Promise<DraftPlan> {
   const existingSelectedDevices = Array.isArray(plan.selectedDevices) ? plan.selectedDevices.slice() : [];
   const detailsByComponentId = new Map<string, LibraryDeviceDetail>();
@@ -578,7 +701,7 @@ export async function resolveDraftPlanDevices(
           });
           if (detail) {
             let resolvedDetail = detail;
-            if (extractDetailPins(resolvedDetail).length === 0 && getLibrarySymbol) {
+            if (extractDetailPins(resolvedDetail).length === 0 && (getLibrarySymbol || getLibrarySymbolSource)) {
               const symbolRef = extractAssociatedSymbolRef(resolvedDetail);
               logLibrarySymbolResolutionProbe({
                 stage: "device_to_symbol_ref",
@@ -592,10 +715,12 @@ export async function resolveDraftPlanDevices(
                 note: symbolRef.symbolUuid ? "resolved symbol ref from device detail" : "no symbol ref resolved from device detail",
               });
               if (symbolRef.symbolUuid) {
-                const symbolDetail = await getLibrarySymbol({
-                  symbolUuid: symbolRef.symbolUuid,
-                  libraryUuid: symbolRef.libraryUuid,
-                });
+                const symbolDetail = getLibrarySymbol
+                  ? await getLibrarySymbol({
+                      symbolUuid: symbolRef.symbolUuid,
+                      libraryUuid: symbolRef.libraryUuid,
+                    })
+                  : null;
                 logLibrarySymbolResolutionProbe({
                   stage: "symbol_detail_result",
                   componentId: component.id,
@@ -616,6 +741,33 @@ export async function resolveDraftPlanDevices(
                     pins: symbolDetail.pins,
                     raw: symbolDetail.raw ?? resolvedDetail.raw,
                   };
+                }
+                if (extractDetailPins(resolvedDetail).length === 0 && getLibrarySymbolSource) {
+                  const symbolSourceDetail = await getLibrarySymbolSource({
+                    symbolUuid: symbolRef.symbolUuid,
+                    libraryUuid: symbolRef.libraryUuid,
+                  });
+                  logLibrarySymbolResolutionProbe({
+                    stage: "symbol_detail_result",
+                    componentId: component.id,
+                    componentRef: component.ref,
+                    deviceUuid: component.properties.device_uuid,
+                    libraryUuid: component.properties.library_uuid,
+                    symbolUuid: symbolRef.symbolUuid,
+                    symbolLibraryUuid: symbolRef.libraryUuid,
+                    detail: symbolSourceDetail,
+                    note:
+                      symbolSourceDetail && extractDetailPins(symbolSourceDetail).length > 0
+                        ? "symbol source detail returned usable pins"
+                        : "symbol source detail missing or still without pins",
+                  });
+                  if (symbolSourceDetail && extractDetailPins(symbolSourceDetail).length > 0) {
+                    resolvedDetail = {
+                      ...resolvedDetail,
+                      pins: symbolSourceDetail.pins,
+                      raw: symbolSourceDetail.raw ?? resolvedDetail.raw,
+                    };
+                  }
                 }
               }
             }

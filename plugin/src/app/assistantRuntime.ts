@@ -38,6 +38,8 @@ import { executeDraftPatchPlan } from "../editor/apply-plan/executeDraftPatchPla
 const GLOBAL_KEY = "__LCEDA_AI_ASSISTANT_RUNTIME__";
 const PANEL_STATE_STORAGE_KEY = "lceda_ai.panel.last_state";
 const PERF_DEBUG_STORAGE_KEY = "lceda_ai.perf_debug";
+const STREAM_STATS_STORAGE_KEY = "lceda_ai.stream_stats";
+const STAGE_TIMING_STORAGE_KEY = "lceda_ai.stage_timing";
 const PANEL_SESSION_INDEX_STORAGE_KEY = "lceda_ai.panel.session_index";
 const PANEL_SESSION_STATE_PREFIX = "lceda_ai.panel.session.";
 const MAX_SESSION_HISTORY = 20;
@@ -63,6 +65,19 @@ let persistPanelTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPersist: { storage: LocalStorageKeyValueStore; state: MainPanelState } | null = null;
 
 type ChatMessage = NonNullable<MainPanelState["chatMessages"]>[number];
+type StreamEventPayload = {
+  route: "chat" | "analysis" | "draft" | "modify";
+  stage: "llm" | "progress";
+  textDelta?: string;
+  text?: string;
+  reasoningDelta?: string;
+  detail?: string;
+  reactEvents?: unknown[];
+  stepItems?: unknown[];
+  iterationSteps?: unknown[];
+  stepStates?: unknown[];
+  workingMemory?: unknown;
+};
 
 export function isPerfDebugEnabled(): boolean {
   let storageFlag = false;
@@ -91,6 +106,152 @@ function logPerf(label: string, detail: Record<string, unknown>): void {
     return;
   }
   console.log(`${LOG_PREFIX} perf.${label}`, detail);
+}
+
+function isStreamStatsEnabled(): boolean {
+  let storageFlag = false;
+  try {
+    storageFlag =
+      typeof localStorage !== "undefined" &&
+      localStorage.getItem(STREAM_STATS_STORAGE_KEY) === "1";
+  } catch {
+    storageFlag = false;
+  }
+  return (
+    typeof globalThis !== "undefined" &&
+    Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_STREAM_STATS__)
+  ) || storageFlag;
+}
+
+function isStageTimingEnabled(): boolean {
+  let storageFlag = false;
+  try {
+    storageFlag =
+      typeof localStorage !== "undefined" &&
+      (localStorage.getItem(STAGE_TIMING_STORAGE_KEY) === "1" ||
+        localStorage.getItem(STREAM_STATS_STORAGE_KEY) === "1");
+  } catch {
+    storageFlag = false;
+  }
+  return (
+    typeof globalThis !== "undefined" &&
+    (Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_STAGE_TIMING__) ||
+      Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_STREAM_STATS__))
+  ) || storageFlag;
+}
+
+function logStageTiming(scope: string, label: string, detail: Record<string, unknown>): void {
+  if (!isStageTimingEnabled() || typeof console === "undefined") return;
+  console.log(`${LOG_PREFIX} timing.${scope}.${label}`, detail);
+}
+
+function createStreamStatsLogger(turnId: number): {
+  event(input: {
+    event: {
+      route?: string;
+      stage?: string;
+      textDelta?: string;
+      reasoningDelta?: string;
+      text?: string;
+      stepItems?: unknown[];
+      iterationSteps?: unknown[];
+      reactEvents?: unknown[];
+      stepStates?: unknown[];
+      workingMemory?: unknown;
+    };
+    changed?: boolean;
+    committed?: boolean;
+    scheduled?: boolean;
+    durationMs?: number;
+  }): void;
+  flush(reason: string): void;
+} {
+  const enabled = isStreamStatsEnabled();
+  const startedAt = Date.now();
+  let lastFlushAt = startedAt;
+  let events = 0;
+  let changed = 0;
+  let commits = 0;
+  let scheduled = 0;
+  let llm = 0;
+  let progress = 0;
+  let textDeltaChars = 0;
+  let reasoningDeltaChars = 0;
+  let maxTextLength = 0;
+  let maxStepItems = 0;
+  let maxIterationSteps = 0;
+  let maxReactEvents = 0;
+  let maxStepStates = 0;
+  let workingMemoryEvents = 0;
+  let maxDurationMs = 0;
+
+  const flush = (reason: string) => {
+    if (!enabled || typeof console === "undefined" || events === 0) return;
+    const now = Date.now();
+    console.log(`${LOG_PREFIX} stream-stats`, {
+      turnId,
+      reason,
+      windowMs: now - lastFlushAt,
+      totalMs: now - startedAt,
+      events,
+      changed,
+      commits,
+      scheduled,
+      llm,
+      progress,
+      textDeltaChars,
+      reasoningDeltaChars,
+      maxTextLength,
+      maxStepItems,
+      maxIterationSteps,
+      maxReactEvents,
+      maxStepStates,
+      workingMemoryEvents,
+      maxDurationMs: Number(maxDurationMs.toFixed(2)),
+    });
+    lastFlushAt = now;
+    events = 0;
+    changed = 0;
+    commits = 0;
+    scheduled = 0;
+    llm = 0;
+    progress = 0;
+    textDeltaChars = 0;
+    reasoningDeltaChars = 0;
+    maxTextLength = 0;
+    maxStepItems = 0;
+    maxIterationSteps = 0;
+    maxReactEvents = 0;
+    maxStepStates = 0;
+    workingMemoryEvents = 0;
+    maxDurationMs = 0;
+  };
+
+  return {
+    event(input) {
+      if (!enabled) return;
+      const event = input.event;
+      events += 1;
+      if (input.changed) changed += 1;
+      if (input.committed) commits += 1;
+      if (input.scheduled) scheduled += 1;
+      if (event.stage === "llm") llm += 1;
+      if (event.stage === "progress") progress += 1;
+      textDeltaChars += String(event.textDelta || "").length;
+      reasoningDeltaChars += String(event.reasoningDelta || "").length;
+      maxTextLength = Math.max(maxTextLength, String(event.text || "").length);
+      maxStepItems = Math.max(maxStepItems, Array.isArray(event.stepItems) ? event.stepItems.length : 0);
+      maxIterationSteps = Math.max(maxIterationSteps, Array.isArray(event.iterationSteps) ? event.iterationSteps.length : 0);
+      maxReactEvents = Math.max(maxReactEvents, Array.isArray(event.reactEvents) ? event.reactEvents.length : 0);
+      maxStepStates = Math.max(maxStepStates, Array.isArray(event.stepStates) ? event.stepStates.length : 0);
+      if (event.workingMemory) workingMemoryEvents += 1;
+      maxDurationMs = Math.max(maxDurationMs, Number(input.durationMs || 0));
+      if (Date.now() - lastFlushAt >= 2000) {
+        flush("interval");
+      }
+    },
+    flush,
+  };
 }
 
 function canBuildPatchPreview(input: {
@@ -588,7 +749,7 @@ function buildInitialDraftObjectBindings(pageId?: string): DraftObjectBindings {
 
 export async function enrichDraftPlanFromBridge(
   plan: DraftPlan | undefined,
-  bridge?: Pick<HostEditorBridge, "getLibraryDevice">
+  bridge?: Pick<HostEditorBridge, "getLibraryDevice" | "getLibrarySymbol" | "getLibrarySymbolSource">
 ): Promise<DraftPlan | undefined> {
   if (!plan || !bridge?.getLibraryDevice) {
     return plan;
@@ -601,7 +762,23 @@ export async function enrichDraftPlanFromBridge(
         deviceUuid,
         libraryUuid,
         scope: "system",
-      })
+      }),
+    bridge.getLibrarySymbol
+      ? async ({ symbolUuid, libraryUuid }) =>
+          bridge.getLibrarySymbol!({
+            symbolUuid,
+            libraryUuid,
+            scope: "system",
+          })
+      : undefined,
+    bridge.getLibrarySymbolSource
+      ? async ({ symbolUuid, libraryUuid }) =>
+          bridge.getLibrarySymbolSource!({
+            symbolUuid,
+            libraryUuid,
+            scope: "system",
+          })
+      : undefined
   );
 }
 
@@ -628,11 +805,85 @@ export interface DevicePickerCandidate {
   uuid: string;
   name: string;
   libraryUuid: string;
+  displayName?: string;
+  symbolUuid?: string;
+  symbolName?: string;
+  footprintUuid?: string;
   footprintName?: string;
   manufacturer?: string;
   supplier?: string;
   supplierId?: string;
   description?: string;
+  resolvedFrom?: "search" | "lcsc_detail" | "device_detail";
+}
+
+const DEVICE_PICKER_MODEL_LCSC_FALLBACKS: Record<string, string[]> = {
+  IP5306: ["C181692"],
+  INMP441: ["C5438445"],
+  NS4168: ["C910588"],
+  MAX98357A: ["C910544"],
+  ME6211: ["C82942"],
+  XC6206: ["C5446"],
+};
+
+function buildDraftDeviceSearchProperties(input: {
+  role?: string;
+  defaultQuery?: string;
+  manualQuery?: string;
+  componentName?: string;
+  componentValue?: string;
+}): import("../editor/host/runtime").LibraryDeviceSearchProperties[] {
+  const propertiesList: import("../editor/host/runtime").LibraryDeviceSearchProperties[] = [];
+  const push = (props: import("../editor/host/runtime").LibraryDeviceSearchProperties) => {
+    const normalized = Object.fromEntries(
+      Object.entries(props).filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    ) as import("../editor/host/runtime").LibraryDeviceSearchProperties;
+    if (Object.keys(normalized).length > 0) {
+      propertiesList.push(normalized);
+    }
+  };
+
+  const role = String(input.role ?? "").trim();
+  const defaultQuery = String(input.defaultQuery ?? "").trim();
+  const manualQuery = String(input.manualQuery ?? "").trim();
+  const componentName = String(input.componentName ?? "").trim();
+  const componentValue = String(input.componentValue ?? "").trim();
+  const modelHint = [manualQuery, defaultQuery, componentName, componentValue]
+    .join(" ")
+    .match(/\b[A-Z]{1,6}\d{2,}[A-Z0-9-]*\b/i)?.[0];
+
+  const lcscId = extractLcscIdsFromText([manualQuery, defaultQuery, componentName, componentValue].join(" "))[0];
+  if (lcscId) {
+    push({ supplierId: lcscId, partCode: lcscId });
+  }
+  if (modelHint) {
+    push({ name: modelHint, partNumber: modelHint });
+  }
+
+  if (role === "power_connector") {
+    push({ name: "USB Type-C", footprintName: "TYPE-C", description: "usb type-c receptacle" });
+  } else if (role === "charger_powerbank") {
+    push({ name: "IP5306", partNumber: "IP5306", description: "charge boost power management" });
+  } else if (role === "microphone") {
+    push({ name: "INMP441", symbolName: "INMP441", description: "I2S MEMS microphone" });
+  } else if (role === "audio_amplifier") {
+    push({ name: "MAX98357A", description: "I2S audio amplifier" });
+    push({ name: "NS4168", description: "I2S audio amplifier" });
+  } else if (role === "ldo_regulator") {
+    push({ name: modelHint || "ME6211", description: "LDO regulator", value: componentValue || "3.3V" });
+  }
+
+  if (manualQuery) {
+    push({ name: manualQuery, description: manualQuery });
+  }
+  if (defaultQuery) {
+    push({ name: defaultQuery, description: defaultQuery });
+  }
+  if (componentName) {
+    push({ name: componentName });
+  }
+
+  return propertiesList.slice(0, 6);
 }
 
 export function applyDraftDeviceCandidateSelection(
@@ -652,10 +903,12 @@ export function applyDraftDeviceCandidateSelection(
     ...component.properties,
     device_uuid: input.candidate.uuid,
     library_uuid: input.candidate.libraryUuid,
+    symbol_uuid: input.candidate.symbolUuid || "",
+    footprint_uuid: input.candidate.footprintUuid || "",
     device_resolution_status: "resolved",
     device_resolution_reason: "manual_selection",
   };
-  const role = inferDraftComponentRole(component.ref ?? component.id);
+  const role = resolveDraftComponentRole(component);
   plan.selectedDevices = [
     ...(plan.selectedDevices ?? []).filter((entry) => entry.componentId !== input.componentId),
     {
@@ -665,8 +918,11 @@ export function applyDraftDeviceCandidateSelection(
       query: component.properties?.preferred_search_query || "",
       deviceUuid: input.candidate.uuid,
       libraryUuid: input.candidate.libraryUuid,
-      name: input.candidate.name,
+      name: input.candidate.displayName || input.candidate.name,
       manufacturer: input.candidate.manufacturer,
+      symbolUuid: input.candidate.symbolUuid,
+      symbolName: input.candidate.symbolName,
+      footprintUuid: input.candidate.footprintUuid,
       footprintName: input.candidate.footprintName,
     },
   ];
@@ -675,6 +931,24 @@ export function applyDraftDeviceCandidateSelection(
 
 export function buildDevicePickerRoleLabel(role: string | undefined): string {
   switch (String(role || "").trim()) {
+    case "mcu":
+    case "mcu_module":
+      return "主控模块";
+    case "charger_powerbank":
+    case "battery_charger":
+      return "充放电管理";
+    case "usb_c_connector":
+      return "USB-C 接口";
+    case "microphone":
+      return "麦克风";
+    case "audio_amplifier":
+      return "音频功放";
+    case "speaker_connector":
+      return "扬声器接口";
+    case "boot_resistor":
+      return "启动/复位电阻";
+    case "decoupling_capacitor":
+      return "去耦电容";
     case "power_connector":
       return "电源输入接口";
     case "battery_connector":
@@ -808,7 +1082,58 @@ function readSearchString(record: Record<string, unknown>, keys: string[]): stri
   return undefined;
 }
 
+function parseJsonPayloadString(payload: string): unknown {
+  const trimmed = payload.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return payload;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return payload;
+  }
+}
+
+function flattenLibrarySearchListGroups(value: unknown): unknown[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  return Object.values(value as Record<string, unknown>).flatMap((entry) => {
+    if (Array.isArray(entry)) {
+      return entry;
+    }
+    if (entry && typeof entry === "object") {
+      return flattenLibrarySearchListGroups(entry);
+    }
+    return [];
+  });
+}
+
+function summarizeLibrarySearchPayloadKind(payload: unknown): string {
+  if (Array.isArray(payload)) return `array:${payload.length}`;
+  if (typeof payload === "string") return "string";
+  if (!payload || typeof payload !== "object") return typeof payload;
+  const record = payload as Record<string, unknown>;
+  if (record.result && typeof record.result === "object") {
+    const nested = record.result as Record<string, unknown>;
+    if (nested.lists && typeof nested.lists === "object") {
+      return `result.lists:${Object.keys(nested.lists as Record<string, unknown>).join(",")}`;
+    }
+    if (Array.isArray(nested.results)) return `result.results:${nested.results.length}`;
+    if (Array.isArray(nested.items)) return `result.items:${nested.items.length}`;
+  }
+  if (record.lists && typeof record.lists === "object") {
+    return `lists:${Object.keys(record.lists as Record<string, unknown>).join(",")}`;
+  }
+  if (Array.isArray(record.results)) return `results:${record.results.length}`;
+  if (Array.isArray(record.items)) return `items:${record.items.length}`;
+  return `object:${Object.keys(record).slice(0, 6).join(",")}`;
+}
+
 function unwrapLibrarySearchResults(payload: unknown): unknown[] {
+  if (typeof payload === "string") {
+    return unwrapLibrarySearchResults(parseJsonPayloadString(payload));
+  }
   if (Array.isArray(payload)) {
     return payload;
   }
@@ -818,6 +1143,27 @@ function unwrapLibrarySearchResults(payload: unknown): unknown[] {
   const record = payload as Record<string, unknown>;
   if (Array.isArray(record.result)) {
     return record.result;
+  }
+  if (record.result && typeof record.result === "object") {
+    const nestedResult = record.result as Record<string, unknown>;
+    if (nestedResult.lists && typeof nestedResult.lists === "object") {
+      return flattenLibrarySearchListGroups(nestedResult.lists);
+    }
+    if (Array.isArray(nestedResult.results)) {
+      return nestedResult.results;
+    }
+    if (Array.isArray(nestedResult.items)) {
+      return nestedResult.items;
+    }
+    const nestedItems = unwrapLibrarySearchResults(nestedResult);
+    if (nestedItems.length > 0) return nestedItems;
+  }
+  if (record.data && typeof record.data === "object") {
+    const dataItems = unwrapLibrarySearchResults(record.data);
+    if (dataItems.length > 0) return dataItems;
+  }
+  if (record.lists && typeof record.lists === "object") {
+    return flattenLibrarySearchListGroups(record.lists);
   }
   if (Array.isArray(record.results)) {
     return record.results;
@@ -831,13 +1177,34 @@ function unwrapLibrarySearchResults(payload: unknown): unknown[] {
 export function normalizeDevicePickerCandidates(payload: unknown): DevicePickerCandidate[] {
   return unwrapLibrarySearchResults(payload)
     .map((item) => {
-      const record = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
+      const parsedItem = typeof item === "string" ? parseJsonPayloadString(item) : item;
+      const record = (typeof parsedItem === "object" && parsedItem !== null ? parsedItem : {}) as Record<string, unknown>;
       const owner =
         typeof record.owner === "object" && record.owner !== null
           ? (record.owner as Record<string, unknown>)
           : undefined;
+      const creator =
+        typeof record.creator === "object" && record.creator !== null
+          ? (record.creator as Record<string, unknown>)
+          : undefined;
+      const modifier =
+        typeof record.modifier === "object" && record.modifier !== null
+          ? (record.modifier as Record<string, unknown>)
+          : undefined;
+      const symbolRecord =
+        typeof record.symbol === "object" && record.symbol !== null
+          ? (record.symbol as Record<string, unknown>)
+          : undefined;
+      const footprintRecord =
+        typeof record.footprint === "object" && record.footprint !== null
+          ? (record.footprint as Record<string, unknown>)
+          : undefined;
+      const attributes =
+        typeof record.attributes === "object" && record.attributes !== null
+          ? (record.attributes as Record<string, unknown>)
+          : undefined;
       const uuid =
-        readSearchString(record, ["uuid", "deviceUuid", "id"]) ??
+        readSearchString(record, ["uuid", "deviceUuid", "device_uuid", "id"]) ??
         readSearchString(owner ?? {}, ["uuid"]);
       if (!uuid) {
         return undefined;
@@ -848,15 +1215,41 @@ export function normalizeDevicePickerCandidates(payload: unknown): DevicePickerC
           readSearchString(record, ["name", "title", "symbol"]) ??
           readSearchString(owner ?? {}, ["nickname", "username"]) ??
           uuid,
+        displayName: readSearchString(record, ["display_title", "title", "name"]),
         libraryUuid:
           readSearchString(record, ["libraryUuid", "library_uuid", "ownerUuid"]) ??
           readSearchString(owner ?? {}, ["uuid"]) ??
+          readSearchString(creator ?? {}, ["uuid"]) ??
+          readSearchString(modifier ?? {}, ["uuid"]) ??
           "",
-        footprintName: readSearchString(record, ["footprintName", "packageName", "package"]),
-        manufacturer: readSearchString(record, ["manufacturer", "brand"]),
-        supplier: readSearchString(record, ["supplier", "ownerName"]),
-        supplierId: readSearchString(record, ["supplierId", "lcscId", "lcsc_id"]),
-        description: readSearchString(record, ["description", "desc"]),
+        symbolUuid:
+          readSearchString(record, ["symbolUuid"]) ??
+          readSearchString(symbolRecord ?? {}, ["uuid"]) ??
+          readSearchString(attributes ?? {}, ["Symbol"]),
+        symbolName:
+          readSearchString(record, ["symbolName"]) ??
+          readSearchString(symbolRecord ?? {}, ["display_title", "title", "name"]),
+        footprintUuid:
+          readSearchString(record, ["footprintUuid"]) ??
+          readSearchString(footprintRecord ?? {}, ["uuid"]) ??
+          readSearchString(attributes ?? {}, ["Footprint"]),
+        footprintName:
+          readSearchString(record, ["footprintName", "packageName", "package", "packageNameCn"]) ??
+          readSearchString(footprintRecord ?? {}, ["display_title", "title", "name"]) ??
+          readSearchString(attributes ?? {}, ["Supplier Footprint"]),
+        manufacturer:
+          readSearchString(record, ["manufacturer", "brand"]) ??
+          readSearchString(attributes ?? {}, ["Manufacturer", "Manufacturer Part"]),
+        supplier:
+          readSearchString(record, ["supplier", "ownerName"]) ??
+          readSearchString(attributes ?? {}, ["Supplier"]),
+        supplierId:
+          readSearchString(record, ["supplierId", "lcscId", "lcsc_id", "lcsc", "product_code"]) ??
+          readSearchString(attributes ?? {}, ["Supplier Part"]),
+        description:
+          readSearchString(record, ["description", "desc", "dataStr"]) ??
+          readSearchString(attributes ?? {}, ["Description", "LCSC Part Name"]),
+        resolvedFrom: "search",
       } as DevicePickerCandidate;
     })
     .filter((item): item is DevicePickerCandidate => Boolean(item));
@@ -875,6 +1268,20 @@ export function inferDraftComponentRole(refOrName: string): string {
   return "generic";
 }
 
+function resolveDraftComponentRole(component: SchematicComponent): string {
+  const explicitRole = String(component.properties?.role || "").trim();
+  if (explicitRole) {
+    return explicitRole;
+  }
+  const preferredQuery = String(component.properties?.preferred_search_query || "").trim();
+  const haystack = [component.ref, component.name, component.value, preferredQuery].filter(Boolean).join(" ");
+  if (/inmp441|mems|microphone|麦克风|mic/i.test(haystack)) return "microphone";
+  if (/max98357|ns4168|amplifier|功放|audio/i.test(haystack)) return "audio_amplifier";
+  if (/ip5306|charger|充电|powerbank|boost/i.test(haystack)) return "charger_powerbank";
+  if (/esp32|mcu|主控/i.test(haystack)) return "mcu";
+  return inferDraftComponentRole(component.ref ?? component.id);
+}
+
 export function resolveDraftDeviceSearchQuery(input: { defaultQuery?: string; manualQuery?: string }): string | null {
   const manualQuery = String(input.manualQuery ?? "").trim();
   if (manualQuery) {
@@ -885,6 +1292,279 @@ export function resolveDraftDeviceSearchQuery(input: { defaultQuery?: string; ma
     return defaultQuery;
   }
   return null;
+}
+
+function pushUniqueSearchQuery(queries: string[], query: string | undefined): void {
+  const normalized = String(query ?? "").trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return;
+  }
+  const key = normalized.toLowerCase();
+  if (queries.some((item) => item.toLowerCase() === key)) {
+    return;
+  }
+  queries.push(normalized);
+}
+
+export function buildDraftDeviceSearchQueries(input: {
+  role?: string;
+  defaultQuery?: string;
+  manualQuery?: string;
+  componentRef?: string;
+  componentName?: string;
+  componentValue?: string;
+}): string[] {
+  const queries: string[] = [];
+  const role = String(input.role ?? "").trim();
+  const defaultQuery = String(input.defaultQuery ?? "").trim();
+  const manualQuery = String(input.manualQuery ?? "").trim();
+  const haystack = [defaultQuery, input.componentName, input.componentValue].filter(Boolean).join(" ");
+
+  pushUniqueSearchQuery(queries, manualQuery);
+  pushUniqueSearchQuery(queries, defaultQuery);
+
+  const modelMatches = haystack.match(/\b[A-Z]{1,6}\d{2,}[A-Z0-9-]*\b/gi) ?? [];
+  for (const model of modelMatches.slice(0, 4)) {
+    pushUniqueSearchQuery(queries, model);
+  }
+
+  if (role === "ldo_regulator" || /ldo|稳压|regulator/i.test(haystack)) {
+    pushUniqueSearchQuery(queries, /500\s*m?a/i.test(haystack) ? "LDO regulator 500mA" : "LDO regulator");
+    pushUniqueSearchQuery(queries, /3\.3|3v3/i.test(haystack) ? "3.3V LDO" : undefined);
+    pushUniqueSearchQuery(queries, "ME6211");
+    pushUniqueSearchQuery(queries, "XC6206");
+    pushUniqueSearchQuery(queries, "AMS1117-3.3");
+  }
+  if (role === "microphone" || /microphone|mems|麦克风|mic/i.test(haystack)) {
+    pushUniqueSearchQuery(queries, "INMP441");
+    pushUniqueSearchQuery(queries, "I2S MEMS microphone");
+    pushUniqueSearchQuery(queries, "MEMS microphone");
+    pushUniqueSearchQuery(queries, "麦克风");
+  }
+  if (role === "audio_amplifier" || /amplifier|功放|audio/i.test(haystack)) {
+    pushUniqueSearchQuery(queries, "MAX98357A");
+    pushUniqueSearchQuery(queries, "NS4168");
+    pushUniqueSearchQuery(queries, "I2S audio amplifier");
+    pushUniqueSearchQuery(queries, "音频功放");
+  }
+  if (role === "charger_powerbank" || /ip5306|charger|充电|powerbank|boost/i.test(haystack)) {
+    pushUniqueSearchQuery(queries, "IP5306");
+    pushUniqueSearchQuery(queries, "power bank charge boost");
+    pushUniqueSearchQuery(queries, "锂电池充电 升压");
+  }
+  if (role === "power_connector" || /type-?c|usb|connector|接口|座/i.test(haystack)) {
+    pushUniqueSearchQuery(queries, "USB Type-C");
+    pushUniqueSearchQuery(queries, "Type-C 16PIN");
+    pushUniqueSearchQuery(queries, "JST battery connector");
+  }
+
+  return queries.slice(0, 8);
+}
+
+function extractLcscIdsFromText(value: string | undefined): string[] {
+  const text = String(value ?? "");
+  const matches = text.match(/\bC\d{4,}\b/gi) ?? [];
+  const ids: string[] = [];
+  for (const match of matches) {
+    const normalized = match.toUpperCase();
+    if (!ids.includes(normalized)) {
+      ids.push(normalized);
+    }
+  }
+  return ids;
+}
+
+function buildDraftDeviceLcscFallbackIds(input: {
+  defaultQuery?: string;
+  manualQuery?: string;
+  componentName?: string;
+  componentValue?: string;
+}): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string | undefined) => {
+    for (const id of extractLcscIdsFromText(value)) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  };
+  push(input.manualQuery);
+  push(input.defaultQuery);
+  push(input.componentName);
+  push(input.componentValue);
+
+  const haystack = [input.manualQuery, input.defaultQuery, input.componentName, input.componentValue]
+    .filter(Boolean)
+    .join(" ");
+  const modelMatches = haystack.match(/\b[A-Z]{1,6}\d{2,}[A-Z0-9-]*\b/gi) ?? [];
+  for (const model of modelMatches) {
+    const fallbackIds = DEVICE_PICKER_MODEL_LCSC_FALLBACKS[model.toUpperCase()];
+    if (!fallbackIds) continue;
+    for (const id of fallbackIds) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+  return ids.slice(0, 6);
+}
+
+function normalizeDevicePickerCandidatesFromLcscDetails(details: LibraryDeviceDetail[] | null | undefined): DevicePickerCandidate[] {
+  if (!Array.isArray(details)) {
+    return [];
+  }
+  return details
+    .map((detail) => {
+      const uuid = String(detail.uuid || "").trim();
+      if (!uuid) return undefined;
+      return {
+        uuid,
+        name: String(detail.name || uuid).trim(),
+        displayName: String(detail.name || uuid).trim(),
+        libraryUuid: String(detail.libraryUuid || detail.symbol?.libraryUuid || detail.footprint?.libraryUuid || "").trim(),
+        symbolUuid: String(detail.symbol?.uuid || "").trim() || undefined,
+        symbolName: String(detail.symbol?.name || "").trim() || undefined,
+        footprintUuid: String(detail.footprint?.uuid || "").trim() || undefined,
+        footprintName: String(detail.footprint?.name || "").trim() || undefined,
+        manufacturer: String(detail.manufacturer || "").trim() || undefined,
+        supplier: String(detail.supplier || "").trim() || undefined,
+        supplierId: String(detail.supplierId || detail.lcscId || "").trim() || undefined,
+        description: String(detail.description || "").trim() || undefined,
+        resolvedFrom: "lcsc_detail",
+      } as DevicePickerCandidate;
+    })
+    .filter((item): item is DevicePickerCandidate => Boolean(item));
+}
+
+function mergeDevicePickerCandidateDetail(
+  candidate: DevicePickerCandidate,
+  detail: LibraryDeviceDetail | null | undefined
+): DevicePickerCandidate {
+  if (!detail) {
+    return candidate;
+  }
+  const detailLibraryUuid =
+    String(detail.libraryUuid || detail.symbol?.libraryUuid || detail.footprint?.libraryUuid || "").trim() || undefined;
+  return {
+    ...candidate,
+    name: String(detail.name || "").trim() || candidate.name,
+    displayName: String(detail.name || "").trim() || candidate.displayName || candidate.name,
+    libraryUuid: detailLibraryUuid || candidate.libraryUuid,
+    symbolUuid: String(detail.symbol?.uuid || "").trim() || candidate.symbolUuid,
+    symbolName: String(detail.symbol?.name || "").trim() || candidate.symbolName,
+    footprintUuid: String(detail.footprint?.uuid || "").trim() || candidate.footprintUuid,
+    footprintName: String(detail.footprint?.name || "").trim() || candidate.footprintName,
+    manufacturer: String(detail.manufacturer || "").trim() || candidate.manufacturer,
+    supplier: String(detail.supplier || "").trim() || candidate.supplier,
+    supplierId: String(detail.supplierId || detail.lcscId || "").trim() || candidate.supplierId,
+    description: String(detail.description || "").trim() || candidate.description,
+    resolvedFrom: "device_detail",
+  };
+}
+
+function buildDevicePickerCandidateKey(candidate: DevicePickerCandidate): string {
+  const uuid = String(candidate.uuid || "").trim();
+  if (uuid) return `uuid:${uuid}`;
+  const supplierId = String(candidate.supplierId || "").trim().toUpperCase();
+  if (supplierId) return `lcsc:${supplierId}`;
+  return [
+    "shape",
+    String(candidate.name || "").trim().toLowerCase(),
+    String(candidate.footprintName || "").trim().toLowerCase(),
+  ].join(":");
+}
+
+function mergeDevicePickerCandidates(
+  existing: DevicePickerCandidate[],
+  incoming: DevicePickerCandidate[]
+): DevicePickerCandidate[] {
+  const byKey = new Map<string, DevicePickerCandidate>();
+  for (const candidate of [...existing, ...incoming]) {
+    const key = buildDevicePickerCandidateKey(candidate);
+    const previous = byKey.get(key);
+    byKey.set(key, previous ? mergeDevicePickerCandidateRecords(previous, candidate) : candidate);
+  }
+  return Array.from(byKey.values());
+}
+
+function mergeDevicePickerCandidateRecords(
+  previous: DevicePickerCandidate,
+  next: DevicePickerCandidate
+): DevicePickerCandidate {
+  return {
+    ...previous,
+    ...next,
+    displayName: next.displayName || previous.displayName,
+    libraryUuid: next.libraryUuid || previous.libraryUuid,
+    symbolUuid: next.symbolUuid || previous.symbolUuid,
+    symbolName: next.symbolName || previous.symbolName,
+    footprintUuid: next.footprintUuid || previous.footprintUuid,
+    footprintName: next.footprintName || previous.footprintName,
+    manufacturer: next.manufacturer || previous.manufacturer,
+    supplier: next.supplier || previous.supplier,
+    supplierId: next.supplierId || previous.supplierId,
+    description: next.description || previous.description,
+    resolvedFrom: previous.resolvedFrom === "lcsc_detail" ? previous.resolvedFrom : next.resolvedFrom || previous.resolvedFrom,
+  };
+}
+
+async function withDevicePickerTimeout<T>(
+  task: Promise<T>,
+  label: string,
+  timeoutMs = 5000
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      task,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function enrichDevicePickerCandidatesWithDetails(
+  candidates: DevicePickerCandidate[],
+  getLibraryDevice: HostEditorBridge["getLibraryDevice"] | undefined
+): Promise<{ candidates: DevicePickerCandidate[]; detailHits: number }> {
+  if (!getLibraryDevice || candidates.length === 0) {
+    return { candidates, detailHits: 0 };
+  }
+  let detailHits = 0;
+  const enriched = await Promise.all(
+    candidates.map(async (candidate) => {
+      const needsDetail = !candidate.libraryUuid || !candidate.footprintName || !candidate.description;
+      if (!needsDetail) {
+        return candidate;
+      }
+      try {
+        const detail = await withDevicePickerTimeout(
+          getLibraryDevice({
+            deviceUuid: candidate.uuid,
+            libraryUuid: candidate.libraryUuid || undefined,
+            scope: "system",
+          }),
+          "device_detail_lookup",
+          3500
+        );
+        if (detail) {
+          detailHits += 1;
+        }
+        return mergeDevicePickerCandidateDetail(candidate, detail);
+      } catch {
+        return candidate;
+      }
+    })
+  );
+  return { candidates: enriched, detailHits };
 }
 
 export function updateDevicePickerManualQueryState(
@@ -952,6 +1632,7 @@ function buildDevicePickerState(
   );
   const items = plan.components.map((component) => {
     const ref = component.ref ?? component.id;
+    const role = resolveDraftComponentRole(component);
     const selected = selectedByComponentId.get(component.id);
     const previousItem = previousByComponentId.get(component.id);
     const status: "unresolved" | "resolved" =
@@ -959,18 +1640,18 @@ function buildDevicePickerState(
     return {
       componentId: component.id,
       componentRef: ref,
-      role: inferDraftComponentRole(ref),
-      roleLabel: buildDevicePickerRoleLabel(inferDraftComponentRole(ref)),
+      role,
+      roleLabel: buildDevicePickerRoleLabel(role),
       query: component.properties?.preferred_search_query,
       status,
       reason: component.properties?.device_resolution_reason,
       reasonLabel: buildDevicePickerReasonLabel({
         reason: component.properties?.device_resolution_reason,
-        role: inferDraftComponentRole(ref),
+        role,
         query: component.properties?.preferred_search_query,
       }),
       usageHint:
-        inferDraftComponentRole(ref) === "power_connector"
+        role === "power_connector"
           ? "这里需要的是外部供电接口，优先看它是不是适合作为电源输入口。"
           : undefined,
       selectedDeviceLabel: selected
@@ -978,7 +1659,16 @@ function buildDevicePickerState(
         : undefined,
       manualQueryExpanded: previousItem?.manualQueryExpanded,
       manualQueryDraft: previousItem?.manualQueryDraft,
-      candidates: undefined,
+      suggestedQueries: buildDraftDeviceSearchQueries({
+        role,
+        defaultQuery: component.properties?.preferred_search_query,
+        componentRef: ref,
+        componentName: component.name,
+        componentValue: component.value,
+      }),
+      attemptedQueries: previousItem?.attemptedQueries,
+      searchDiagnostics: previousItem?.searchDiagnostics,
+      candidates: previousItem?.candidates,
     };
   });
   return {
@@ -1205,6 +1895,9 @@ export function shouldMirrorStreamingTextToAssistantBody(input: {
   hasReactEvents?: boolean;
   hasReasoningDelta?: boolean;
 }): boolean {
+  if (input.hasStepItems || input.hasIterationSteps || input.hasReactEvents || input.hasReasoningDelta) {
+    return false;
+  }
   if (input.route === "chat") {
     return true;
   }
@@ -1258,6 +1951,10 @@ export function buildStreamingProcessSignature(input: {
     Array.isArray(input.stepStates) && input.stepStates.length > 0
       ? input.stepStates[input.stepStates.length - 1]
       : undefined;
+
+  // `workingMemory` can change frequently (timestamps/counters/ordering) and is typically not a user-visible
+  // part of the streaming UI. Including it in the signature causes excessive re-renders and can freeze UI.
+  // Keep it out of the "has visible activity" signature.
   return [
     Array.isArray(input.stepItems) ? input.stepItems.length : 0,
     lastStepItem?.id || "",
@@ -1276,7 +1973,6 @@ export function buildStreamingProcessSignature(input: {
     Array.isArray(input.stepStates) ? input.stepStates.length : 0,
     lastStepState?.kind || "",
     lastStepState?.status || "",
-    input.workingMemory ? JSON.stringify(input.workingMemory) : "",
   ].join("|");
 }
 
@@ -1293,6 +1989,16 @@ function trimTail<T>(items: T[] | undefined, maxItems: number): T[] | undefined 
   return items.length > maxItems ? items.slice(-maxItems) : items;
 }
 
+function cloneForStream<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 export function limitStreamProcessItems(input: {
   stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"];
   iterationSteps?: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"];
@@ -1307,6 +2013,49 @@ export function limitStreamProcessItems(input: {
     iterationSteps: trimTail(input.iterationSteps, MAX_STREAM_ITERATION_STEPS),
     reactEvents: trimTail(input.reactEvents, MAX_STREAM_REACT_EVENTS),
   };
+}
+
+function getIterationStepMergeKey(step: MessageIterationStep | undefined): string | undefined {
+  if (!step) return undefined;
+  const id = String(step.id || "").trim();
+  if (id) return `id:${id}`;
+  return Number.isFinite(step.iteration) ? `iteration:${step.iteration}` : undefined;
+}
+
+function sortIterationStepsByIteration<T extends MessageIterationStep>(steps: T[]): T[] {
+  if (!steps.every((step) => Number.isFinite(step.iteration))) {
+    return steps;
+  }
+  return steps.slice().sort((left, right) => left.iteration - right.iteration);
+}
+
+function mergeIterationStepsForStream(
+  previous: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"],
+  incoming: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"]
+): NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"] {
+  if (!Array.isArray(incoming)) return previous;
+  if (incoming.length === 0) return incoming;
+  if (!Array.isArray(previous) || previous.length === 0) {
+    return sortIterationStepsByIteration(incoming);
+  }
+  if (incoming.length >= previous.length) {
+    return sortIterationStepsByIteration(incoming);
+  }
+
+  const merged = previous.slice();
+  for (const nextStep of incoming) {
+    const nextKey = getIterationStepMergeKey(nextStep);
+    const existingIndex =
+      nextKey === undefined
+        ? -1
+        : merged.findIndex((currentStep) => getIterationStepMergeKey(currentStep) === nextKey);
+    if (existingIndex >= 0) {
+      merged[existingIndex] = nextStep;
+    } else {
+      merged.push(nextStep);
+    }
+  }
+  return sortIterationStepsByIteration(merged);
 }
 
 export interface AssistantRuntime {
@@ -1351,6 +2100,7 @@ interface RuntimeInternals {
   draftPatchPreviewFingerprint?: string;
   draftBlocked?: boolean;
   lastApplyTransactionId?: string;
+  devicePickerCloseVersion?: number;
   pendingChatInput?: string;
   activeTurnId?: number;
   activeTurnAbortController?: AbortController;
@@ -2028,18 +2778,110 @@ function createAssistantRuntime(): AssistantRuntime {
     }
     const component = plan.components.find((item) => item.id === componentId);
     const pickerItem = state.devicePicker?.items.find((item) => item.componentId === componentId);
-    const query = resolveDraftDeviceSearchQuery({
-      defaultQuery: component?.properties?.preferred_search_query,
-      manualQuery: manualQuery ?? pickerItem?.manualQueryDraft,
-    });
-    if (!component || !query) {
+    const role = component ? resolveDraftComponentRole(component) : pickerItem?.role;
+    const queries = component
+      ? buildDraftDeviceSearchQueries({
+          role,
+          defaultQuery: component.properties?.preferred_search_query,
+          manualQuery: manualQuery ?? pickerItem?.manualQueryDraft,
+          componentRef: component.ref,
+          componentName: component.name,
+          componentValue: component.value,
+        })
+      : [];
+    const attemptedLcscIds = component
+      ? buildDraftDeviceLcscFallbackIds({
+          defaultQuery: component.properties?.preferred_search_query,
+          manualQuery: manualQuery ?? pickerItem?.manualQueryDraft,
+          componentName: component.name,
+          componentValue: component.value,
+        })
+      : [];
+    if (!component || queries.length === 0) {
       state.summary = "当前器件缺少可用搜索条件，请手动输入搜索关键词。";
       state.toast = { id: Date.now(), message: state.summary };
       return { state, updated: false, candidateCount: 0 };
     }
-    const rawCandidates = await bridge.searchLibraryDevices({ query, scope: "system", pageSize: 8 });
-    const candidates = normalizeDevicePickerCandidates(rawCandidates);
-    const role = inferDraftComponentRole(component.ref ?? component.id);
+    const attemptedQueries: string[] = [];
+    const attemptedPropertySearches: string[] = [];
+    const rawResultKinds: string[] = [];
+    let query = queries[0]!;
+    let candidates: DevicePickerCandidate[] = [];
+    let route = "query_search";
+    const routesHit = new Set<string>();
+    let detailHits = 0;
+    const propertySearches = component
+      ? buildDraftDeviceSearchProperties({
+          role,
+          defaultQuery: component.properties?.preferred_search_query,
+          manualQuery: manualQuery ?? pickerItem?.manualQueryDraft,
+          componentName: component.name,
+          componentValue: component.value,
+        })
+      : [];
+    if (bridge.searchLibraryDevices) {
+      for (const candidateQuery of queries) {
+        attemptedQueries.push(candidateQuery);
+        const rawCandidates = await withDevicePickerTimeout(
+          bridge.searchLibraryDevices({ query: candidateQuery, scope: "system", pageSize: 8 }),
+          "library_search"
+        );
+        rawResultKinds.push(summarizeLibrarySearchPayloadKind(rawCandidates));
+        const queryCandidates = normalizeDevicePickerCandidates(rawCandidates);
+        query = candidateQuery;
+        if (queryCandidates.length > 0) {
+          candidates = mergeDevicePickerCandidates(candidates, queryCandidates);
+          routesHit.add("query_search");
+          break;
+        }
+      }
+    }
+    if (bridge.searchLibraryDevicesByProperties && propertySearches.length > 0) {
+      for (const properties of propertySearches) {
+        attemptedPropertySearches.push(JSON.stringify(properties));
+        const rawCandidates = await withDevicePickerTimeout(
+          bridge.searchLibraryDevicesByProperties({
+            properties,
+            scope: "system",
+            pageSize: 8,
+          }),
+          "library_property_search"
+        );
+        rawResultKinds.push(`property:${Object.keys(properties).join(",")}:${summarizeLibrarySearchPayloadKind(rawCandidates)}`);
+        const propertyCandidates = normalizeDevicePickerCandidates(rawCandidates);
+        if (propertyCandidates.length > 0) {
+          candidates = mergeDevicePickerCandidates(candidates, propertyCandidates);
+          routesHit.add("property_search");
+          break;
+        }
+      }
+    }
+    if (attemptedLcscIds.length > 0 && bridge.getLibraryDevicesByLcscIds) {
+      const lcscDetails = await withDevicePickerTimeout(
+        bridge.getLibraryDevicesByLcscIds({
+          lcscIds: attemptedLcscIds,
+          scope: "system",
+          allowMultiMatch: true,
+        }),
+        "lcsc_lookup"
+      );
+      rawResultKinds.push(`lcsc_details:${Array.isArray(lcscDetails) ? lcscDetails.length : 0}`);
+      const lcscCandidates = normalizeDevicePickerCandidatesFromLcscDetails(lcscDetails);
+      if (lcscCandidates.length > 0) {
+        candidates = mergeDevicePickerCandidates(candidates, lcscCandidates);
+        routesHit.add("lcsc_id_lookup");
+      }
+    }
+    if (routesHit.size > 1) {
+      route = "merged_search";
+    } else if (routesHit.size === 1) {
+      route = Array.from(routesHit)[0]!;
+    }
+    if (candidates.length > 0) {
+      const enriched = await enrichDevicePickerCandidatesWithDetails(candidates, bridge.getLibraryDevice);
+      candidates = enriched.candidates;
+      detailHits = enriched.detailHits;
+    }
     const presentedCandidates = candidates.map((candidate, index) => ({
       ...candidate,
       ...buildDevicePickerCandidatePresentation(
@@ -2068,10 +2910,25 @@ function createAssistantRuntime(): AssistantRuntime {
             previousItem,
             manualQuery,
           }),
+          suggestedQueries: queries,
+          attemptedQueries,
+          searchDiagnostics: {
+            route,
+            attemptedLcscIds,
+            attemptedQueries: attemptedPropertySearches.length > 0
+              ? [...attemptedPropertySearches, ...attemptedQueries]
+              : attemptedQueries,
+            rawResultKinds,
+            detailHits,
+            normalizedCount: presentedCandidates.length,
+          },
           candidates: presentedCandidates,
         };
       });
     state.devicePicker = picker;
+    if (presentedCandidates.length === 0 && attemptedQueries.length > 0) {
+      state.summary = "未找到可用候选，可改用推荐词或手动输入继续搜索。";
+    }
     return { state, updated: true, candidateCount: presentedCandidates.length };
   }
 
@@ -2103,12 +2960,7 @@ function createAssistantRuntime(): AssistantRuntime {
     state.agentRunRoute = "draft";
     state.agentRunDetail = "器件已更新";
     state.summary = remainingUnresolved ? "已更新草案器件选择，请继续完成剩余器件确认。" : "器件已全部确认，可以应用草案。";
-    state.chatMessages = replaceTrailingPendingAssistant(
-      sanitizeChatMessages(state.chatMessages),
-      pluginAgent.buildDraftMessages({
-        draftPreview: state.draftPreview,
-      })
-    );
+    refreshDraftMessageActionsAfterDeviceSelection(state, remainingUnresolved);
     return state;
   }
 
@@ -2117,6 +2969,26 @@ function createAssistantRuntime(): AssistantRuntime {
     const bridge = resolveHostEditorBridge();
     internals.draftPlan = await enrichDraftPlanFromBridge(plan, bridge);
     syncDraftPreviewState(state, internals.draftPlan);
+  }
+
+  function refreshDraftMessageActionsAfterDeviceSelection(state: MainPanelState, remainingUnresolved: boolean): void {
+    const messages = sanitizeChatMessages(state.chatMessages);
+    const lastMessageIndex = messages.map((message) => message.role).lastIndexOf("assistant");
+    if (lastMessageIndex >= 0 && messages[lastMessageIndex]) {
+      const previous = messages[lastMessageIndex]!;
+      const nextActions = remainingUnresolved
+        ? [{ label: "选择器件", action: "select_devices" as const }]
+        : [
+            { label: "应用草案", action: "apply_draft" as const },
+            { label: "回滚应用", action: "rollback" as const },
+          ];
+      messages[lastMessageIndex] = {
+        ...previous,
+        content: appendDeviceSelectionStatusToDraftMessage(previous.content, state.summary),
+        actions: nextActions,
+      };
+    }
+    state.chatMessages = messages;
   }
 
   return {
@@ -2418,7 +3290,21 @@ function createAssistantRuntime(): AssistantRuntime {
 
       let turnCommitTimer: ReturnType<typeof setTimeout> | null = null;
       let lastTurnCommitAt = 0;
-      const scheduleTurnCommit = (force: boolean) => {
+      const turnStartedAt = getPerfNow();
+      let lastStreamEventAt = turnStartedAt;
+      let lastCommitAt = turnStartedAt;
+      const streamStats = createStreamStatsLogger(turnId);
+      const scheduleTurnCommit = (
+        force: boolean,
+        options?: {
+          route?: "chat" | "analysis" | "draft" | "modify";
+          stage?: string;
+          textDeltaLength?: number;
+          reasoningDeltaLength?: number;
+        }
+      ) => {
+        const commitStart = getPerfNow();
+        const minIntervalMs = STREAM_COMMIT_MIN_INTERVAL_MS;
         if (force) {
           if (turnCommitTimer) {
             clearTimeout(turnCommitTimer);
@@ -2426,21 +3312,50 @@ function createAssistantRuntime(): AssistantRuntime {
           }
           lastTurnCommitAt = Date.now();
           commitState(internals, current, storage);
-          return;
+          lastCommitAt = getPerfNow();
+          logStageTiming("runtime", "commit", {
+            turnId,
+            action: "committed",
+            force: true,
+            durationMs: Number((lastCommitAt - commitStart).toFixed(2)),
+            sinceTurnStartMs: Number((lastCommitAt - turnStartedAt).toFixed(2)),
+          });
+          return "committed";
         }
         const now = Date.now();
         const elapsed = now - lastTurnCommitAt;
-        if (elapsed >= STREAM_COMMIT_MIN_INTERVAL_MS && !turnCommitTimer) {
+        if (elapsed >= minIntervalMs && !turnCommitTimer) {
+          const previousCommitAt = lastCommitAt;
           lastTurnCommitAt = now;
           commitState(internals, current, storage);
-          return;
+          lastCommitAt = getPerfNow();
+          logStageTiming("runtime", "commit", {
+            turnId,
+            action: "committed",
+            force: false,
+            durationMs: Number((lastCommitAt - commitStart).toFixed(2)),
+            sincePreviousCommitMs: Number((commitStart - previousCommitAt).toFixed(2)),
+            sinceTurnStartMs: Number((lastCommitAt - turnStartedAt).toFixed(2)),
+          });
+          return "committed";
         }
-        if (turnCommitTimer) return;
+        if (turnCommitTimer) return "pending";
         turnCommitTimer = setTimeout(() => {
+          const delayedCommitStart = getPerfNow();
+          const previousCommitAt = lastCommitAt;
           turnCommitTimer = null;
           lastTurnCommitAt = Date.now();
           commitState(internals, current, storage);
-        }, Math.max(0, STREAM_COMMIT_MIN_INTERVAL_MS - elapsed));
+          lastCommitAt = getPerfNow();
+          logStageTiming("runtime", "commit", {
+            turnId,
+            action: "timer",
+            durationMs: Number((lastCommitAt - delayedCommitStart).toFixed(2)),
+            sincePreviousCommitMs: Number((delayedCommitStart - previousCommitAt).toFixed(2)),
+            sinceTurnStartMs: Number((lastCommitAt - turnStartedAt).toFixed(2)),
+          });
+        }, Math.max(0, minIntervalMs - elapsed));
+        return "scheduled";
       };
       try {
         const channel = resolveRuntimeChannel();
@@ -2454,8 +3369,21 @@ function createAssistantRuntime(): AssistantRuntime {
         };
         let context;
         try {
+          const contextStart = getPerfNow();
           context = await buildSchematicContext(adapter);
+          logStageTiming("runtime", "context", {
+            turnId,
+            durationMs: Number((getPerfNow() - contextStart).toFixed(2)),
+            sinceTurnStartMs: Number((getPerfNow() - turnStartedAt).toFixed(2)),
+            hasContext: Boolean(context),
+          });
         } catch (error) {
+          logStageTiming("runtime", "context", {
+            turnId,
+            failed: true,
+            sinceTurnStartMs: Number((getPerfNow() - turnStartedAt).toFixed(2)),
+            error: error instanceof Error ? error.message : String(error),
+          });
           if (typeof console !== "undefined") {
             console.warn(`${LOG_PREFIX} sendChat.context.optional-failed`, {
               error: error instanceof Error ? error.message : String(error),
@@ -2525,184 +3453,220 @@ function createAssistantRuntime(): AssistantRuntime {
         };
 
         let touchTurnActivity: (() => void) | null = null;
-        const turnPromise = pluginAgent.handleUserTurn({
+        const applyStreamEvent = (event: StreamEventPayload) => {
+          const perfStart = (isPerfDebugEnabled() || isStageTimingEnabled()) ? getPerfNow() : 0;
+          const eventGapMs = perfStart ? perfStart - lastStreamEventAt : 0;
+          if (perfStart) {
+            lastStreamEventAt = perfStart;
+          }
+          if (internals.activeTurnId !== turnId) return;
+          const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
+          const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
+          const sanitizeDoneAt = (isPerfDebugEnabled() || isStageTimingEnabled()) ? getPerfNow() : 0;
+          const shouldKeepReactEvents = shouldApplyStreamingReactEvents({
+            reactEvents: event.reactEvents,
+            stepItems: event.stepItems,
+            iterationSteps: event.iterationSteps,
+          });
+          const sanitizedReactEvents = shouldKeepReactEvents
+            ? sanitizeReactEventsForUi(event.reactEvents)
+            : undefined;
+          const clonedStepItems = event.stepItems !== undefined ? cloneForStream(event.stepItems) : undefined;
+          const clonedIterationSteps = event.iterationSteps !== undefined ? cloneForStream(event.iterationSteps) : undefined;
+          const clonedStepStates = event.stepStates !== undefined ? cloneForStream(event.stepStates) : undefined;
+          const clonedWorkingMemory = event.workingMemory !== undefined ? cloneForStream(event.workingMemory) : undefined;
+          const clonedReactEvents = sanitizedReactEvents !== undefined ? cloneForStream(sanitizedReactEvents) : undefined;
+          const messages = current.chatMessages ?? [];
+          const lastMessage = messages[messages.length - 1];
+          if (!lastMessage || lastMessage.role !== "assistant") {
+            return;
+          }
+          const previousDetail = String(current.agentRunDetail || "");
+          const previousContent = String(lastMessage.content || "");
+          const previousProcessSignature = buildStreamingProcessSignature({
+            stepItems: lastMessage.stepItems,
+            iterationSteps: lastMessage.iterationSteps,
+            reactEvents: lastMessage.reactEvents,
+            stepStates: lastMessage.stepStates,
+            workingMemory: lastMessage.workingMemory,
+          });
+          const beforeApplyAt = (isPerfDebugEnabled() || isStageTimingEnabled()) ? getPerfNow() : 0;
+          if (event.detail) {
+            current.agentRunDetail = event.detail;
+          }
+          if (event.stage === "llm") {
+            lastMessage.streaming = true;
+            lastMessage.title =
+              event.route === "draft"
+                ? "草案生成中"
+                : event.route === "analysis"
+                  ? "分析中"
+                  : event.route === "modify"
+                    ? "修改当前原理图中"
+                    : "处理中";
+            const shouldMirrorTextToBody = shouldMirrorStreamingTextToAssistantBody({
+              route: event.route,
+              hasStepItems: clonedStepItems !== undefined && Boolean(clonedStepItems?.length),
+              hasIterationSteps: clonedIterationSteps !== undefined && Boolean(clonedIterationSteps?.length),
+              hasReactEvents: clonedReactEvents !== undefined && Boolean(clonedReactEvents?.length),
+              hasReasoningDelta: Boolean(sanitizedReasoningDelta),
+            });
+            const sanitizedProcessText = event.text !== undefined
+              ? stripFinalControlLikeText(event.text)
+              : undefined;
+            const sanitizedText = shouldSanitizeFullStreamingText({
+              route: event.route,
+              mirrorTextToBody: shouldMirrorTextToBody,
+            })
+              ? sanitizedProcessText
+              : undefined;
+            if (shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
+              lastMessage.content = "";
+            }
+            if (shouldMirrorTextToBody && sanitizedTextDelta) {
+              applyStreamingAssistantContentDelta(lastMessage, sanitizedTextDelta, "append");
+            } else if (shouldMirrorTextToBody && sanitizedText !== undefined && String(sanitizedText).trim()) {
+              applyStreamingAssistantContentDelta(lastMessage, sanitizedText, "replace");
+            } else if (!shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
+              lastMessage.content = "";
+            }
+            if (
+              clonedStepItems !== undefined ||
+              clonedIterationSteps !== undefined ||
+              clonedReactEvents !== undefined ||
+              sanitizedReasoningDelta
+            ) {
+              mergeStreamProcessFields({
+                lastMessage,
+                stepItems: clonedStepItems,
+                iterationSteps: clonedIterationSteps,
+                reactEvents: clonedReactEvents,
+                reasoningDelta: sanitizedReasoningDelta,
+                text: sanitizedProcessText,
+              });
+            }
+            if (clonedStepStates) {
+              lastMessage.stepStates = clonedStepStates;
+            }
+            if (clonedWorkingMemory) {
+              lastMessage.workingMemory = clonedWorkingMemory;
+            }
+          } else if (event.stage === "progress") {
+            lastMessage.streaming = true;
+            lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "modify" ? "修改当前原理图中" : "分析中";
+            if (
+              clonedStepItems !== undefined ||
+              clonedIterationSteps !== undefined ||
+              clonedReactEvents !== undefined
+            ) {
+              mergeStreamProcessFields({
+                lastMessage,
+                stepItems: clonedStepItems,
+                iterationSteps: clonedIterationSteps,
+                reactEvents: clonedReactEvents,
+              });
+            }
+            if (clonedStepStates) {
+              lastMessage.stepStates = clonedStepStates;
+            }
+            if (clonedWorkingMemory) {
+              lastMessage.workingMemory = clonedWorkingMemory;
+            }
+          }
+          const nextProcessSignature = buildStreamingProcessSignature({
+            stepItems: lastMessage.stepItems,
+            iterationSteps: lastMessage.iterationSteps,
+            reactEvents: lastMessage.reactEvents,
+            stepStates: lastMessage.stepStates,
+            workingMemory: lastMessage.workingMemory,
+          });
+          const afterApplyAt = (isPerfDebugEnabled() || isStageTimingEnabled()) ? getPerfNow() : 0;
+          const contentChanged = previousContent !== String(lastMessage.content || "");
+          const processChanged = previousProcessSignature !== nextProcessSignature;
+          const detailChanged = previousDetail !== String(current.agentRunDetail || "");
+          const hasVisibleActivity = shouldCountStreamEventAsTurnActivity({
+            contentChanged,
+            processChanged,
+            detailChanged,
+          });
+          if (!hasVisibleActivity) {
+            streamStats.event({
+              event,
+              changed: false,
+              durationMs: isStreamStatsEnabled() || isStageTimingEnabled() ? getPerfNow() - perfStart : 0,
+            });
+            logStageTiming("runtime", "stream-event", {
+              turnId,
+              route: event.route,
+              stage: event.stage,
+              changed: false,
+              gapMs: Number(eventGapMs.toFixed(2)),
+              sanitizeMs: sanitizeDoneAt && perfStart ? Number((sanitizeDoneAt - perfStart).toFixed(2)) : 0,
+              applyMs: afterApplyAt && beforeApplyAt ? Number((afterApplyAt - beforeApplyAt).toFixed(2)) : 0,
+              totalMs: perfStart ? Number((getPerfNow() - perfStart).toFixed(2)) : 0,
+              sinceTurnStartMs: perfStart ? Number((perfStart - turnStartedAt).toFixed(2)) : 0,
+              textDeltaLength: String(sanitizedTextDelta || "").length,
+              reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+              eventIterationSteps: Array.isArray(event.iterationSteps) ? event.iterationSteps.length : 0,
+            });
+            return;
+          }
+          touchTurnActivity?.();
+          if (isPerfDebugEnabled()) {
+            logPerf("onStreamEvent", {
+              route: event.route,
+              stage: event.stage,
+              durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
+              textDeltaLength: String(sanitizedTextDelta || "").length,
+              textLength: String(event.text || "").length,
+              reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+              stepItems: Array.isArray(lastMessage.stepItems) ? lastMessage.stepItems.length : 0,
+              iterationSteps: Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
+              reactEvents: Array.isArray(lastMessage.reactEvents) ? lastMessage.reactEvents.length : 0,
+              contentLength: String(lastMessage.content || "").length,
+            });
+          }
+          const commitAction = scheduleTurnCommit(false, {
+            route: event.route,
+            stage: event.stage,
+            textDeltaLength: String(sanitizedTextDelta || "").length,
+            reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+          });
+          const afterCommitAt = (isPerfDebugEnabled() || isStageTimingEnabled()) ? getPerfNow() : 0;
+          streamStats.event({
+            event,
+            changed: true,
+            committed: commitAction === "committed",
+            scheduled: commitAction === "scheduled",
+            durationMs: isStreamStatsEnabled() || isStageTimingEnabled() ? getPerfNow() - perfStart : 0,
+          });
+          logStageTiming("runtime", "stream-event", {
+            turnId,
+            route: event.route,
+            stage: event.stage,
+            changed: true,
+            commitAction,
+            gapMs: Number(eventGapMs.toFixed(2)),
+            sanitizeMs: sanitizeDoneAt && perfStart ? Number((sanitizeDoneAt - perfStart).toFixed(2)) : 0,
+            applyMs: afterApplyAt && beforeApplyAt ? Number((afterApplyAt - beforeApplyAt).toFixed(2)) : 0,
+            totalMs: perfStart && afterCommitAt ? Number((afterCommitAt - perfStart).toFixed(2)) : 0,
+            sinceTurnStartMs: perfStart ? Number((perfStart - turnStartedAt).toFixed(2)) : 0,
+            textDeltaLength: String(sanitizedTextDelta || "").length,
+            reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+            eventStepItems: Array.isArray(event.stepItems) ? event.stepItems.length : 0,
+            eventIterationSteps: Array.isArray(event.iterationSteps) ? event.iterationSteps.length : 0,
+            storedIterationSteps: Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
+          });
+        };
+      const turnPromise = pluginAgent.handleUserTurn({
           userQuery: trimmed,
           panelState: current,
           context,
           adapter,
           signal: internals.activeTurnAbortController.signal,
           onStreamEvent: (event) => {
-            const perfStart = isPerfDebugEnabled() ? getPerfNow() : 0;
-            // Ignore late events from previous turns to prevent UI getting stuck.
-            if (internals.activeTurnId !== turnId) return;
-            const sanitizedTextDelta = stripFinalControlLikeText(event.textDelta);
-            const sanitizedReasoningDelta = stripFinalControlLikeText(event.reasoningDelta);
-            const shouldKeepReactEvents = shouldApplyStreamingReactEvents({
-              reactEvents: event.reactEvents,
-              stepItems: event.stepItems,
-              iterationSteps: event.iterationSteps,
-            });
-            const sanitizedReactEvents = shouldKeepReactEvents
-              ? sanitizeReactEventsForUi(event.reactEvents)
-              : undefined;
-            const messages = current.chatMessages ?? [];
-            const lastMessage = messages[messages.length - 1];
-            if (!lastMessage || lastMessage.role !== "assistant") {
-              return;
-            }
-            const previousDetail = String(current.agentRunDetail || "");
-            const previousContent = String(lastMessage.content || "");
-            const previousProcessSignature = buildStreamingProcessSignature({
-              stepItems: lastMessage.stepItems,
-              iterationSteps: lastMessage.iterationSteps,
-              reactEvents: lastMessage.reactEvents,
-              stepStates: lastMessage.stepStates,
-              workingMemory: lastMessage.workingMemory,
-            });
-            if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
-              console.log("[LCEDA-AI][stream-debug] onStreamEvent.before", {
-                stage: event.stage,
-                detail: event.detail,
-                reasoningDelta: sanitizedReasoningDelta,
-                textDelta: sanitizedTextDelta,
-                eventStepItems: event.stepItems,
-                eventIterationSteps: event.iterationSteps,
-                eventReactEvents: sanitizedReactEvents,
-                lastAssistantStepItems: lastMessage.stepItems,
-                lastAssistantIterationSteps: lastMessage.iterationSteps,
-                lastAssistantReactEvents: lastMessage.reactEvents,
-              });
-            }
-            if (event.detail) {
-              current.agentRunDetail = event.detail;
-            }
-            if (event.stage === "llm") {
-              lastMessage.streaming = true;
-              lastMessage.title =
-                event.route === "draft"
-                  ? "草案生成中"
-                  : event.route === "analysis"
-                    ? "分析中"
-                    : event.route === "modify"
-                      ? "修改当前原理图中"
-                      : "处理中";
-              const shouldMirrorTextToBody = shouldMirrorStreamingTextToAssistantBody({
-                route: event.route,
-                hasStepItems: event.stepItems !== undefined && Boolean(event.stepItems?.length),
-                hasIterationSteps: event.iterationSteps !== undefined && Boolean(event.iterationSteps?.length),
-                hasReactEvents: sanitizedReactEvents !== undefined && Boolean(sanitizedReactEvents?.length),
-                hasReasoningDelta: Boolean(sanitizedReasoningDelta),
-              });
-              const sanitizedText = shouldSanitizeFullStreamingText({
-                route: event.route,
-                mirrorTextToBody: shouldMirrorTextToBody,
-              })
-                ? stripFinalControlLikeText(event.text)
-                : undefined;
-              // ReAct 过程中，LLM 流式文本应进入当前 step，而不是底部正式报告区。
-              // 最终报告只在 turn 完成后由 final message 渲染。
-              if (shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
-                lastMessage.content = "";
-              }
-              if (shouldMirrorTextToBody && sanitizedTextDelta) {
-                applyStreamingAssistantContentDelta(lastMessage, sanitizedTextDelta, "append");
-              } else if (shouldMirrorTextToBody && sanitizedText !== undefined && String(sanitizedText).trim()) {
-                applyStreamingAssistantContentDelta(lastMessage, sanitizedText, "replace");
-              } else if (!shouldMirrorTextToBody && lastMessage.content === "正在思考...") {
-                lastMessage.content = "";
-              }
-              if (
-                event.stepItems !== undefined ||
-                event.iterationSteps !== undefined ||
-                sanitizedReactEvents !== undefined ||
-                sanitizedReasoningDelta
-              ) {
-                mergeStreamProcessFields({
-                  lastMessage,
-                  stepItems: event.stepItems,
-                  iterationSteps: event.iterationSteps,
-                  reactEvents: sanitizedReactEvents,
-                  reasoningDelta: sanitizedReasoningDelta,
-                  text: sanitizedText,
-                });
-              }
-              if (event.stepStates) {
-                lastMessage.stepStates = event.stepStates;
-              }
-              if (event.workingMemory) {
-                lastMessage.workingMemory = event.workingMemory;
-              }
-            } else if (event.stage === "progress") {
-              lastMessage.streaming = true;
-              lastMessage.title = event.route === "draft" ? "草案生成中" : event.route === "modify" ? "修改当前原理图中" : "分析中";
-              // progress 阶段只更新 header/steps，不写入 message.content，避免污染最终流式报告。
-              if (
-                event.stepItems !== undefined ||
-                event.iterationSteps !== undefined ||
-                sanitizedReactEvents !== undefined
-              ) {
-                mergeStreamProcessFields({
-                  lastMessage,
-                  stepItems: event.stepItems,
-                  iterationSteps: event.iterationSteps,
-                  reactEvents: sanitizedReactEvents,
-                });
-              }
-              if (event.stepStates) {
-                lastMessage.stepStates = event.stepStates;
-              }
-              if (event.workingMemory) {
-                lastMessage.workingMemory = event.workingMemory;
-              }
-            }
-            const nextProcessSignature = buildStreamingProcessSignature({
-              stepItems: lastMessage.stepItems,
-              iterationSteps: lastMessage.iterationSteps,
-              reactEvents: lastMessage.reactEvents,
-              stepStates: lastMessage.stepStates,
-              workingMemory: lastMessage.workingMemory,
-            });
-            const contentChanged = previousContent !== String(lastMessage.content || "");
-            const processChanged = previousProcessSignature !== nextProcessSignature;
-            const detailChanged = previousDetail !== String(current.agentRunDetail || "");
-            const hasVisibleActivity = shouldCountStreamEventAsTurnActivity({
-              contentChanged,
-              processChanged,
-              detailChanged,
-            });
-            if (!hasVisibleActivity) {
-              return;
-            }
             touchTurnActivity?.();
-            if (ENABLE_STREAM_STEP_DEBUG && typeof console !== "undefined") {
-              console.log("[LCEDA-AI][stream-debug] onStreamEvent.after", {
-                stage: event.stage,
-                detail: event.detail,
-                lastAssistantMessage: {
-                  title: lastMessage.title,
-                  content: lastMessage.content,
-                  streaming: lastMessage.streaming,
-                  stepItems: lastMessage.stepItems,
-                  iterationSteps: lastMessage.iterationSteps,
-                  reactEvents: lastMessage.reactEvents,
-                },
-              });
-            }
-            if (isPerfDebugEnabled()) {
-              logPerf("onStreamEvent", {
-                route: event.route,
-                stage: event.stage,
-                durationMs: Number((getPerfNow() - perfStart).toFixed(2)),
-                textDeltaLength: String(sanitizedTextDelta || "").length,
-                textLength: String(event.text || "").length,
-                reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
-                stepItems: Array.isArray(lastMessage.stepItems) ? lastMessage.stepItems.length : 0,
-                iterationSteps: Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps.length : 0,
-                reactEvents: Array.isArray(lastMessage.reactEvents) ? lastMessage.reactEvents.length : 0,
-                contentLength: String(lastMessage.content || "").length,
-              });
-            }
-            scheduleTurnCommit(false);
+            applyStreamEvent(event);
           },
         });
 
@@ -2736,7 +3700,9 @@ function createAssistantRuntime(): AssistantRuntime {
             messageCount: finalState.chatMessages?.length,
           });
         }
+        streamStats.flush("before-final-commit");
         scheduleTurnCommit(true);
+        streamStats.flush("after-final-commit");
         const committedState = commitState(internals, finalState, storage);
         if (ENABLE_VERBOSE_RUNTIME_LOGS && typeof console !== "undefined") {
           console.log(`${LOG_PREFIX} sendChat.committed`, {
@@ -2863,13 +3829,16 @@ function createAssistantRuntime(): AssistantRuntime {
     },
     openDevicePicker: async (): Promise<MainPanelState> => {
       const state = internals.currentState ?? (await computeAnalysisState());
+      const draftPlan = internals.draftPlan ?? state.draftPlan;
+      internals.draftPlan = draftPlan;
       state.devicePicker = {
-        ...(buildDevicePickerState(internals.draftPlan, state.devicePicker) ?? { open: true, items: [] }),
+        ...(buildDevicePickerState(draftPlan, state.devicePicker) ?? { open: true, items: [] }),
         open: true,
       };
       return commitState(internals, state, storage);
     },
     closeDevicePicker: async (): Promise<MainPanelState> => {
+      internals.devicePickerCloseVersion = (internals.devicePickerCloseVersion ?? 0) + 1;
       const state = internals.currentState ?? (await computeAnalysisState());
       if (state.devicePicker) {
         state.devicePicker = { ...state.devicePicker, open: false };
@@ -2934,8 +3903,15 @@ function createAssistantRuntime(): AssistantRuntime {
     },
     chooseDraftDeviceCandidate: async (input: { componentId: string; candidateIndex: number }): Promise<MainPanelState> => {
       const state = internals.currentState ?? (await computeAnalysisState());
+      const closeVersion = internals.devicePickerCloseVersion ?? 0;
       chooseDraftDeviceCandidateInternal(state, input);
       await enrichCurrentDraftPlanFromLibrary(state);
+      const remainingUnresolved = hasUnresolvedDraftDevices(internals.draftPlan);
+      state.summary = remainingUnresolved ? "已更新草案器件选择，请继续完成剩余器件确认。" : "器件已全部确认，可以应用草案。";
+      refreshDraftMessageActionsAfterDeviceSelection(state, remainingUnresolved);
+      if ((internals.devicePickerCloseVersion ?? 0) !== closeVersion && state.devicePicker) {
+        state.devicePicker = { ...state.devicePicker, open: false };
+      }
       return commitState(internals, state, storage);
     },
     chooseBestDraftDeviceCandidates: async (): Promise<MainPanelState> => {
@@ -3535,6 +4511,19 @@ function sanitizeChatMessages(
   return (messages ?? []).filter((message) => !(message as { __typing?: boolean }).__typing);
 }
 
+function appendDeviceSelectionStatusToDraftMessage(content: string | undefined, status: string): string {
+  const base = String(content || "").trimEnd();
+  const cleanStatus = String(status || "").trim();
+  if (!cleanStatus) {
+    return base;
+  }
+  const statusBlock = `\n\n## 器件确认状态\n${cleanStatus}`;
+  if (/##\s*器件确认状态/u.test(base)) {
+    return base.replace(/\n\n##\s*器件确认状态\n[\s\S]*$/u, statusBlock);
+  }
+  return `${base}${statusBlock}`;
+}
+
 function stripInitialWelcomeMessages(
   messages: NonNullable<MainPanelState["chatMessages"]>
 ): NonNullable<MainPanelState["chatMessages"]> {
@@ -3714,7 +4703,7 @@ function normalizeProcessFields(message: NonNullable<MainPanelState["chatMessage
   };
 }
 
-function mergeStreamProcessFields(input: {
+export function mergeStreamProcessFields(input: {
   lastMessage: NonNullable<MainPanelState["chatMessages"]>[number];
   stepItems?: NonNullable<MainPanelState["chatMessages"]>[number]["stepItems"];
   iterationSteps?: NonNullable<MainPanelState["chatMessages"]>[number]["iterationSteps"];
@@ -3725,7 +4714,6 @@ function mergeStreamProcessFields(input: {
   const { lastMessage, stepItems, iterationSteps, reactEvents, reasoningDelta, text } = input;
   const limited = limitStreamProcessItems({
     stepItems,
-    iterationSteps,
     reactEvents: reactEvents !== undefined ? sanitizeReactEventsForUi(reactEvents) : undefined,
   });
   if (stepItems !== undefined) {
@@ -3735,16 +4723,28 @@ function mergeStreamProcessFields(input: {
     lastMessage.reactEvents = limited.reactEvents;
   }
   if (iterationSteps !== undefined) {
-    lastMessage.iterationSteps = limited.iterationSteps;
+    lastMessage.iterationSteps = limitStreamProcessItems({
+      iterationSteps: mergeIterationStepsForStream(lastMessage.iterationSteps, iterationSteps),
+    }).iterationSteps;
   }
 
   const currentSteps = Array.isArray(lastMessage.iterationSteps) ? lastMessage.iterationSteps : [];
   if (reasoningDelta && currentSteps.length > 0) {
+    const activeStepKey =
+      Array.isArray(iterationSteps) && iterationSteps.length > 0
+        ? getIterationStepMergeKey(iterationSteps[iterationSteps.length - 1])
+        : undefined;
+    const activeStepIndex = activeStepKey
+      ? currentSteps.findIndex((step) => getIterationStepMergeKey(step) === activeStepKey)
+      : currentSteps.length - 1;
     lastMessage.iterationSteps = currentSteps.map((step, index) =>
-      index === currentSteps.length - 1
+      index === (activeStepIndex >= 0 ? activeStepIndex : currentSteps.length - 1)
         ? {
             ...step,
-            thoughtText: `${String(step.thoughtText || "")}${reasoningDelta}`.trim(),
+            thoughtText:
+              iterationSteps !== undefined && String(step.thoughtText || "").trim()
+                ? String(step.thoughtText || "").trim()
+                : `${String(step.thoughtText || "")}${reasoningDelta}`.trim(),
             status: step.status === "done" ? "done" : "running",
             streaming: true,
           }
@@ -3754,8 +4754,15 @@ function mergeStreamProcessFields(input: {
   }
 
   if (!reasoningDelta && iterationSteps !== undefined && String(text || "").trim()) {
-    lastMessage.iterationSteps = iterationSteps.map((step, index, arr) =>
-      index === arr.length - 1
+    const activeStepKey =
+      Array.isArray(iterationSteps) && iterationSteps.length > 0
+        ? getIterationStepMergeKey(iterationSteps[iterationSteps.length - 1])
+        : undefined;
+    const activeStepIndex = activeStepKey
+      ? currentSteps.findIndex((step) => getIterationStepMergeKey(step) === activeStepKey)
+      : currentSteps.length - 1;
+    lastMessage.iterationSteps = currentSteps.map((step, index) =>
+      index === (activeStepIndex >= 0 ? activeStepIndex : currentSteps.length - 1)
         ? {
             ...step,
             thoughtText: String(text || "").trim(),

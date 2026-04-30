@@ -80,14 +80,11 @@ func (p *Provider) Search(query qdrantrepo.SearchQuery) ([]qdrantrepo.SearchHit,
 	var decoded struct {
 		Data struct {
 			Results []struct {
-				ID       any     `json:"id"`
-				Score    float64 `json:"score"`
-				Title    string  `json:"title"`
-				Content  string  `json:"content"`
-				Metadata struct {
-					SourceRef string `json:"source_ref"`
-					KBType    string `json:"kb_type"`
-				} `json:"metadata"`
+				ID       any            `json:"id"`
+				Score    float64        `json:"score"`
+				Title    string         `json:"title"`
+				Content  string         `json:"content"`
+				Metadata map[string]any `json:"metadata"`
 			} `json:"results"`
 			Chunks []struct {
 				ID              any     `json:"id"`
@@ -115,8 +112,9 @@ func (p *Provider) Search(query qdrantrepo.SearchQuery) ([]qdrantrepo.SearchHit,
 				Score:     r.Score,
 				Title:     r.Title,
 				Snippet:   r.Content,
-				SourceRef: r.Metadata.SourceRef,
-				KBType:    r.Metadata.KBType,
+				SourceRef: readMetadataString(r.Metadata, "source_ref"),
+				KBType:    readMetadataString(r.Metadata, "kb_type"),
+				Metadata:  r.Metadata,
 			})
 		}
 		return out, nil
@@ -125,6 +123,7 @@ func (p *Provider) Search(query qdrantrepo.SearchQuery) ([]qdrantrepo.SearchHit,
 	type chunkMetadata struct {
 		sourceRef string
 		kbType    string
+		metadata  map[string]any
 	}
 
 	metadataByDocKey := map[string]chunkMetadata{}
@@ -133,13 +132,13 @@ func (p *Provider) Search(query qdrantrepo.SearchQuery) ([]qdrantrepo.SearchHit,
 		if title == "" && idx < len(decoded.Data.DocAggs) {
 			title = strings.TrimSpace(decoded.Data.DocAggs[idx].DocName)
 		}
-		sourceRef, kbType := extractChunkMetadata(chunk.Content)
+		sourceRef, kbType, metadata := extractChunkMetadata(chunk.Content)
 		if sourceRef == "" && kbType == "" {
 			continue
 		}
 		for _, key := range chunkDocKeys(chunk.DocumentID, title) {
 			if key != "" {
-				metadataByDocKey[key] = chunkMetadata{sourceRef: sourceRef, kbType: kbType}
+				metadataByDocKey[key] = chunkMetadata{sourceRef: sourceRef, kbType: kbType, metadata: metadata}
 			}
 		}
 	}
@@ -150,12 +149,13 @@ func (p *Provider) Search(query qdrantrepo.SearchQuery) ([]qdrantrepo.SearchHit,
 		if title == "" && idx < len(decoded.Data.DocAggs) {
 			title = strings.TrimSpace(decoded.Data.DocAggs[idx].DocName)
 		}
-		sourceRef, kbType := extractChunkMetadata(chunk.Content)
+		sourceRef, kbType, metadata := extractChunkMetadata(chunk.Content)
 		if sourceRef == "" && kbType == "" {
 			for _, key := range chunkDocKeys(chunk.DocumentID, title) {
-				if metadata, ok := metadataByDocKey[key]; ok {
-					sourceRef = metadata.sourceRef
-					kbType = metadata.kbType
+				if docMetadata, ok := metadataByDocKey[key]; ok {
+					sourceRef = docMetadata.sourceRef
+					kbType = docMetadata.kbType
+					metadata = docMetadata.metadata
 					break
 				}
 			}
@@ -177,9 +177,21 @@ func (p *Provider) Search(query qdrantrepo.SearchQuery) ([]qdrantrepo.SearchHit,
 			Snippet:   chunk.Content,
 			SourceRef: sourceRef,
 			KBType:    kbType,
+			Metadata:  metadata,
 		})
 	}
 	return out, nil
+}
+
+func readMetadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+	value, ok := metadata[key]
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(stringifyID(value))
 }
 
 func (p *Provider) ExternalRagTemplateCorpus() []map[string]any {
@@ -197,26 +209,23 @@ func stringifyID(value any) string {
 	}
 }
 
-func extractChunkMetadata(content string) (string, string) {
+func extractChunkMetadata(content string) (string, string, map[string]any) {
 	const marker = "```json"
 	start := strings.Index(content, marker)
 	if start < 0 {
-		return "", ""
+		return "", "", nil
 	}
 	rest := content[start+len(marker):]
 	end := strings.Index(rest, "```")
 	if end < 0 {
-		return "", ""
+		return "", "", nil
 	}
 
-	var metadata struct {
-		SourceRef string `json:"source_ref"`
-		KBType    string `json:"kb_type"`
-	}
+	var metadata map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(rest[:end])), &metadata); err != nil {
-		return "", ""
+		return "", "", nil
 	}
-	return strings.TrimSpace(metadata.SourceRef), strings.TrimSpace(metadata.KBType)
+	return readMetadataString(metadata, "source_ref"), readMetadataString(metadata, "kb_type"), metadata
 }
 
 func chunkDocKeys(documentID string, title string) []string {
