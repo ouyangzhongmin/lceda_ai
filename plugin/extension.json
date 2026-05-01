@@ -3,7 +3,7 @@
   "uuid": "8f6b9a9d4e8348a8b0fd67c2a1a4c9e1",
   "displayName": "AI助手",
   "description": "可以使用于嘉立创专业版与标准版的 AI 原理图分析、规则检查与草案生成助手。",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "entry": "./dist/index",
   "publisher": "oyzm",
   "engines": {
