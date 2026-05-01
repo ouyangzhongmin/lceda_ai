@@ -15628,6 +15628,22 @@ ${m.content ?? ""}`
   var STREAM_STATS_STORAGE_KEY = "lceda_ai.stream_stats";
   var STREAM_PROGRESS_MIN_INTERVAL_MS = 200;
   var STREAM_SUSPICIOUS_TAIL_LEN = 96;
+  var STREAM_THOUGHT_MAX_LEN = 1200;
+  var STREAM_RAW_BUFFER_MAX_LEN = 4096;
+  var STREAM_TEXT_SANITIZE_MIN_INTERVAL_MS = 120;
+  var STREAM_LLM_EVENT_LOG_MIN_INTERVAL_MS = 250;
+  var clampStreamThoughtText = (value) => {
+    const text = String(value || "");
+    if (text.length <= STREAM_THOUGHT_MAX_LEN) return text;
+    const tail = text.slice(-STREAM_THOUGHT_MAX_LEN);
+    const trimmed = tail.replace(/^\S*\s/u, "").trim();
+    return trimmed || tail;
+  };
+  var clampRawBuffer = (value) => {
+    const text = String(value || "");
+    if (text.length <= STREAM_RAW_BUFFER_MAX_LEN) return text;
+    return text.slice(-STREAM_RAW_BUFFER_MAX_LEN);
+  };
   async function runReActLoop(input) {
     const {
       deps,
@@ -15666,10 +15682,33 @@ ${m.content ?? ""}`
         globalThis[STAGE_TIMING_FLAG] || globalThis[STREAM_STATS_FLAG] || storageFlag
       );
     };
-    const logStageTiming2 = (label, payload) => {
-      if (!isStageTimingEnabled2() || typeof console === "undefined") return;
-      console.log(`[LCEDA-AI][react] timing.${label}`, payload);
-    };
+    const logStageTiming2 = /* @__PURE__ */ (() => {
+      let lastLlmEventLogAt = 0;
+      let suppressedLlmEventCount = 0;
+      let lastSuppressedPayload = null;
+      return (label, payload) => {
+        if (!isStageTimingEnabled2() || typeof console === "undefined") return;
+        if (label === "llm-event") {
+          const now = Date.now();
+          if (lastLlmEventLogAt && now - lastLlmEventLogAt < STREAM_LLM_EVENT_LOG_MIN_INTERVAL_MS) {
+            suppressedLlmEventCount += 1;
+            lastSuppressedPayload = payload;
+            return;
+          }
+          lastLlmEventLogAt = now;
+          if (suppressedLlmEventCount > 0) {
+            console.log(`[LCEDA-AI][react] timing.llm-event`, {
+              ...lastSuppressedPayload,
+              suppressed: suppressedLlmEventCount
+            });
+            suppressedLlmEventCount = 0;
+            lastSuppressedPayload = null;
+            return;
+          }
+        }
+        console.log(`[LCEDA-AI][react] timing.${label}`, payload);
+      };
+    })();
     const messages = [
       { role: "system", content: system },
       ...historyMessages,
@@ -16010,28 +16049,84 @@ ${text}`;
     const buildLightweightStreamProgress = (payload) => ({
       detail: payload.detail,
       textDelta: payload.textDelta,
-      text: payload.text,
       reasoningDelta: payload.reasoningDelta,
       reactEvents: [],
       stepItems: [],
-      iterationSteps: payload.iterationStep ? [payload.iterationStep] : void 0,
+      iterationSteps: payload.reasoningDelta && !payload.textDelta ? state.iterationSteps : void 0,
       stepStates: [],
       workingMemory: void 0
     });
     const safeJsonParse3 = (text) => {
       const raw = String(text || "").trim();
       if (!raw) return null;
-      const start = raw.indexOf("{");
-      const end = raw.lastIndexOf("}");
+      const stripCodeFence = (value) => {
+        let out = value.trim();
+        out = out.replace(/^\s*```(?:json)?\s*(?:\r?\n)?/u, "");
+        out = out.replace(/(?:\r?\n)?\s*```\s*$/u, "");
+        return out.trim();
+      };
+      const extractBalancedJsonObject = (value, startIndex2) => {
+        if (startIndex2 < 0 || startIndex2 >= value.length || value[startIndex2] !== "{") return null;
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        for (let i = startIndex2; i < value.length; i += 1) {
+          const ch = value[i];
+          if (inString) {
+            if (escaped) {
+              escaped = false;
+              continue;
+            }
+            if (ch === "\\") {
+              escaped = true;
+              continue;
+            }
+            if (ch === '"') {
+              inString = false;
+            }
+            continue;
+          }
+          if (ch === '"') {
+            inString = true;
+            continue;
+          }
+          if (ch === "{") {
+            depth += 1;
+            continue;
+          }
+          if (ch === "}") {
+            depth -= 1;
+            if (depth === 0) {
+              return value.slice(startIndex2, i + 1);
+            }
+          }
+        }
+        return null;
+      };
+      const cleaned = stripCodeFence(raw);
+      const finalIndex = cleaned.search(/(?:^|\r|\n)\s*Final\s*:/iu);
+      const typedFinalIndex = cleaned.search(/\{\s*"type"\s*:\s*"final"/u);
+      const startIndex = finalIndex >= 0 ? cleaned.indexOf("{", finalIndex) : typedFinalIndex >= 0 ? cleaned.indexOf("{", typedFinalIndex) : -1;
+      if (startIndex >= 0) {
+        const slice = extractBalancedJsonObject(cleaned, startIndex);
+        if (slice) {
+          try {
+            return JSON.parse(slice);
+          } catch {
+          }
+        }
+      }
+      const start = cleaned.indexOf("{");
+      const end = cleaned.lastIndexOf("}");
       if (start >= 0 && end > start) {
-        const slice = raw.slice(start, end + 1);
+        const slice = cleaned.slice(start, end + 1);
         try {
           return JSON.parse(slice);
         } catch {
         }
       }
       try {
-        return JSON.parse(raw);
+        return JSON.parse(cleaned);
       } catch {
         return null;
       }
@@ -16074,6 +16169,7 @@ ${text}`;
         strict: true
       }
     }));
+    let forceDisableToolCalling = false;
     for (let i = 0; i < maxIterations; i += 1) {
       ensureNotCancelled();
       const iterationLabel = `\u8FED\u4EE3 ${i + 1}`;
@@ -16154,12 +16250,16 @@ ${text}`;
       let rawStreamReasoning = "";
       let streamReasoning = "";
       let pendingReasoningDelta = "";
+      let pendingTextDelta = "";
+      let lastTextSanitizeAt = 0;
       let lastPreviewThoughtText = "";
+      let sawControlPayloadInText = false;
       const commitReasoningStreamState = (nextText) => {
-        thoughtEvent.text = nextText;
+        const clamped = clampStreamThoughtText(nextText);
+        thoughtEvent.text = clamped;
         thoughtEvent.status = "running";
-        updateStepItem(thoughtStepItem, { status: "running", text: nextText, streaming: true });
-        iterationStep.thoughtText = nextText;
+        updateStepItem(thoughtStepItem, { status: "running", text: clamped, streaming: true });
+        iterationStep.thoughtText = clamped;
         iterationStep.status = "running";
         iterationStep.streaming = true;
       };
@@ -16173,8 +16273,7 @@ ${text}`;
         commitReasoningStreamState(normalized);
         emitProgressIfChanged(buildLightweightStreamProgress({
           detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
-          reasoningDelta: previewDelta,
-          iterationStep
+          reasoningDelta: previewDelta
         }));
       };
       const flushReasoningStreamProgress = (force = false) => {
@@ -16194,8 +16293,55 @@ ${text}`;
         }
         emitProgressIfChanged(buildLightweightStreamProgress({
           detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
-          reasoningDelta: emittedReasoningDelta,
-          iterationStep
+          reasoningDelta: emittedReasoningDelta
+        }));
+      };
+      const maybeFlushTextStreamProgress = (force = false) => {
+        if (!pendingTextDelta && !force) {
+          return;
+        }
+        const now = Date.now();
+        if (!force && lastTextSanitizeAt > 0 && now - lastTextSanitizeAt < STREAM_TEXT_SANITIZE_MIN_INTERVAL_MS) {
+          return;
+        }
+        lastTextSanitizeAt = now;
+        if (pendingTextDelta) {
+          rawStreamText = clampRawBuffer(rawStreamText + pendingTextDelta);
+          pendingTextDelta = "";
+        }
+        const sanitizedStreamText = sanitizeStreamPayload(rawStreamText);
+        const startsWithTypedControlPayload = /^\s*\{\s*"type"/u.test(rawStreamText);
+        const looksLikeControlPayload = startsWithTypedControlPayload && /"type"\s*:\s*"(?:action|final)"/u.test(rawStreamText);
+        if (!sawControlPayloadInText && (startsWithTypedControlPayload || looksLikeControlPayload || /(?:^|\r|\n)\s*Final\s*:/iu.test(rawStreamText))) {
+          sawControlPayloadInText = true;
+        }
+        const rationalePreview = startsWithTypedControlPayload ? extractRationaleFromControlPayload(rawStreamText) : sanitizedStreamText.trim() ? "" : extractRationaleFromControlPayload(rawStreamText);
+        if (!streamReasoning.trim() && rationalePreview && rationalePreview !== thoughtEvent.text) {
+          emitPreviewThoughtProgress(rationalePreview);
+        }
+        if (!streamReasoning.trim() && !startsWithTypedControlPayload && !looksLikeControlPayload && sanitizedStreamText.trim() && sanitizedStreamText !== thoughtEvent.text) {
+          thoughtEvent.text = clampStreamThoughtText(sanitizedStreamText.trim());
+          thoughtEvent.status = "running";
+          updateStepItem(thoughtStepItem, {
+            status: "running",
+            text: thoughtEvent.text,
+            streaming: true
+          });
+          iterationStep.thoughtText = thoughtEvent.text;
+          iterationStep.status = "running";
+          iterationStep.streaming = true;
+        }
+        const emittedDelta = sanitizedStreamText.slice(streamText.length);
+        streamText = sanitizedStreamText;
+        if (sawControlPayloadInText && !streamReasoning.trim() && !thoughtEvent.text) {
+          emitPreviewThoughtProgress("\u6B63\u5728\u751F\u6210\u7ED3\u6784\u5316\u8F93\u51FA\u2026");
+        }
+        if (!emittedDelta) {
+          return;
+        }
+        emitProgressIfChanged(buildLightweightStreamProgress({
+          detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
+          textDelta: emittedDelta
         }));
       };
       const llmStartedAt = getPerfNow2();
@@ -16203,12 +16349,17 @@ ${text}`;
       let llmLastEventAt = llmStartedAt;
       let llmEventCount = 0;
       ensureNotCancelled();
+      const missingRequiredTools = requiredTools.filter((t) => !usedTools.has(t));
+      if (forceDisableToolCalling && missingRequiredTools.length > 0) {
+        forceDisableToolCalling = false;
+      }
+      const allowToolCalling = !forceDisableToolCalling;
       const decision = await deps.invokeTool("llm_generate", {
         stream: true,
         messages,
         // Enable native tool calling when provider supports it.
-        tools: toolsForModel,
-        tool_choice: "auto",
+        tools: allowToolCalling ? toolsForModel : void 0,
+        tool_choice: allowToolCalling ? "auto" : "none",
         onEvent: (event) => {
           const eventAt = getPerfNow2();
           llmEventCount += 1;
@@ -16233,8 +16384,7 @@ ${text}`;
               if (streamReasoning) {
                 emitProgressIfChanged(buildLightweightStreamProgress({
                   detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
-                  reasoningDelta: event.reasoning_delta,
-                  iterationStep
+                  reasoningDelta: event.reasoning_delta
                 }));
               }
             } else {
@@ -16255,33 +16405,13 @@ ${text}`;
               eventCount: llmEventCount
             });
           } else if (event.type === "delta" && event.delta) {
-            rawStreamText += event.delta;
-            const sanitizedStreamText = sanitizeStreamPayload(rawStreamText);
-            const startsWithTypedControlPayload = /^\s*\{\s*"type"/u.test(rawStreamText);
-            const rationalePreview = startsWithTypedControlPayload ? extractRationaleFromControlPayload(rawStreamText) : sanitizedStreamText.trim() ? "" : extractRationaleFromControlPayload(rawStreamText);
-            if (!streamReasoning.trim() && rationalePreview && rationalePreview !== thoughtEvent.text) {
-              emitPreviewThoughtProgress(rationalePreview);
-            }
-            const looksLikeControlPayload = startsWithTypedControlPayload && /"type"\s*:\s*"(?:action|final)"/u.test(rawStreamText);
-            if (!streamReasoning.trim() && !startsWithTypedControlPayload && !looksLikeControlPayload && sanitizedStreamText.trim() && sanitizedStreamText !== thoughtEvent.text) {
-              thoughtEvent.text = sanitizedStreamText.trim();
-              thoughtEvent.status = "running";
-              updateStepItem(thoughtStepItem, {
-                status: "running",
-                text: thoughtEvent.text,
-                streaming: true
-              });
-              iterationStep.thoughtText = thoughtEvent.text;
-              iterationStep.status = "running";
-              iterationStep.streaming = true;
-            }
-            const emittedDelta = sanitizedStreamText.slice(streamText.length);
-            streamText = sanitizedStreamText;
+            pendingTextDelta += event.delta;
+            maybeFlushTextStreamProgress();
             debugLog3("llm.delta", {
               iteration: i + 1,
               delta: event.delta,
               accumulatedText: streamText,
-              rationalePreview
+              pendingTextDelta
             });
             logStageTiming2("llm-event", {
               iteration: i + 1,
@@ -16291,18 +16421,10 @@ ${text}`;
               accumulatedLength: streamText.length,
               eventCount: llmEventCount
             });
-            if (!emittedDelta) {
-              return;
-            }
-            emitProgressIfChanged(buildLightweightStreamProgress({
-              detail: `ReAct \u51B3\u7B56\u4E2D\uFF08${i + 1}/${maxIterations}\uFF09`,
-              textDelta: emittedDelta,
-              text: streamText,
-              iterationStep
-            }));
           }
         }
       }).then((out) => {
+        maybeFlushTextStreamProgress(true);
         flushReasoningStreamProgress(true);
         logStageTiming2("llm-complete", {
           iteration: i + 1,
@@ -16311,7 +16433,7 @@ ${text}`;
           eventCount: llmEventCount,
           outputTextLength: String(out?.output_text || "").length
         });
-        const toolCalls = tryParseToolCalls(out?.tool_calls);
+        const toolCalls = allowToolCalling ? tryParseToolCalls(out?.tool_calls) : null;
         if (toolCalls && toolCalls.length > 0) {
           const first = toolCalls[0];
           return {
@@ -16350,13 +16472,13 @@ ${text}`;
       if (!thoughtEvent.text) {
         const rationaleText = sanitizeThoughtRationale(decision.rationale);
         if (rationaleText) {
-          thoughtEvent.text = rationaleText;
+          thoughtEvent.text = clampStreamThoughtText(rationaleText);
           updateStepItem(thoughtStepItem, {
             status: "running",
-            text: rationaleText,
+            text: thoughtEvent.text,
             streaming: true
           });
-          iterationStep.thoughtText = rationaleText;
+          iterationStep.thoughtText = thoughtEvent.text;
           iterationStep.status = "running";
           iterationStep.streaming = true;
           debugLog3("thought.backfill_from_rationale", {
@@ -16402,9 +16524,14 @@ ${text}`;
           stepStates: state.stepStates,
           workingMemory: state.workingMemory
         });
+        const missing = requiredTools.filter((t) => !usedTools.has(t));
+        const shouldForceFinalOnly = missing.length === 0;
+        if (shouldForceFinalOnly) {
+          forceDisableToolCalling = true;
+        }
         messages.push({
           role: "user",
-          content: "\u7EA6\u675F\u63D0\u9192\uFF1A\u4E0A\u4E00\u8F6E\u6CA1\u6709\u4EA7\u751F\u5408\u6CD5\u7684 tool_calls\uFF0C\u4E5F\u6CA1\u6709\u8F93\u51FA\u5408\u6CD5\u7684 Action/Final JSON\u3002\u5F53\u524D\u4E0D\u8981\u76F4\u63A5\u56DE\u7B54\uFF0C\u8BF7\u5148\u8C03\u7528\u4E00\u4E2A\u6700\u76F8\u5173\u7684\u5DE5\u5177\u3002"
+          content: missing.length > 0 ? "\u7EA6\u675F\u63D0\u9192\uFF1A\u4E0A\u4E00\u8F6E\u6CA1\u6709\u4EA7\u751F\u5408\u6CD5\u7684 tool_calls\uFF0C\u4E5F\u6CA1\u6709\u8F93\u51FA\u5408\u6CD5\u7684 Action/Final JSON\u3002\u5F53\u524D\u4E0D\u8981\u76F4\u63A5\u56DE\u7B54\uFF0C\u8BF7\u5148\u8C03\u7528\u4E00\u4E2A\u6700\u76F8\u5173\u7684\u5DE5\u5177\u3002" : '\u7EA6\u675F\u63D0\u9192\uFF1A\u4E0A\u4E00\u8F6E\u6CA1\u6709\u4EA7\u751F\u5408\u6CD5\u7684 tool_calls\uFF0C\u4E5F\u6CA1\u6709\u8F93\u51FA\u5408\u6CD5\u7684 Final JSON\u3002\u5FC5\u9700\u5DE5\u5177\u5DF2\u5B8C\u6210\uFF1B\u4E0D\u8981\u518D\u8C03\u7528\u4EFB\u4F55\u5DE5\u5177\u3002\u8BF7\u53EA\u8F93\u51FA\u5408\u6CD5 Final JSON\uFF0C\u683C\u5F0F\u4E3A\uFF1A{"type":"final","route":"chat|analysis|draft|modify","rationale":"\u4E00\u53E5\u8BDD\u603B\u7ED3","output":"\u6700\u7EC8 Markdown \u5185\u5BB9"}'
         });
         iterationEvent.status = "failed";
         iterationStep.status = "failed";
@@ -16957,7 +17084,9 @@ ${text}`;
       "",
       "## \u8F93\u51FA\u534F\u8BAE\uFF08\u5DE5\u5177\u8C03\u7528\u4F18\u5148 + \u6700\u7EC8\u7ED3\u8BBA\u5728\u5FAA\u73AF\u5185\u5B8C\u6210\uFF09",
       "- \u5728 while-loop \u7684\u6BCF\u4E00\u8F6E\u201C\u51B3\u7B56\u9636\u6BB5\u201D\uFF1A",
-      "  - \u5FC5\u987B\u4F18\u5148\u4F7F\u7528\u6A21\u578B\u539F\u751F tool calling \u673A\u5236\u9009\u62E9\u5DE5\u5177\u5E76\u7ED9\u51FA\u53C2\u6570\uFF08tool_calls\uFF09\u3002",
+      "  - \u5FC5\u987B\u5728\u201C\u7EE7\u7EED\u8C03\u7528\u5DE5\u5177\u201D\u548C\u201C\u7ED3\u675F\u8F93\u51FA Final\u201D\u4E4B\u95F4\u4E8C\u9009\u4E00\uFF1B\u4E0D\u8981\u5728\u540C\u4E00\u8F6E\u540C\u65F6\u505A\u4E24\u4EF6\u4E8B\u3002",
+      "  - \u5982\u679C\u8BC1\u636E\u8FD8\u4E0D\u591F\uFF0C\u5FC5\u987B\u4F7F\u7528\u6A21\u578B\u539F\u751F tool calling \u673A\u5236\u9009\u62E9\u4E00\u4E2A\u6700\u76F8\u5173\u5DE5\u5177\u5E76\u7ED9\u51FA\u53C2\u6570\uFF08tool_calls\uFF09\u3002",
+      "  - \u5982\u679C\u8BC1\u636E\u5DF2\u7ECF\u8DB3\u591F\uFF0C\u5FC5\u987B\u7ACB\u5373\u8F93\u51FA Final JSON\uFF0C\u7981\u6B62\u518D\u8C03\u7528\u5DE5\u5177\u8865\u5145\u65E0\u5FC5\u8981\u4FE1\u606F\u3002",
       "  - \u5DE5\u5177\u540D\u4EC5\u5141\u8BB8\u5B57\u6BCD/\u6570\u5B57/_/-\uFF1B\u8BF7\u4E25\u683C\u4ECE\u201C\u53EF\u7528\u5DE5\u5177\u5217\u8868\u201D\u4E2D\u9009\u62E9\u5DE5\u5177\u3002",
       "- \u5F53\u4F60\u8BA4\u4E3A\u8BC1\u636E\u8DB3\u591F\u3001\u53EF\u4EE5\u7ED3\u675F while-loop \u65F6\uFF1A\u5FC5\u987B\u53EA\u8F93\u51FA\u4E00\u4E2A JSON \u5BF9\u8C61\u4F5C\u4E3A\u7ED3\u675F\u4FE1\u53F7\uFF08\u4E0D\u8981\u8F93\u51FA\u5176\u4ED6\u6587\u672C\uFF09\uFF1A",
       '  Final: {"type":"final","route":"chat|analysis|draft|modify","rationale":"\u4E00\u53E5\u8BDD\u603B\u7ED3","output":"\u6700\u7EC8\u8981\u5C55\u793A\u7ED9\u7528\u6237\u7684\u5B8C\u6574 Markdown \u5185\u5BB9"}',
@@ -22676,9 +22805,9 @@ ${patchSummary}`,
               iterationSteps: event.iterationSteps
             });
             const sanitizedReactEvents = shouldKeepReactEvents ? sanitizeReactEventsForUi(event.reactEvents) : void 0;
-            const clonedStepItems = event.stepItems !== void 0 ? cloneForStream(event.stepItems) : void 0;
-            const clonedIterationSteps = event.iterationSteps !== void 0 ? cloneForStream(event.iterationSteps) : void 0;
-            const clonedStepStates = event.stepStates !== void 0 ? cloneForStream(event.stepStates) : void 0;
+            const clonedStepItems = Array.isArray(event.stepItems) && event.stepItems.length === 0 ? void 0 : event.stepItems !== void 0 ? cloneForStream(event.stepItems) : void 0;
+            const clonedIterationSteps = Array.isArray(event.iterationSteps) && event.iterationSteps.length === 0 ? void 0 : event.iterationSteps !== void 0 ? cloneForStream(event.iterationSteps) : void 0;
+            const clonedStepStates = Array.isArray(event.stepStates) && event.stepStates.length === 0 ? void 0 : event.stepStates !== void 0 ? cloneForStream(event.stepStates) : void 0;
             const clonedWorkingMemory = event.workingMemory !== void 0 ? cloneForStream(event.workingMemory) : void 0;
             const clonedReactEvents = sanitizedReactEvents !== void 0 ? cloneForStream(sanitizedReactEvents) : void 0;
             const messages2 = current.chatMessages ?? [];

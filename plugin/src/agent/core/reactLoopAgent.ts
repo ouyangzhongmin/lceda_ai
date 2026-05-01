@@ -10,6 +10,23 @@ const STAGE_TIMING_STORAGE_KEY = "lceda_ai.stage_timing";
 const STREAM_STATS_STORAGE_KEY = "lceda_ai.stream_stats";
 const STREAM_PROGRESS_MIN_INTERVAL_MS = 200;
 const STREAM_SUSPICIOUS_TAIL_LEN = 96;
+const STREAM_THOUGHT_MAX_LEN = 1200;
+const STREAM_RAW_BUFFER_MAX_LEN = 4096;
+const STREAM_TEXT_SANITIZE_MIN_INTERVAL_MS = 120;
+const STREAM_LLM_EVENT_LOG_MIN_INTERVAL_MS = 250;
+const clampStreamThoughtText = (value: string): string => {
+  const text = String(value || "");
+  if (text.length <= STREAM_THOUGHT_MAX_LEN) return text;
+  // Keep the tail to preserve the latest reasoning context; trim to a word boundary when possible.
+  const tail = text.slice(-STREAM_THOUGHT_MAX_LEN);
+  const trimmed = tail.replace(/^\S*\s/u, "").trim();
+  return trimmed || tail;
+};
+  const clampRawBuffer = (value: string): string => {
+    const text = String(value || "");
+    if (text.length <= STREAM_RAW_BUFFER_MAX_LEN) return text;
+    return text.slice(-STREAM_RAW_BUFFER_MAX_LEN);
+  };
 
 type ReActDecision =
   | { type: "action"; tool: string; input?: unknown; rationale?: string }
@@ -30,11 +47,11 @@ type ProgressPayload = {
   textDelta?: string;
   text?: string;
   reasoningDelta?: string;
-  reactEvents: AgentReactEvent[];
-  stepItems: AgentStepItem[];
+  reactEvents?: AgentReactEvent[];
+  stepItems?: AgentStepItem[];
   iterationSteps?: ReactAgentState["iterationSteps"];
-  stepStates: AgentStepState[];
-  workingMemory: AgentWorkingMemory;
+  stepStates?: AgentStepState[];
+  workingMemory?: AgentWorkingMemory;
 };
 
 export async function runReActLoop(input: {
@@ -105,10 +122,36 @@ export async function runReActLoop(input: {
         storageFlag
     );
   };
-  const logStageTiming = (label: string, payload: Record<string, unknown>) => {
-    if (!isStageTimingEnabled() || typeof console === "undefined") return;
-    console.log(`[LCEDA-AI][react] timing.${label}`, payload);
-  };
+  const logStageTiming = (() => {
+    // Logging can become the bottleneck when providers stream extremely small deltas.
+    // When timing is enabled, keep llm-event logs readable without flooding console / slowing the UI.
+    let lastLlmEventLogAt = 0;
+    let suppressedLlmEventCount = 0;
+    let lastSuppressedPayload: Record<string, unknown> | null = null;
+    return (label: string, payload: Record<string, unknown>) => {
+      if (!isStageTimingEnabled() || typeof console === "undefined") return;
+      if (label === "llm-event") {
+        const now = Date.now();
+        // At most one llm-event timing log every 250ms; summarize suppressed events.
+        if (lastLlmEventLogAt && now - lastLlmEventLogAt < STREAM_LLM_EVENT_LOG_MIN_INTERVAL_MS) {
+          suppressedLlmEventCount += 1;
+          lastSuppressedPayload = payload;
+          return;
+        }
+        lastLlmEventLogAt = now;
+        if (suppressedLlmEventCount > 0) {
+          console.log(`[LCEDA-AI][react] timing.llm-event`, {
+            ...lastSuppressedPayload,
+            suppressed: suppressedLlmEventCount,
+          });
+          suppressedLlmEventCount = 0;
+          lastSuppressedPayload = null;
+          return;
+        }
+      }
+      console.log(`[LCEDA-AI][react] timing.${label}`, payload);
+    };
+  })();
 
   const messages: LlmMessage[] = [
     { role: "system", content: system },
@@ -478,17 +521,14 @@ export async function runReActLoop(input: {
   const buildLightweightStreamProgress = (payload: {
     detail: string;
     textDelta?: string;
-    text?: string;
     reasoningDelta?: string;
-    iterationStep?: NonNullable<ReactAgentState["iterationSteps"]>[number];
-  }) => ({
+  }): ProgressPayload => ({
     detail: payload.detail,
     textDelta: payload.textDelta,
-    text: payload.text,
     reasoningDelta: payload.reasoningDelta,
     reactEvents: [],
     stepItems: [],
-    iterationSteps: payload.iterationStep ? [payload.iterationStep] : undefined,
+    iterationSteps: payload.reasoningDelta && !payload.textDelta ? state.iterationSteps : undefined,
     stepStates: [],
     workingMemory: undefined as unknown as AgentWorkingMemory,
   });
@@ -496,11 +536,77 @@ export async function runReActLoop(input: {
   const safeJsonParse = (text: string): unknown => {
     const raw = String(text || "").trim();
     if (!raw) return null;
-    // best-effort: first JSON object
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
+    const stripCodeFence = (value: string): string => {
+      let out = value.trim();
+      out = out.replace(/^\s*```(?:json)?\s*(?:\r?\n)?/u, "");
+      out = out.replace(/(?:\r?\n)?\s*```\s*$/u, "");
+      return out.trim();
+    };
+
+    const extractBalancedJsonObject = (value: string, startIndex: number): string | null => {
+      if (startIndex < 0 || startIndex >= value.length || value[startIndex] !== "{") return null;
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (let i = startIndex; i < value.length; i += 1) {
+        const ch = value[i]!;
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (ch === "\\") {
+            escaped = true;
+            continue;
+          }
+          if (ch === "\"") {
+            inString = false;
+          }
+          continue;
+        }
+        if (ch === "\"") {
+          inString = true;
+          continue;
+        }
+        if (ch === "{") {
+          depth += 1;
+          continue;
+        }
+        if (ch === "}") {
+          depth -= 1;
+          if (depth === 0) {
+            return value.slice(startIndex, i + 1);
+          }
+        }
+      }
+      return null;
+    };
+
+    const cleaned = stripCodeFence(raw);
+    const finalIndex = cleaned.search(/(?:^|\r|\n)\s*Final\s*:/iu);
+    const typedFinalIndex = cleaned.search(/\{\s*"type"\s*:\s*"final"/u);
+    const startIndex =
+      finalIndex >= 0
+        ? cleaned.indexOf("{", finalIndex)
+        : typedFinalIndex >= 0
+          ? cleaned.indexOf("{", typedFinalIndex)
+          : -1;
+    if (startIndex >= 0) {
+      const slice = extractBalancedJsonObject(cleaned, startIndex);
+      if (slice) {
+        try {
+          return JSON.parse(slice);
+        } catch {
+          // fallthrough
+        }
+      }
+    }
+
+    // best-effort: first JSON object anywhere
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
     if (start >= 0 && end > start) {
-      const slice = raw.slice(start, end + 1);
+      const slice = cleaned.slice(start, end + 1);
       try {
         return JSON.parse(slice);
       } catch {
@@ -508,7 +614,7 @@ export async function runReActLoop(input: {
       }
     }
     try {
-      return JSON.parse(raw);
+      return JSON.parse(cleaned);
     } catch {
       return null;
     }
@@ -556,6 +662,11 @@ export async function runReActLoop(input: {
       strict: true,
     },
   }));
+
+  // Final-only mode is a host-enforced safety latch: once we have all required
+  // tools but the model still fails to emit a valid Final JSON, we ask it to
+  // output Final JSON only and disable tool calling in subsequent iterations.
+  let forceDisableToolCalling = false;
 
   for (let i = 0; i < maxIterations; i += 1) {
     ensureNotCancelled();
@@ -637,12 +748,16 @@ export async function runReActLoop(input: {
     let rawStreamReasoning = "";
     let streamReasoning = "";
     let pendingReasoningDelta = "";
+    let pendingTextDelta = "";
+    let lastTextSanitizeAt = 0;
     let lastPreviewThoughtText = "";
+    let sawControlPayloadInText = false;
     const commitReasoningStreamState = (nextText: string): void => {
-      thoughtEvent.text = nextText;
+      const clamped = clampStreamThoughtText(nextText);
+      thoughtEvent.text = clamped;
       thoughtEvent.status = "running";
-      updateStepItem(thoughtStepItem, { status: "running", text: nextText, streaming: true });
-      iterationStep.thoughtText = nextText;
+      updateStepItem(thoughtStepItem, { status: "running", text: clamped, streaming: true });
+      iterationStep.thoughtText = clamped;
       iterationStep.status = "running";
       iterationStep.streaming = true;
     };
@@ -659,7 +774,6 @@ export async function runReActLoop(input: {
       emitProgressIfChanged(buildLightweightStreamProgress({
         detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
         reasoningDelta: previewDelta,
-        iterationStep,
       }));
     };
     const flushReasoningStreamProgress = (force = false): void => {
@@ -680,7 +794,69 @@ export async function runReActLoop(input: {
       emitProgressIfChanged(buildLightweightStreamProgress({
         detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
         reasoningDelta: emittedReasoningDelta,
-        iterationStep,
+      }));
+    };
+    const maybeFlushTextStreamProgress = (force = false): void => {
+      if (!pendingTextDelta && !force) {
+        return;
+      }
+      const now = Date.now();
+      if (!force && lastTextSanitizeAt > 0 && now - lastTextSanitizeAt < STREAM_TEXT_SANITIZE_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastTextSanitizeAt = now;
+      if (pendingTextDelta) {
+        rawStreamText = clampRawBuffer(rawStreamText + pendingTextDelta);
+        pendingTextDelta = "";
+      }
+      const sanitizedStreamText = sanitizeStreamPayload(rawStreamText);
+      const startsWithTypedControlPayload = /^\s*\{\s*"type"/u.test(rawStreamText);
+      const looksLikeControlPayload =
+        startsWithTypedControlPayload &&
+        /"type"\s*:\s*"(?:action|final)"/u.test(rawStreamText);
+      if (
+        !sawControlPayloadInText &&
+        (startsWithTypedControlPayload || looksLikeControlPayload || /(?:^|\r|\n)\s*Final\s*:/iu.test(rawStreamText))
+      ) {
+        sawControlPayloadInText = true;
+      }
+      const rationalePreview = startsWithTypedControlPayload
+        ? extractRationaleFromControlPayload(rawStreamText)
+        : sanitizedStreamText.trim()
+          ? ""
+          : extractRationaleFromControlPayload(rawStreamText);
+      if (!streamReasoning.trim() && rationalePreview && rationalePreview !== thoughtEvent.text) {
+        emitPreviewThoughtProgress(rationalePreview);
+      }
+      if (
+        !streamReasoning.trim() &&
+        !startsWithTypedControlPayload &&
+        !looksLikeControlPayload &&
+        sanitizedStreamText.trim() &&
+        sanitizedStreamText !== thoughtEvent.text
+      ) {
+        thoughtEvent.text = clampStreamThoughtText(sanitizedStreamText.trim());
+        thoughtEvent.status = "running";
+        updateStepItem(thoughtStepItem, {
+          status: "running",
+          text: thoughtEvent.text,
+          streaming: true,
+        });
+        iterationStep.thoughtText = thoughtEvent.text;
+        iterationStep.status = "running";
+        iterationStep.streaming = true;
+      }
+      const emittedDelta = sanitizedStreamText.slice(streamText.length);
+      streamText = sanitizedStreamText;
+      if (sawControlPayloadInText && !streamReasoning.trim() && !thoughtEvent.text) {
+        emitPreviewThoughtProgress("正在生成结构化输出…");
+      }
+      if (!emittedDelta) {
+        return;
+      }
+      emitProgressIfChanged(buildLightweightStreamProgress({
+        detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
+        textDelta: emittedDelta,
       }));
     };
     const llmStartedAt = getPerfNow();
@@ -688,6 +864,11 @@ export async function runReActLoop(input: {
     let llmLastEventAt = llmStartedAt;
     let llmEventCount = 0;
     ensureNotCancelled();
+    const missingRequiredTools = requiredTools.filter((t) => !usedTools.has(t));
+    if (forceDisableToolCalling && missingRequiredTools.length > 0) {
+      forceDisableToolCalling = false;
+    }
+    const allowToolCalling = !forceDisableToolCalling;
     const decision = await deps
       .invokeTool<
         {
@@ -702,8 +883,8 @@ export async function runReActLoop(input: {
         stream: true,
         messages,
         // Enable native tool calling when provider supports it.
-        tools: toolsForModel,
-        tool_choice: "auto",
+        tools: allowToolCalling ? toolsForModel : undefined,
+        tool_choice: allowToolCalling ? "auto" : "none",
         onEvent: (event) => {
           const eventAt = getPerfNow();
           llmEventCount += 1;
@@ -729,7 +910,6 @@ export async function runReActLoop(input: {
                 emitProgressIfChanged(buildLightweightStreamProgress({
                   detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
                   reasoningDelta: event.reasoning_delta,
-                  iterationStep,
                 }));
               }
             } else {
@@ -750,46 +930,13 @@ export async function runReActLoop(input: {
               eventCount: llmEventCount,
             });
           } else if (event.type === "delta" && event.delta) {
-            // Avoid leaking control JSON into the main content; still keep a lightweight progress indicator.
-            rawStreamText += event.delta;
-            const sanitizedStreamText = sanitizeStreamPayload(rawStreamText);
-            const startsWithTypedControlPayload = /^\s*\{\s*"type"/u.test(rawStreamText);
-            const rationalePreview = startsWithTypedControlPayload
-              ? extractRationaleFromControlPayload(rawStreamText)
-              : sanitizedStreamText.trim()
-                ? ""
-                : extractRationaleFromControlPayload(rawStreamText);
-            if (!streamReasoning.trim() && rationalePreview && rationalePreview !== thoughtEvent.text) {
-              emitPreviewThoughtProgress(rationalePreview);
-            }
-            const looksLikeControlPayload =
-              startsWithTypedControlPayload &&
-              /"type"\s*:\s*"(?:action|final)"/u.test(rawStreamText);
-            if (
-              !streamReasoning.trim() &&
-              !startsWithTypedControlPayload &&
-              !looksLikeControlPayload &&
-              sanitizedStreamText.trim() &&
-              sanitizedStreamText !== thoughtEvent.text
-            ) {
-              thoughtEvent.text = sanitizedStreamText.trim();
-              thoughtEvent.status = "running";
-              updateStepItem(thoughtStepItem, {
-                status: "running",
-                text: thoughtEvent.text,
-                streaming: true,
-              });
-              iterationStep.thoughtText = thoughtEvent.text;
-              iterationStep.status = "running";
-              iterationStep.streaming = true;
-            }
-            const emittedDelta = sanitizedStreamText.slice(streamText.length);
-            streamText = sanitizedStreamText;
+            pendingTextDelta += event.delta;
+            maybeFlushTextStreamProgress();
             debugLog("llm.delta", {
               iteration: i + 1,
               delta: event.delta,
               accumulatedText: streamText,
-              rationalePreview,
+              pendingTextDelta,
             });
             logStageTiming("llm-event", {
               iteration: i + 1,
@@ -799,19 +946,11 @@ export async function runReActLoop(input: {
               accumulatedLength: streamText.length,
               eventCount: llmEventCount,
             });
-            if (!emittedDelta) {
-              return;
-            }
-            emitProgressIfChanged(buildLightweightStreamProgress({
-              detail: `ReAct 决策中（${i + 1}/${maxIterations}）`,
-              textDelta: emittedDelta,
-              text: streamText,
-              iterationStep,
-            }));
           }
         },
       })
       .then((out): ReActDecision => {
+        maybeFlushTextStreamProgress(true);
         flushReasoningStreamProgress(true);
         logStageTiming("llm-complete", {
           iteration: i + 1,
@@ -820,7 +959,7 @@ export async function runReActLoop(input: {
           eventCount: llmEventCount,
           outputTextLength: String(out?.output_text || "").length,
         });
-        const toolCalls = tryParseToolCalls((out as any)?.tool_calls);
+        const toolCalls = allowToolCalling ? tryParseToolCalls((out as any)?.tool_calls) : null;
         if (toolCalls && toolCalls.length > 0) {
           const first = toolCalls[0];
           return {
@@ -873,13 +1012,13 @@ export async function runReActLoop(input: {
     if (!thoughtEvent.text) {
       const rationaleText = sanitizeThoughtRationale(decision.rationale);
       if (rationaleText) {
-        thoughtEvent.text = rationaleText;
+        thoughtEvent.text = clampStreamThoughtText(rationaleText);
         updateStepItem(thoughtStepItem, {
           status: "running",
-          text: rationaleText,
+          text: thoughtEvent.text,
           streaming: true,
         });
-        iterationStep.thoughtText = rationaleText;
+        iterationStep.thoughtText = thoughtEvent.text;
         iterationStep.status = "running";
         iterationStep.streaming = true;
         debugLog("thought.backfill_from_rationale", {
@@ -929,10 +1068,16 @@ export async function runReActLoop(input: {
         stepStates: state.stepStates,
         workingMemory: state.workingMemory,
       });
+      const missing = requiredTools.filter((t) => !usedTools.has(t));
+      const shouldForceFinalOnly = missing.length === 0;
+      if (shouldForceFinalOnly) {
+        forceDisableToolCalling = true;
+      }
       messages.push({
         role: "user",
-        content:
-          "约束提醒：上一轮没有产生合法的 tool_calls，也没有输出合法的 Action/Final JSON。当前不要直接回答，请先调用一个最相关的工具。",
+        content: missing.length > 0
+          ? "约束提醒：上一轮没有产生合法的 tool_calls，也没有输出合法的 Action/Final JSON。当前不要直接回答，请先调用一个最相关的工具。"
+          : "约束提醒：上一轮没有产生合法的 tool_calls，也没有输出合法的 Final JSON。必需工具已完成；不要再调用任何工具。请只输出合法 Final JSON，格式为：{\"type\":\"final\",\"route\":\"chat|analysis|draft|modify\",\"rationale\":\"一句话总结\",\"output\":\"最终 Markdown 内容\"}",
       });
       iterationEvent.status = "failed";
       iterationStep.status = "failed";

@@ -196,6 +196,116 @@ test("runReActLoop retries when model output is not a valid action/final payload
   assert.deepEqual(result.observations.map((item) => item.tool), ["editor_get_current_context"]);
 });
 
+test("runReActLoop accepts Final-prefixed JSON as a final decision", async () => {
+  let llmCalls = 0;
+  const deps: ReactAgentDeps = {
+    task: { type: "schematic_analysis", userQuery: "分析当前原理图有什么问题" },
+    allowedTools: ["editor_get_current_context"],
+    listToolNames: () => ["editor_get_current_context", "llm_generate"],
+    invokeTool: async (toolName) => {
+      if (toolName === "llm_generate") {
+        llmCalls += 1;
+        return {
+          output_text: 'Final: {"type":"final","route":"analysis","rationale":"done","output":"## 报告"}',
+        } as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  const result = await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+    toolDefinitions: [{
+      name: "editor_get_current_context",
+      description: "读取当前编辑器中的原理图上下文",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    maxIterations: 2,
+  });
+
+  assert.equal(llmCalls, 1);
+  assert.equal(result.finalRoute, "analysis");
+  assert.equal(result.finalOutput, "## 报告");
+});
+
+test("runReActLoop asks for final JSON instead of another tool after required tools are complete and parsing fails", async () => {
+  const reminderMessages: string[] = [];
+  const toolChoices: unknown[] = [];
+  const toolCounts: number[] = [];
+  let llmCalls = 0;
+  let toolCalls = 0;
+
+  const deps: ReactAgentDeps = {
+    task: { type: "schematic_analysis", userQuery: "分析当前原理图有什么问题" },
+    allowedTools: ["editor_get_current_context"],
+    listToolNames: () => ["editor_get_current_context", "llm_generate"],
+    invokeTool: async (toolName, input) => {
+      if (toolName === "llm_generate") {
+        llmCalls += 1;
+        toolChoices.push((input as { tool_choice?: unknown }).tool_choice);
+        toolCounts.push(((input as { tools?: unknown[] }).tools ?? []).length);
+        const messages = (input as { messages?: Array<{ role?: string; content?: string }> }).messages ?? [];
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage?.role === "user") {
+          reminderMessages.push(String(lastMessage.content || ""));
+        }
+        if (llmCalls === 1) {
+          return {
+            tool_calls: [
+              {
+                id: "call_context",
+                type: "function",
+                function: {
+                  name: "editor_get_current_context",
+                  arguments: "{}",
+                },
+              },
+            ],
+            output_text: "",
+          } as never;
+        }
+        if (llmCalls === 2) {
+          return { output_text: "我已经收集了足够证据，现在输出最终报告。" } as never;
+        }
+        return {
+          output_text: '{"type":"final","route":"analysis","rationale":"done","output":"## 报告"}',
+        } as never;
+      }
+      if (toolName === "editor_get_current_context") {
+        toolCalls += 1;
+        return createMinimalContext() as never;
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
+    },
+  };
+
+  const result = await runReActLoop({
+    deps,
+    state: createState(),
+    system: "system",
+    user: "user",
+    toolDefinitions: [{
+      name: "editor_get_current_context",
+      description: "读取当前编辑器中的原理图上下文",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    requiredTools: ["editor_get_current_context"],
+  });
+
+  assert.equal(toolCalls, 1);
+  assert.equal(llmCalls, 3);
+  assert.equal(result.finalOutput, "## 报告");
+  assert.equal(reminderMessages.some((message) => message.includes("请只输出合法 Final JSON")), true);
+  assert.equal(reminderMessages.some((message) => message.includes("请先调用一个最相关的工具")), false);
+  assert.equal(toolChoices[0], "auto");
+  assert.equal(toolChoices[1], "auto");
+  assert.equal(toolChoices[2], "none");
+  assert.equal(toolCounts[2], 0);
+});
+
 test("runReActLoop preserves assistant tool_calls and tool messages across rounds", async () => {
   const llmMessages: unknown[][] = [];
 
@@ -1136,7 +1246,7 @@ test("runReActLoop flushes buffered reasoning progress with the latest thought t
     stepStates: number;
   }> = [];
 
-  const chunks = ["先读取上下文。", "再确认关键网络。", "最后整理结论。"];
+  const chunks = ["先读取上下文。", "再确认关键网络。", "最后整理结论。"].map((chunk) => chunk.repeat(500));
 
   const deps: ReactAgentDeps = {
     task: { type: "natural_chat", userQuery: "分析当前原理图" },
@@ -1173,7 +1283,7 @@ test("runReActLoop flushes buffered reasoning progress with the latest thought t
 
   const reasoningEvents = progressEvents.filter((event) => event.reasoningDelta);
   assert.equal(reasoningEvents.length >= 2, true);
-  assert.equal(reasoningEvents[reasoningEvents.length - 1]?.iterationThoughtText, chunks.join(""));
+  assert.equal(String(reasoningEvents[reasoningEvents.length - 1]?.iterationThoughtText || "").length <= 1200, true);
   assert.equal(reasoningEvents.every((event) => event.stepItems === 0), true);
   assert.equal(reasoningEvents.every((event) => event.stepStates === 0), true);
 });

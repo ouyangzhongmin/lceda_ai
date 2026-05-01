@@ -3471,9 +3471,24 @@ function createAssistantRuntime(): AssistantRuntime {
           const sanitizedReactEvents = shouldKeepReactEvents
             ? sanitizeReactEventsForUi(event.reactEvents)
             : undefined;
-          const clonedStepItems = event.stepItems !== undefined ? cloneForStream(event.stepItems) : undefined;
-          const clonedIterationSteps = event.iterationSteps !== undefined ? cloneForStream(event.iterationSteps) : undefined;
-          const clonedStepStates = event.stepStates !== undefined ? cloneForStream(event.stepStates) : undefined;
+          const clonedStepItems =
+            Array.isArray(event.stepItems) && event.stepItems.length === 0
+              ? undefined
+              : event.stepItems !== undefined
+                ? cloneForStream(event.stepItems)
+                : undefined;
+          const clonedIterationSteps =
+            Array.isArray(event.iterationSteps) && event.iterationSteps.length === 0
+              ? undefined
+              : event.iterationSteps !== undefined
+                ? cloneForStream(event.iterationSteps)
+                : undefined;
+          const clonedStepStates =
+            Array.isArray(event.stepStates) && event.stepStates.length === 0
+              ? undefined
+              : event.stepStates !== undefined
+                ? cloneForStream(event.stepStates)
+                : undefined;
           const clonedWorkingMemory = event.workingMemory !== undefined ? cloneForStream(event.workingMemory) : undefined;
           const clonedReactEvents = sanitizedReactEvents !== undefined ? cloneForStream(sanitizedReactEvents) : undefined;
           const messages = current.chatMessages ?? [];
