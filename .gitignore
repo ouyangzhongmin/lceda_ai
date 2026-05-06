@@ -124,6 +124,8 @@ out/
 coverage/
 .nyc_output/
 
+.playwright-cli/
+
 __debug_bin*
 
 .gocache/
