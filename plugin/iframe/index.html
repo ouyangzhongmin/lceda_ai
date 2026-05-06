@@ -20179,6 +20179,8 @@ ${summarizeDraftRationale(preview.rationale)}`
   var ENABLE_VERBOSE_RUNTIME_LOGS = false;
   var ENABLE_STREAM_STEP_DEBUG = typeof globalThis !== "undefined" && Boolean(globalThis.__LCEDA_AI_STREAM_DEBUG__);
   var STREAM_COMMIT_MIN_INTERVAL_MS = 250;
+  var ANALYSIS_BODY_STREAM_COMMIT_MIN_INTERVAL_MS = 400;
+  var ANALYSIS_BODY_STREAM_SMALL_DELTA_MAX_CHARS = 24;
   var MAX_STREAM_STEP_ITEMS = 80;
   var MAX_STREAM_ITERATION_STEPS = 60;
   var MAX_STREAM_REACT_EVENTS = 120;
@@ -21490,7 +21492,7 @@ ${content}`;
     if (input.hasStepItems || input.hasIterationSteps || input.hasReactEvents || input.hasReasoningDelta) {
       return false;
     }
-    if (input.route === "chat") {
+    if (input.route === "chat" || input.route === "analysis") {
       return true;
     }
     return false;
@@ -21537,6 +21539,13 @@ ${content}`;
   }
   function shouldCountStreamEventAsTurnActivity(input) {
     return Boolean(input.contentChanged || input.processChanged || input.detailChanged);
+  }
+  function resolveStreamCommitMinInterval(input) {
+    const isAnalysisBodyOnlyLlmDelta = input.route === "analysis" && input.stage === "llm" && Boolean(input.contentChanged) && !input.processChanged && !input.detailChanged && Number(input.reasoningDeltaLength || 0) === 0 && Number(input.textDeltaLength || 0) > 0 && Number(input.textDeltaLength || 0) <= ANALYSIS_BODY_STREAM_SMALL_DELTA_MAX_CHARS;
+    if (isAnalysisBodyOnlyLlmDelta) {
+      return ANALYSIS_BODY_STREAM_COMMIT_MIN_INTERVAL_MS;
+    }
+    return STREAM_COMMIT_MIN_INTERVAL_MS;
   }
   function trimTail(items, maxItems) {
     if (!Array.isArray(items)) return items;
@@ -22658,7 +22667,15 @@ ${patchSummary}`,
         const streamStats = createStreamStatsLogger(turnId);
         const scheduleTurnCommit = (force, options) => {
           const commitStart = getPerfNow();
-          const minIntervalMs = STREAM_COMMIT_MIN_INTERVAL_MS;
+          const minIntervalMs = resolveStreamCommitMinInterval({
+            route: options?.route,
+            stage: options?.stage,
+            textDeltaLength: options?.textDeltaLength,
+            reasoningDeltaLength: options?.reasoningDeltaLength,
+            contentChanged: options?.contentChanged,
+            processChanged: options?.processChanged,
+            detailChanged: options?.detailChanged
+          });
           if (force) {
             if (turnCommitTimer) {
               clearTimeout(turnCommitTimer);
@@ -22944,7 +22961,10 @@ ${patchSummary}`,
               route: event.route,
               stage: event.stage,
               textDeltaLength: String(sanitizedTextDelta || "").length,
-              reasoningDeltaLength: String(sanitizedReasoningDelta || "").length
+              reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+              contentChanged,
+              processChanged,
+              detailChanged
             });
             const afterCommitAt = isPerfDebugEnabled() || isStageTimingEnabled() ? getPerfNow() : 0;
             streamStats.event({

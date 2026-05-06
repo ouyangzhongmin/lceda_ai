@@ -41,6 +41,7 @@ import {
   shouldIgnoreDuplicateSendWhileRunning,
   shouldUseDraftReplyLeadNarrative,
   resolveDraftDeviceSearchQuery,
+  resolveStreamCommitMinInterval,
   buildDraftDeviceSearchQueries,
   resolveDevicePickerManualQueryStateForSearch,
   updateDevicePickerManualQueryState,
@@ -2893,6 +2894,32 @@ test("shouldMirrorStreamingTextToAssistantBody keeps plain natural chat streamin
   );
 });
 
+test("shouldMirrorStreamingTextToAssistantBody keeps plain analysis report streaming in the assistant body", () => {
+  assert.equal(
+    shouldMirrorStreamingTextToAssistantBody({
+      route: "analysis",
+      hasStepItems: false,
+      hasIterationSteps: false,
+      hasReactEvents: false,
+      hasReasoningDelta: false,
+    }),
+    true
+  );
+});
+
+test("shouldMirrorStreamingTextToAssistantBody suppresses analysis body streaming while reasoning steps are present", () => {
+  assert.equal(
+    shouldMirrorStreamingTextToAssistantBody({
+      route: "analysis",
+      hasStepItems: false,
+      hasIterationSteps: true,
+      hasReactEvents: false,
+      hasReasoningDelta: true,
+    }),
+    false
+  );
+});
+
 test("shouldMirrorStreamingTextToAssistantBody suppresses ReAct step tokens even when route is chat", () => {
   assert.equal(
     shouldMirrorStreamingTextToAssistantBody({
@@ -2929,6 +2956,51 @@ test("shouldMirrorStreamingTextToAssistantBody suppresses raw draft token stream
       hasReasoningDelta: false,
     }),
     false
+  );
+});
+
+test("resolveStreamCommitMinInterval uses stricter throttling for small analysis body-only deltas", () => {
+  assert.equal(
+    resolveStreamCommitMinInterval({
+      route: "analysis",
+      stage: "llm",
+      textDeltaLength: 12,
+      reasoningDeltaLength: 0,
+      contentChanged: true,
+      processChanged: false,
+      detailChanged: false,
+    }),
+    400
+  );
+});
+
+test("resolveStreamCommitMinInterval keeps default throttling for large analysis body deltas", () => {
+  assert.equal(
+    resolveStreamCommitMinInterval({
+      route: "analysis",
+      stage: "llm",
+      textDeltaLength: 48,
+      reasoningDeltaLength: 0,
+      contentChanged: true,
+      processChanged: false,
+      detailChanged: false,
+    }),
+    250
+  );
+});
+
+test("resolveStreamCommitMinInterval keeps default throttling when analysis stream also updates process state", () => {
+  assert.equal(
+    resolveStreamCommitMinInterval({
+      route: "analysis",
+      stage: "llm",
+      textDeltaLength: 12,
+      reasoningDeltaLength: 0,
+      contentChanged: true,
+      processChanged: true,
+      detailChanged: false,
+    }),
+    250
   );
 });
 

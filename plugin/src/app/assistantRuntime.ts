@@ -51,6 +51,8 @@ const ENABLE_STREAM_STEP_DEBUG =
     Boolean((globalThis as typeof globalThis & Record<string, unknown>).__LCEDA_AI_STREAM_DEBUG__));
 // Streaming can emit lots of deltas; committing/persisting on every delta makes the UI churn.
 const STREAM_COMMIT_MIN_INTERVAL_MS = 250;
+const ANALYSIS_BODY_STREAM_COMMIT_MIN_INTERVAL_MS = 400;
+const ANALYSIS_BODY_STREAM_SMALL_DELTA_MAX_CHARS = 24;
 const MAX_STREAM_STEP_ITEMS = 80;
 const MAX_STREAM_ITERATION_STEPS = 60;
 const MAX_STREAM_REACT_EVENTS = 120;
@@ -1898,7 +1900,7 @@ export function shouldMirrorStreamingTextToAssistantBody(input: {
   if (input.hasStepItems || input.hasIterationSteps || input.hasReactEvents || input.hasReasoningDelta) {
     return false;
   }
-  if (input.route === "chat") {
+  if (input.route === "chat" || input.route === "analysis") {
     return true;
   }
   return false;
@@ -1982,6 +1984,30 @@ export function shouldCountStreamEventAsTurnActivity(input: {
   detailChanged?: boolean;
 }): boolean {
   return Boolean(input.contentChanged || input.processChanged || input.detailChanged);
+}
+
+export function resolveStreamCommitMinInterval(input: {
+  route?: "chat" | "analysis" | "draft" | "modify";
+  stage?: string;
+  textDeltaLength?: number;
+  reasoningDeltaLength?: number;
+  contentChanged?: boolean;
+  processChanged?: boolean;
+  detailChanged?: boolean;
+}): number {
+  const isAnalysisBodyOnlyLlmDelta =
+    input.route === "analysis" &&
+    input.stage === "llm" &&
+    Boolean(input.contentChanged) &&
+    !input.processChanged &&
+    !input.detailChanged &&
+    Number(input.reasoningDeltaLength || 0) === 0 &&
+    Number(input.textDeltaLength || 0) > 0 &&
+    Number(input.textDeltaLength || 0) <= ANALYSIS_BODY_STREAM_SMALL_DELTA_MAX_CHARS;
+  if (isAnalysisBodyOnlyLlmDelta) {
+    return ANALYSIS_BODY_STREAM_COMMIT_MIN_INTERVAL_MS;
+  }
+  return STREAM_COMMIT_MIN_INTERVAL_MS;
 }
 
 function trimTail<T>(items: T[] | undefined, maxItems: number): T[] | undefined {
@@ -3301,10 +3327,21 @@ function createAssistantRuntime(): AssistantRuntime {
           stage?: string;
           textDeltaLength?: number;
           reasoningDeltaLength?: number;
+          contentChanged?: boolean;
+          processChanged?: boolean;
+          detailChanged?: boolean;
         }
       ) => {
         const commitStart = getPerfNow();
-        const minIntervalMs = STREAM_COMMIT_MIN_INTERVAL_MS;
+        const minIntervalMs = resolveStreamCommitMinInterval({
+          route: options?.route,
+          stage: options?.stage,
+          textDeltaLength: options?.textDeltaLength,
+          reasoningDeltaLength: options?.reasoningDeltaLength,
+          contentChanged: options?.contentChanged,
+          processChanged: options?.processChanged,
+          detailChanged: options?.detailChanged,
+        });
         if (force) {
           if (turnCommitTimer) {
             clearTimeout(turnCommitTimer);
@@ -3646,6 +3683,9 @@ function createAssistantRuntime(): AssistantRuntime {
             stage: event.stage,
             textDeltaLength: String(sanitizedTextDelta || "").length,
             reasoningDeltaLength: String(sanitizedReasoningDelta || "").length,
+            contentChanged,
+            processChanged,
+            detailChanged,
           });
           const afterCommitAt = (isPerfDebugEnabled() || isStageTimingEnabled()) ? getPerfNow() : 0;
           streamStats.event({
