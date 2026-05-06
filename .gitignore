@@ -97,6 +97,8 @@ docker-compose.override.yml
 /server/deploy/docker/postgres_data/
 /server/deploy/docker/redis_data/
 
+运行效果.mp4
+
 # Temporary files
 tmp/
 temp/

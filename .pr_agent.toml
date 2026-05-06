@@ -1,0 +1,7 @@
+[config]
+model = "gpt-5.4"
+fallback_models = ["gpt-5.2"]
+verbose = false
+
+[pr_reviewer]
+exclude_paths = [".*mock.*", ".*/test/.*"]
