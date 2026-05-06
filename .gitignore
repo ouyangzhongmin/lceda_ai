@@ -120,6 +120,8 @@ dist/
 build/
 out/
 
+.playwright-cli/
+
 # Test coverage
 coverage/
 .nyc_output/
